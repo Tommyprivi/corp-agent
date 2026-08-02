@@ -88,7 +88,7 @@ export default function MyAgents({
               type="submit"
               aria-label="Crea l'agente"
               disabled={!draft.trim()}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white transition-opacity hover:bg-[var(--accent-hover)] disabled:opacity-25"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full btn-grad transition-opacity disabled:opacity-25"
             >
               <ArrowUpIcon />
             </button>

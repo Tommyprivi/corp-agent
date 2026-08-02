@@ -1,12 +1,38 @@
 import { useEffect, useRef, useState } from "react";
-import Logo from "./Logo";
-import { ArrowUpIcon, CheckIcon, GearIcon } from "./Icons";
+import Logo, { LogoMark } from "./Logo";
+import {
+  ArrowUpIcon,
+  ChatSparkIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ClockIcon,
+  CloseIcon,
+  GearIcon,
+  ImageIcon,
+  MicIcon,
+  MoonIcon,
+  PaperclipIcon,
+  PlusIcon,
+  SparkleIcon,
+  SpeakerIcon,
+  StopIcon,
+  SunIcon,
+} from "./Icons";
 import BrandTile from "./BrandTile";
-import ProjectBar from "./ProjectBar";
 import { TRADES, tradeById } from "../data/trades";
 import { KITS } from "../data/kits";
 import { planById } from "../data/plans";
-import { ApiError, streamChat, type ChatMessage, type HeavyWarning } from "../lib/api";
+import {
+  ApiError,
+  generateImage,
+  getModels,
+  speak,
+  streamChat,
+  type CatalogModelInfo,
+  type ChatMessage,
+  type HeavyWarning,
+} from "../lib/api";
+import { useTheme } from "../lib/theme";
 import type { KnowledgeDoc, Project, SurveyAnswers, TradeId } from "../types";
 
 interface MasterChatProps {
@@ -14,10 +40,11 @@ interface MasterChatProps {
   onOpenAdvanced: () => void;
 }
 
-/** Ogni riga della conversazione: testo, oppure una carta che si può usare. */
+/** Ogni riga della conversazione: testo, un'immagine, oppure una carta che si può usare. */
 type Entry =
-  | { kind: "master"; text: string }
+  | { kind: "master"; text: string; model?: string }
   | { kind: "user"; text: string }
+  | { kind: "image"; url: string; prompt: string }
   | { kind: "trades" }
   | { kind: "kit"; tradeId: TradeId }
   | { kind: "whatsapp" }
@@ -29,13 +56,83 @@ type Entry =
 let seq = 0;
 const nid = () => `e-${++seq}`;
 
-/**
- * L'unica schermata del prodotto: una chat a tutto schermo che guida l'utente dall'inizio
- * alla fine. Consiglia gli agenti, propone i connettori, chiede i documenti, apre WhatsApp
- * — tutto dentro la conversazione, senza mai mandarlo in un pannello di configurazione.
- */
 const SETUP_ID = "setup";
 
+/**
+ * I fornitori che compaiono nel selettore, nell'ordine del documento di
+ * Tommaso. Il catalogo vero arriva da OpenRouter: qui c'è solo come
+ * raggrupparlo e con che nome. Un fornitore che non è in questa lista non
+ * compare — 337 modelli in un menu non aiutano nessuno.
+ */
+const PROVIDERS: Array<{ prefix: string; label: string }> = [
+  { prefix: "openai/", label: "OpenAI" },
+  { prefix: "anthropic/", label: "Anthropic" },
+  { prefix: "google/", label: "Google" },
+  { prefix: "deepseek/", label: "DeepSeek" },
+  { prefix: "meta-llama/", label: "Meta" },
+  { prefix: "mistralai/", label: "Mistral AI" },
+  { prefix: "qwen/", label: "Qwen (Alibaba)" },
+  { prefix: "perplexity/", label: "Perplexity" },
+  { prefix: "x-ai/", label: "xAI (Grok)" },
+  { prefix: "microsoft/", label: "Microsoft" },
+  { prefix: "cohere/", label: "Cohere" },
+];
+
+/**
+ * I quattro punti di partenza dell'apertura.
+ *
+ * Davanti a una casella vuota nessuno sa cosa scrivere: sono le domande che
+ * fa davvero chi apre CorpAgent per la prima volta, e servono a far capire
+ * in un colpo d'occhio cosa sa fare l'agente.
+ */
+const STARTERS: Array<{ icon: React.ReactNode; title: string; hint: string; text: string }> = [
+  {
+    icon: <SparkleIcon size={15} />,
+    title: "Ho un ristorante",
+    hint: "prenotazioni e menù su WhatsApp",
+    text: "Ho un ristorante e i clienti mi scrivono su WhatsApp tutto il giorno per prenotare e chiedere il menù. Cosa puoi fare per me?",
+  },
+  {
+    icon: <ChatSparkIcon size={15} />,
+    title: "Cosa sai fare?",
+    hint: "in due righe, senza giri",
+    text: "Spiegami in due righe cosa sai fare concretamente per la mia attività.",
+  },
+  {
+    icon: <ImageIcon size={15} />,
+    title: "Creami un'immagine",
+    hint: "per un post o una locandina",
+    text: "Vorrei un'immagine per un post social della mia attività. Come funziona?",
+  },
+  {
+    icon: <PaperclipIcon size={15} />,
+    title: "Ho un listino da caricare",
+    hint: "così non sbagli i prezzi",
+    text: "Ho un listino prezzi da caricare. Come faccio a fartelo leggere così non sbagli mai un prezzo?",
+  },
+];
+
+/** Il riconoscimento vocale del browser, dove c'è (Chrome ed Edge sì, Firefox no). */
+type Recognition = {
+  lang: string;
+  interimResults: boolean;
+  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+function speechRecognition(): Recognition | null {
+  const w = window as unknown as { webkitSpeechRecognition?: new () => Recognition };
+  return w.webkitSpeechRecognition ? new w.webkitSpeechRecognition() : null;
+}
+
+/**
+ * Il prodotto: sidebar scura con progetti e squadra, chat al centro.
+ * Il Master Builder guida l'utente dall'inizio alla fine dentro la
+ * conversazione — consiglia gli agenti, propone i connettori, chiede i
+ * documenti — senza mai mandarlo in un pannello di configurazione.
+ */
 export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChatProps) {
   const [projects, setProjects] = useState<Project[]>([
     { id: SETUP_ID, name: "I miei agenti", deletable: false },
@@ -68,14 +165,41 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
   /** Vero mentre l'agente sta rispondendo: si evita di sovrapporre due richieste. */
   const [streaming, setStreaming] = useState(false);
 
+  /** Il selettore dei modelli: "auto" = decide il server in base alla difficoltà. */
+  const [models, setModels] = useState<CatalogModelInfo[]>([]);
+  const [modelSlug, setModelSlug] = useState("auto");
+
+  /** Voce: il microfono che ascolta, e l'audio che sta parlando. */
+  const [listening, setListening] = useState(false);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const recognitionRef = useRef<Recognition | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [micAvailable] = useState(() => speechRecognition() !== null);
+
+  /** Immagini: vero mentre OpenAI disegna (15-40 secondi). */
+  const [imageBusy, setImageBusy] = useState(false);
+
+  /** Chiaro o scuro: parte scuro, la scelta resta sul dispositivo. */
+  const { theme, toggle: toggleTheme } = useTheme();
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  /** Il catalogo si carica una volta: alimenta il selettore in fondo. */
+  useEffect(() => {
+    getModels()
+      .then((r) => setModels(r.models))
+      .catch(() => {
+        // Senza catalogo il selettore mostra solo "Automatico": la chat
+        // funziona lo stesso, sceglie il server.
+      });
+  }, []);
 
   /** Scorrimento automatico: la conversazione si segue da sola. */
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [entries.length, typing]);
+  }, [entries.length, typing, imageBusy]);
 
   function add(...items: Entry[]) {
     setEntries((prev) => [...prev, ...items.map((i) => ({ ...i, id: nid() }))]);
@@ -236,11 +360,13 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
     // Resta `null` finché non arriva il primo pezzo: così i puntini di attesa
     // restano visibili fino all'ultimo istante, invece di lasciare una bolla vuota.
     let replyId: string | null = null;
+    let modelUsed: string | undefined;
 
     try {
       for await (const event of streamChat({
         messages,
         systemPrompt: systemPrompt(),
+        modelSlug,
         confirmHeavy,
       })) {
         if (event.kind === "warning") {
@@ -248,10 +374,13 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
           add({ kind: "warning", warning: event.warning });
           return;
         }
+        if (event.kind === "model") {
+          modelUsed = event.model;
+        }
         if (event.kind === "delta") {
           if (!replyId) {
             setTyping(false);
-            replyId = push({ kind: "master", text: "" });
+            replyId = push({ kind: "master", text: "", model: modelUsed });
           }
           grow(replyId, event.text);
         }
@@ -278,299 +407,805 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
     void ask([...history(entries), { role: "user", content: text }]);
   }
 
+  /** Il microfono: detta il messaggio invece di scriverlo. */
+  function toggleMic() {
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const recognition = speechRecognition();
+    if (!recognition) return;
+    recognition.lang = "it-IT";
+    recognition.interimResults = false;
+    recognition.onresult = (e) => {
+      const heard = Array.from({ length: e.results.length }, (_, i) => e.results[i][0].transcript)
+        .join(" ")
+        .trim();
+      if (heard) setDraft((prev) => (prev ? `${prev} ${heard}` : heard));
+    };
+    recognition.onend = () => setListening(false);
+    recognition.onerror = () => setListening(false);
+    recognitionRef.current = recognition;
+    setListening(true);
+    recognition.start();
+  }
+
+  /** L'altoparlante su una risposta: la voce di ElevenLabs la legge. */
+  async function toggleSpeak(id: string, text: string) {
+    // Se sta già parlando, si ferma — anche se era un'altra risposta.
+    audioRef.current?.pause();
+    if (speakingId === id) {
+      setSpeakingId(null);
+      return;
+    }
+    setSpeakingId(id);
+    try {
+      const audio = await speak(text);
+      audioRef.current = audio;
+      audio.addEventListener("ended", () => setSpeakingId(null), { once: true });
+    } catch (error) {
+      setSpeakingId(null);
+      add({ kind: "master", text: explain(error) });
+    }
+  }
+
+  /** Il pennello: quello che c'è nella casella diventa un'immagine. */
+  async function makeImage() {
+    const prompt = draft.trim();
+    if (!prompt || imageBusy || streaming) return;
+    setDraft("");
+    add({ kind: "user", text: prompt });
+    setImageBusy(true);
+    try {
+      const { dataUrl } = await generateImage(prompt);
+      add({ kind: "image", url: dataUrl, prompt });
+    } catch (error) {
+      add({ kind: "master", text: explain(error) });
+    } finally {
+      setImageBusy(false);
+    }
+  }
+
   const kit = tradeId ? KITS[tradeId] : null;
   const plan = kit ? planById(kit.planId) : null;
   const teamNote = surveyAnswers?.teamSize?.toLowerCase().includes("team")
     ? " Lavorando in team ti serve anche per condividere gli agenti con i tuoi."
     : "";
 
+  const activeName = projects.find((p) => p.id === activeProject)?.name ?? "";
+
+  /**
+   * Le ore risparmiate, in barra di stato.
+   *
+   * Il calcolo è quello dichiarato in tutta la documentazione — circa 3 minuti
+   * per ogni messaggio gestito senza di te — e si conta solo quello che
+   * l'agente ha davvero risposto in questa conversazione. Quando arriverà il
+   * conteggio vero dal database (`public.usage`) questa riga leggerà da lì.
+   */
+  const handledAlone = entries.filter((e) => e.kind === "master" && e.text.length > 0).length;
+  const savedHours = (handledAlone * 3) / 60;
+
+  /** Conversazione appena aperta: nessuno ha ancora scritto niente. */
+  const isSetup = activeProject === SETUP_ID;
+  const isFresh = !entries.some((e) => e.kind === "user");
+
   return (
-    <div className="flex h-full w-full flex-col bg-[var(--bg-app)]">
-      <header className="flex shrink-0 items-center justify-between px-5 py-4">
-        <Logo size={24} />
-        <div className="flex items-center gap-3">
+    <div className="flex h-full w-full bg-[var(--bg-app)]">
+      {/* ───────────────────────── SIDEBAR ─────────────────────────
+          Riorganizzata il 2 Agosto 2026. Tre zone separate da spazio, non da
+          righe: in alto chi sei e cosa crei, al centro dove lavori, in basso
+          lo stato del canale e le impostazioni. Prima era un elenco unico e
+          non si capiva cosa fosse cosa. */}
+      <aside className="on-dark side-scroll relative hidden w-[268px] shrink-0 flex-col overflow-y-auto bg-[var(--side-bg)] text-[var(--side-text)] md:flex">
+        <div aria-hidden className="orb orb-violet absolute left-[-40%] top-[-60px] h-[240px] w-[240px] opacity-30" />
+
+        <div className="relative flex items-center px-5 pb-2 pt-5 text-white [&_*]:text-white">
+          <Logo size={22} />
+        </div>
+
+        <div className="relative px-3 pt-4">
+          <NewProjectButton onCreate={createProject} />
+        </div>
+
+        <nav className="relative flex-1 px-3 pb-4">
+          <div className="t-label px-2 pb-1.5 pt-6 text-[var(--side-text-dim)]">
+            Conversazioni
+          </div>
+          {projects.map((p) => {
+            const active = p.id === activeProject;
+            return (
+              <div
+                key={p.id}
+                className={`group flex items-center rounded-xl transition-colors duration-[var(--fast)] ${
+                  active ? "bg-[var(--side-active)]" : "hover:bg-[var(--side-bg-raised)]"
+                }`}
+              >
+                <button
+                  onClick={() => setActiveProject(p.id)}
+                  className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5 text-left"
+                >
+                  <span
+                    className="h-[6px] w-[6px] shrink-0 rounded-full"
+                    style={{
+                      background: active ? "var(--side-accent)" : "var(--side-text-dim)",
+                    }}
+                  />
+                  <span
+                    className={`t-small truncate ${active ? "text-white" : "text-[var(--side-text)]"}`}
+                  >
+                    {p.name}
+                  </span>
+                </button>
+                {p.deletable && (
+                  <button
+                    onClick={() => deleteProject(p.id)}
+                    aria-label={`Chiudi ${p.name}`}
+                    className="mr-1.5 hidden rounded-md p-1 text-[var(--side-text-dim)] hover:text-white group-hover:block"
+                  >
+                    <CloseIcon size={13} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+
           {agents.length > 0 && (
-            <span className="t-small hidden items-center gap-2 text-[var(--text-secondary)] sm:flex">
-              {/* Verde, non blu: "è acceso e funziona" non è la stessa cosa di
-                  "qui si può premere". Prima erano lo stesso colore. */}
-              <span
-                className="h-[7px] w-[7px] rounded-full"
-                style={{
-                  background: whatsAppConnected ? "var(--positive)" : "var(--border-strong)",
-                }}
-              />
-              {agents.length} agenti · {whatsAppConnected ? "WhatsApp attivo" : "WhatsApp da collegare"}
-            </span>
+            <>
+              <div className="t-label flex items-center justify-between px-2 pb-1.5 pt-7 text-[var(--side-text-dim)]">
+                <span>La tua squadra</span>
+                <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[10px] tracking-normal">
+                  {agents.length}
+                </span>
+              </div>
+              {agents.map((name, i) => (
+                <div
+                  key={name}
+                  className="animate-rise flex items-center gap-2.5 rounded-xl px-3 py-2 transition-colors hover:bg-[var(--side-bg-raised)]"
+                  style={{ animationDelay: `${i * 50}ms` }}
+                >
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white/8 text-[10px] font-semibold text-white">
+                    {name.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="t-small truncate text-[var(--side-text)]">{name}</span>
+                  <span className="ml-auto h-[6px] w-[6px] shrink-0 rounded-full bg-[var(--positive)]" />
+                </div>
+              ))}
+            </>
           )}
+        </nav>
+
+        {/* Lo stato del canale: la cosa che il titolare vuole vedere a colpo
+            d'occhio senza aprire niente. */}
+        <div className="relative border-t border-[var(--side-border)] px-3 py-3">
+          <div className="mb-1.5 flex items-center gap-2.5 rounded-xl bg-[var(--side-bg-raised)] px-3 py-2.5">
+            <span
+              className="h-[7px] w-[7px] shrink-0 rounded-full"
+              style={{
+                background: whatsAppConnected ? "var(--side-positive)" : "var(--side-text-dim)",
+                boxShadow: whatsAppConnected ? "0 0 8px var(--side-positive)" : "none",
+              }}
+            />
+            <span className="t-small min-w-0 flex-1 truncate text-[var(--side-text)]">WhatsApp</span>
+            <span
+              className="text-[11.5px] font-medium"
+              style={{ color: whatsAppConnected ? "var(--side-positive)" : "var(--side-text-dim)" }}
+            >
+              {whatsAppConnected ? "attivo" : "da collegare"}
+            </span>
+          </div>
           <button
             onClick={onOpenAdvanced}
-            aria-label="Impostazioni avanzate"
-            title="Impostazioni avanzate"
-            className="rounded-lg p-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[var(--side-text)] transition-colors duration-[var(--fast)] hover:bg-[var(--side-bg-raised)] hover:text-white"
           >
-            <GearIcon size={18} />
+            <GearIcon size={17} />
+            <span className="t-small">Impostazioni Avanzate</span>
           </button>
         </div>
-      </header>
+      </aside>
 
-      <ProjectBar
-        projects={projects}
-        activeId={activeProject}
-        onSwitch={setActiveProject}
-        onCreate={createProject}
-        onDelete={deleteProject}
-      />
+      {/* ───────────────────────── CHAT ───────────────────────── */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* La testata mobile: sotto md la sidebar non c'è, il minimo resta qui. */}
+        <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-card)] px-5 py-3 md:hidden">
+          <Logo size={22} />
+          <div className="flex items-center gap-1">
+            <ThemeButton theme={theme} onToggle={toggleTheme} />
+            <button
+              onClick={onOpenAdvanced}
+              aria-label="Impostazioni avanzate"
+              className="rounded-lg p-2 text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)]"
+            >
+              <GearIcon size={18} />
+            </button>
+          </div>
+        </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5">
-        <div className="mx-auto flex max-w-[680px] flex-col gap-5 pb-10">
-          {entries.map((entry) => {
-            if (entry.kind === "master" || entry.kind === "user") {
-              const mine = entry.kind === "user";
-              return (
-                <div
-                  key={entry.id}
-                  className={`animate-rise flex ${mine ? "justify-end" : "justify-start"}`}
-                >
-                  {mine ? (
-                    <div className="t-body max-w-[80%] whitespace-pre-wrap rounded-[20px] bg-[var(--accent)] px-4 py-2.5 text-white">
-                      {entry.text}
-                    </div>
-                  ) : (
-                    /* L'agente non parla dentro una bolla: il suo testo È il
-                       contenuto della pagina. Una bolla grigia intorno a ogni
-                       risposta fa sembrare il prodotto un giocattolo per
-                       chattare, e a schermo pieno spreca metà larghezza. */
-                    <div className="t-body max-w-[95%] whitespace-pre-wrap text-[var(--text-primary)]">
-                      {entry.text}
-                    </div>
-                  )}
-                </div>
-              );
-            }
+        {/* La barra di stato: nome del progetto a sinistra, e a destra i numeri
+            che dicono che è uno strumento vero — quanto ha fatto risparmiare,
+            quale cervello sta usando. Prima qui non c'era niente. */}
+        <header className="hidden shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] bg-[var(--bg-card)] px-7 py-3 md:flex">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="truncate text-[15px] font-semibold tracking-[-0.012em] text-[var(--text-primary)]">
+              {activeName}
+            </span>
+            {agents.length > 0 && (
+              <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--positive-soft)] px-2.5 py-1 text-[11.5px] font-medium text-[var(--positive)]">
+                <span className="h-[5px] w-[5px] rounded-full bg-[var(--positive)]" />
+                {agents.length} al lavoro
+              </span>
+            )}
+          </div>
 
-            if (entry.kind === "trades") {
-              return (
-                <div key={entry.id} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {TRADES.map((t) => (
+          <div className="flex shrink-0 items-center gap-1">
+            <StatChip
+              icon={<ClockIcon size={13} />}
+              value={savedHours < 1 ? "—" : `${savedHours.toFixed(1)} h`}
+              label="risparmiate"
+            />
+            <span className="mx-1 h-4 w-px bg-[var(--border)]" />
+            <span className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] text-[var(--text-secondary)] lg:flex">
+              <SparkleIcon size={13} />
+              <span className="max-w-[150px] truncate">
+                {modelSlug === "auto" ? "Automatico" : modelName(models, modelSlug)}
+              </span>
+            </span>
+            <ThemeButton theme={theme} onToggle={toggleTheme} />
+          </div>
+        </header>
+
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 md:px-8">
+          <div className="mx-auto flex max-w-[760px] flex-col gap-5 py-8">
+            {/* L'apertura. Prima qui c'era una riga di testo su fondo bianco e
+                sembrava una pagina non finita. Adesso c'è il marchio, la frase
+                che spiega cosa succede, e quattro cose da cui partire: davanti
+                a una casella vuota nessuno sa cosa scrivere. */}
+            {isFresh && (
+              <div className="animate-rise flex flex-col items-center pb-2 pt-10 text-center">
+                <span className="ring-grad flex h-14 w-14 items-center justify-center rounded-2xl text-[var(--text-primary)] shadow-[var(--shadow-2)]">
+                  <LogoMark size={26} />
+                </span>
+                <h2 className="mt-5 text-[26px] font-semibold tracking-[-0.024em] text-[var(--text-primary)]">
+                  {isSetup ? "Costruiamo il tuo agente" : activeName}
+                </h2>
+                <p className="mt-2 max-w-[420px] text-[14.5px] leading-relaxed text-[var(--text-secondary)]">
+                  {isSetup
+                    ? "Dimmi di cosa ti occupi e monto io tutto: gli agenti, il canale, il piano. Ci vogliono trenta secondi."
+                    : "Raccontami cosa vuoi fare e lo pianifichiamo insieme."}
+                </p>
+
+                <div className="mt-7 grid w-full max-w-[540px] grid-cols-1 gap-2 sm:grid-cols-2">
+                  {STARTERS.map((s, i) => (
                     <button
-                      key={t.id}
-                      onClick={() => pickTrade(t.id)}
-                      className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3.5 text-left shadow-[var(--shadow-1)] transition-all duration-[var(--fast)] hover:-translate-y-px hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:shadow-[var(--shadow-2)]"
+                      key={s.text}
+                      onClick={() => {
+                        add({ kind: "user", text: s.text });
+                        void ask([...history(entries), { role: "user", content: s.text }]);
+                      }}
+                      className="animate-rise group flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3.5 py-3 text-left transition-all duration-[var(--fast)] hover:-translate-y-px hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-2)]"
+                      style={{ animationDelay: `${120 + i * 60}ms` }}
                     >
-                      <span className="block font-medium text-[var(--text-primary)]">
-                        {t.label}
+                      <span className="mt-0.5 shrink-0 text-[var(--text-tertiary)] transition-colors group-hover:text-[var(--text-primary)]">
+                        {s.icon}
                       </span>
-                      <span className="t-small mt-0.5 block text-[var(--text-secondary)]">
-                        {t.examples}
+                      <span className="min-w-0">
+                        <span className="block text-[13.5px] font-medium text-[var(--text-primary)]">
+                          {s.title}
+                        </span>
+                        <span className="block text-[12.5px] leading-snug text-[var(--text-secondary)]">
+                          {s.hint}
+                        </span>
                       </span>
                     </button>
                   ))}
                 </div>
-              );
-            }
+              </div>
+            )}
 
-            if (entry.kind === "kit" && kit && plan) {
-              return (
-                <div
-                  key={entry.id}
-                  className="animate-rise overflow-hidden rounded-[20px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[var(--shadow-2)]"
-                >
-                  <Block title={`${kit.agents.length} agenti`}>
-                    {kit.agents.map((a) => (
-                      <Line key={a.name} strong={a.name} rest={a.role} />
-                    ))}
-                  </Block>
-                  <Block title="Da collegare">
-                    {kit.connectors.map((c) => (
-                      <div key={c.name} className="flex items-center gap-3 py-1">
-                        <BrandTile service={c.name} size={36} />
-                        <div className="min-w-0 flex-1 text-[13.5px] leading-relaxed">
-                          <span className="font-medium text-[var(--text-primary)]">
-                            Connetti {c.name}
-                          </span>
-                          <span className="block text-[var(--text-secondary)]">{c.why}</span>
-                        </div>
+            {entries.map((entry) => {
+              if (entry.kind === "master" || entry.kind === "user") {
+                const mine = entry.kind === "user";
+                if (mine) {
+                  return (
+                    <div key={entry.id} className="animate-msg flex justify-end">
+                      <div
+                        className="t-body max-w-[80%] whitespace-pre-wrap rounded-[20px] rounded-br-md px-4.5 py-2.5"
+                        style={{ background: "var(--grad-primary)", color: "var(--on-primary)" }}
+                      >
+                        {entry.text}
                       </div>
-                    ))}
-                  </Block>
-                  <Block title="Piano" last>
-                    <Line
-                      strong={`${plan.name} — ${plan.price} ${plan.cadence}`}
-                      rest={kit.planWhy + teamNote}
-                    />
-                  </Block>
-                  <div className="border-t border-[var(--border)] p-3.5">
-                    <button
-                      onClick={activateKit}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] py-3.5 text-[15px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
-                    >
-                      <CheckIcon size={17} />
-                      Attiva tutto
-                    </button>
-                    <button
-                      onClick={() => {
-                        setTradeId(null);
-                        setEntries((prev) => prev.filter((e) => e.kind !== "kit"));
-                        master("Nessun problema. Di cosa ti occupi?", [{ kind: "trades" }], 400);
-                      }}
-                      className="mt-1.5 w-full py-2 text-[13px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-                    >
-                      Non è il mio caso
-                    </button>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={entry.id} className="animate-msg group flex gap-3.5">
+                    <span className="ring-grad mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--accent)]">
+                      <LogoMark size={16} />
+                    </span>
+                    <div className="min-w-0 flex-1 pt-1">
+                      <div className="t-body whitespace-pre-wrap text-[var(--text-primary)]">
+                        {entry.text}
+                      </div>
+                      {entry.text && (
+                        <div className="mt-1.5 flex items-center gap-2 opacity-0 transition-opacity duration-[var(--fast)] group-hover:opacity-100">
+                          <button
+                            onClick={() => void toggleSpeak(entry.id, entry.text)}
+                            aria-label={speakingId === entry.id ? "Ferma la voce" : "Leggi ad alta voce"}
+                            title={speakingId === entry.id ? "Ferma la voce" : "Leggi ad alta voce"}
+                            className={`rounded-md p-1 transition-colors ${
+                              speakingId === entry.id
+                                ? "text-[var(--accent)]"
+                                : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                            }`}
+                          >
+                            {speakingId === entry.id ? <StopIcon size={15} /> : <SpeakerIcon size={15} />}
+                          </button>
+                          {entry.model && (
+                            <span className="text-[11.5px] text-[var(--text-tertiary)]">
+                              {shortModel(entry.model)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            }
-
-            if (entry.kind === "whatsapp") {
-              return (
-                <ActionCard
-                  key={entry.id}
-                  service="WhatsApp"
-                  title="Connetti WhatsApp"
-                  body="Come WhatsApp Web: inquadri un QR col telefono del locale e in dieci secondi è attivo."
-                  cta="Mostra il QR"
-                  onClick={connectWhatsApp}
-                  note="In questa versione il collegamento è simulato: serve la WhatsApp Business API."
-                />
-              );
-            }
-
-            if (entry.kind === "knowledge") {
-              return (
-                <ActionCard
-                  key={entry.id}
-                  title={`Carica ${kit?.knowledge ?? "i documenti"}`}
-                  body="PDF, Word, Excel o anche solo una foto. Legge quello e non inventa niente."
-                  cta="Scegli un file"
-                  onClick={() => fileRef.current?.click()}
-                />
-              );
-            }
-
-            if (entry.kind === "recap") {
-              const hours = ((docs.length + agents.length) * 3) / 60;
-              return (
-                <div
-                  key={entry.id}
-                  className="animate-rise rounded-[20px] border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-[var(--shadow-2)]"
-                >
-                  <div className="t-label text-[var(--accent)]">
-                    Sei operativo
-                  </div>
-                  <div className="mt-2.5 flex flex-col gap-1.5 text-[13.5px]">
-                    <Line strong={`${agents.length} agenti`} rest="al lavoro adesso" />
-                    <Line
-                      strong={whatsAppConnected ? "WhatsApp attivo" : "WhatsApp da collegare"}
-                      rest={whatsAppConnected ? "i clienti ti scrivono e trovano risposta" : "resta l'ultimo passo"}
-                    />
-                    <Line
-                      strong={`${docs.length} document${docs.length === 1 ? "o" : "i"}`}
-                      rest="è quello che sa, e non va oltre"
-                    />
-                  </div>
-                  <p className="mt-3.5 border-t border-[var(--border)] pt-3 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
-                    Ogni messaggio che gestisco da solo ti vale circa 3 minuti. Il contatore
-                    parte da {hours < 1 ? "zero" : `${hours.toFixed(1)} ore`}: cresce da qui.
-                    Da ora puoi chiedermi qualsiasi cosa qui sotto.
-                  </p>
-                </div>
-              );
-            }
-
-            if (entry.kind === "warning") {
-              return (
-                <div
-                  key={entry.id}
-                  className="animate-rise rounded-[20px] border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-[var(--shadow-2)]"
-                >
-                  <div className="t-label text-[var(--accent)]">
-                    Richiesta impegnativa
-                  </div>
-                  <p className="mt-2 text-[13.5px] leading-relaxed text-[var(--text-primary)]">
-                    {entry.warning.message}
-                  </p>
-                  <div className="mt-3.5 flex gap-2">
-                    <button
-                      onClick={() => void ask(history(entries), true)}
-                      className="flex-1 rounded-xl bg-[var(--accent)] py-3 text-[14.5px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
-                    >
-                      Procedi
-                    </button>
-                    <button
-                      onClick={() => setEntries((prev) => prev.filter((e) => e.id !== entry.id))}
-                      className="rounded-xl border border-[var(--border)] px-4 py-3 text-[14.5px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-                    >
-                      Lascia stare
-                    </button>
-                  </div>
-                  <p className="mt-2.5 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-                    Non hai ancora speso niente: la risposta non è stata generata.
-                  </p>
-                </div>
-              );
-            }
-
-            return null;
-          })}
-
-          {typing && (
-            /* Niente bolla nemmeno qui, per coerenza con le risposte: solo tre
-               punti che respirano dove comparirà il testo. */
-            <div className="animate-rise flex justify-start" aria-label="Sto scrivendo">
-              <span className="flex items-center gap-1.5 py-1">
-                {[0, 1, 2].map((i) => (
-                  <span
-                    key={i}
-                    className="animate-breathe h-[7px] w-[7px] rounded-full bg-[var(--text-tertiary)]"
-                    style={{ animationDelay: `${i * 0.16}s` }}
-                  />
-                ))}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="shrink-0 px-5 pb-6 pt-2">
-        <form onSubmit={send} className="mx-auto max-w-[680px]">
-          {/* L'anello di messa a fuoco invece del solo bordo più scuro: si vede
-              dove stai scrivendo senza dover cercare. */}
-          <div className="flex items-center gap-2 rounded-[22px] border border-[var(--border)] bg-[var(--bg-card)] py-2.5 pl-5 pr-2.5 shadow-[var(--shadow-2)] transition-shadow duration-[var(--fast)] focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_4px_var(--accent-ring)]">
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              disabled={streaming}
-              placeholder={
-                streaming
-                  ? "Sto rispondendo..."
-                  : tradeId
-                    ? "Scrivi quello che ti serve..."
-                    : "Oppure scrivimelo tu"
+                );
               }
-              className="t-body min-w-0 flex-1 bg-transparent py-1.5 text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)] disabled:opacity-60"
-            />
-            <button
-              type="submit"
-              aria-label="Invia"
-              disabled={!draft.trim() || streaming}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white transition-all duration-[var(--fast)] hover:bg-[var(--accent-hover)] disabled:scale-90 disabled:opacity-25"
-            >
-              <ArrowUpIcon />
-            </button>
-          </div>
-        </form>
-      </div>
 
-      <input
-        ref={fileRef}
-        type="file"
-        multiple
-        accept=".pdf,.txt,.csv,.doc,.docx,.xlsx,.png,.jpg"
-        onChange={handleFiles}
-        className="hidden"
-      />
+              if (entry.kind === "image") {
+                return (
+                  <div key={entry.id} className="animate-rise flex gap-3.5">
+                    <span className="ring-grad mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--accent)]">
+                      <ImageIcon size={15} />
+                    </span>
+                    <figure className="min-w-0">
+                      <img
+                        src={entry.url}
+                        alt={entry.prompt}
+                        className="max-w-full rounded-2xl border border-[var(--border)] shadow-[var(--shadow-2)] sm:max-w-[420px]"
+                      />
+                      <figcaption className="mt-1.5 text-[12px] text-[var(--text-tertiary)]">
+                        {entry.prompt}
+                      </figcaption>
+                    </figure>
+                  </div>
+                );
+              }
+
+              if (entry.kind === "trades") {
+                return (
+                  <div key={entry.id} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {TRADES.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => pickTrade(t.id)}
+                        className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3.5 text-left shadow-[var(--shadow-1)] transition-all duration-[var(--fast)] hover:-translate-y-px hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:shadow-[var(--shadow-2)]"
+                      >
+                        <span className="block font-medium text-[var(--text-primary)]">
+                          {t.label}
+                        </span>
+                        <span className="t-small mt-0.5 block text-[var(--text-secondary)]">
+                          {t.examples}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              }
+
+              if (entry.kind === "kit" && kit && plan) {
+                return (
+                  <div
+                    key={entry.id}
+                    className="animate-rise overflow-hidden rounded-[20px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[var(--shadow-2)]"
+                  >
+                    <Block title={`${kit.agents.length} agenti`}>
+                      {kit.agents.map((a) => (
+                        <Line key={a.name} strong={a.name} rest={a.role} />
+                      ))}
+                    </Block>
+                    <Block title="Da collegare">
+                      {kit.connectors.map((c) => (
+                        <div key={c.name} className="flex items-center gap-3 py-1">
+                          <BrandTile service={c.name} size={36} />
+                          <div className="min-w-0 flex-1 text-[13.5px] leading-relaxed">
+                            <span className="font-medium text-[var(--text-primary)]">
+                              Connetti {c.name}
+                            </span>
+                            <span className="block text-[var(--text-secondary)]">{c.why}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </Block>
+                    <Block title="Piano" last>
+                      <Line
+                        strong={`${plan.name} — ${plan.price} ${plan.cadence}`}
+                        rest={kit.planWhy + teamNote}
+                      />
+                    </Block>
+                    <div className="border-t border-[var(--border)] p-3.5">
+                      <button
+                        onClick={activateKit}
+                        className="btn-grad flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-[15px] font-medium"
+                      >
+                        <CheckIcon size={17} />
+                        Attiva tutto
+                      </button>
+                      <button
+                        onClick={() => {
+                          setTradeId(null);
+                          setEntries((prev) => prev.filter((e) => e.kind !== "kit"));
+                          master("Nessun problema. Di cosa ti occupi?", [{ kind: "trades" }], 400);
+                        }}
+                        className="mt-1.5 w-full py-2 text-[13px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+                      >
+                        Non è il mio caso
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (entry.kind === "whatsapp") {
+                return (
+                  <ActionCard
+                    key={entry.id}
+                    service="WhatsApp"
+                    title="Connetti WhatsApp"
+                    body="Come WhatsApp Web: inquadri un QR col telefono del locale e in dieci secondi è attivo."
+                    cta="Mostra il QR"
+                    onClick={connectWhatsApp}
+                    note="In questa versione il collegamento è simulato: serve la WhatsApp Business API."
+                  />
+                );
+              }
+
+              if (entry.kind === "knowledge") {
+                return (
+                  <ActionCard
+                    key={entry.id}
+                    title={`Carica ${kit?.knowledge ?? "i documenti"}`}
+                    body="PDF, Word, Excel o anche solo una foto. Legge quello e non inventa niente."
+                    cta="Scegli un file"
+                    onClick={() => fileRef.current?.click()}
+                  />
+                );
+              }
+
+              if (entry.kind === "recap") {
+                const hours = ((docs.length + agents.length) * 3) / 60;
+                return (
+                  <div
+                    key={entry.id}
+                    className="animate-rise rounded-[20px] border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-[var(--shadow-2)]"
+                  >
+                    <div className="t-label text-grad inline-block">Sei operativo</div>
+                    <div className="mt-2.5 flex flex-col gap-1.5 text-[13.5px]">
+                      <Line strong={`${agents.length} agenti`} rest="al lavoro adesso" />
+                      <Line
+                        strong={whatsAppConnected ? "WhatsApp attivo" : "WhatsApp da collegare"}
+                        rest={whatsAppConnected ? "i clienti ti scrivono e trovano risposta" : "resta l'ultimo passo"}
+                      />
+                      <Line
+                        strong={`${docs.length} document${docs.length === 1 ? "o" : "i"}`}
+                        rest="è quello che sa, e non va oltre"
+                      />
+                    </div>
+                    <p className="mt-3.5 border-t border-[var(--border)] pt-3 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+                      Ogni messaggio che gestisco da solo ti vale circa 3 minuti. Il contatore
+                      parte da {hours < 1 ? "zero" : `${hours.toFixed(1)} ore`}: cresce da qui.
+                      Da ora puoi chiedermi qualsiasi cosa qui sotto.
+                    </p>
+                  </div>
+                );
+              }
+
+              if (entry.kind === "warning") {
+                return (
+                  <div
+                    key={entry.id}
+                    className="animate-rise rounded-[20px] border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-[var(--shadow-2)]"
+                  >
+                    <div className="t-label text-grad inline-block">Richiesta impegnativa</div>
+                    <p className="mt-2 text-[13.5px] leading-relaxed text-[var(--text-primary)]">
+                      {entry.warning.message}
+                    </p>
+                    <div className="mt-3.5 flex gap-2">
+                      <button
+                        onClick={() => void ask(history(entries), true)}
+                        className="btn-grad flex-1 rounded-xl py-3 text-[14.5px] font-medium"
+                      >
+                        Procedi
+                      </button>
+                      <button
+                        onClick={() => setEntries((prev) => prev.filter((e) => e.id !== entry.id))}
+                        className="rounded-xl border border-[var(--border)] px-4 py-3 text-[14.5px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+                      >
+                        Lascia stare
+                      </button>
+                    </div>
+                    <p className="mt-2.5 text-[12px] leading-relaxed text-[var(--text-secondary)]">
+                      Non hai ancora speso niente: la risposta non è stata generata.
+                    </p>
+                  </div>
+                );
+              }
+
+              return null;
+            })}
+
+            {typing && (
+              <div className="animate-rise flex gap-3.5" aria-label="Sto scrivendo">
+                <span className="ring-grad mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--accent)]">
+                  <LogoMark size={16} />
+                </span>
+                <span className="flex items-center gap-1.5 py-2">
+                  {[0, 1, 2].map((i) => (
+                    <span
+                      key={i}
+                      className="animate-breathe h-[7px] w-[7px] rounded-full bg-[var(--text-tertiary)]"
+                      style={{ animationDelay: `${i * 0.16}s` }}
+                    />
+                  ))}
+                </span>
+              </div>
+            )}
+
+            {imageBusy && (
+              <div className="animate-rise flex gap-3.5" aria-label="Sto creando l'immagine">
+                <span className="ring-grad mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--accent)]">
+                  <ImageIcon size={15} />
+                </span>
+                <span className="t-small flex items-center gap-2 py-2 text-[var(--text-secondary)]">
+                  <span className="animate-breathe inline-block h-[7px] w-[7px] rounded-full bg-[var(--accent)]" />
+                  Creo l'immagine… ci vuole fino a mezzo minuto.
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ───────────────────────── COMPOSER ───────────────────────── */}
+        <div className="shrink-0 px-5 pb-6 pt-2 md:px-8">
+          <form onSubmit={send} className="mx-auto max-w-[760px]">
+            <div className="glass rounded-[22px] border border-[var(--border)] shadow-[var(--shadow-2)] transition-shadow duration-[var(--fast)] focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_4px_var(--accent-ring)]">
+              <div className="flex items-center gap-2 py-2.5 pl-5 pr-2.5">
+                <input
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  disabled={streaming}
+                  placeholder={
+                    listening
+                      ? "Ti ascolto…"
+                      : streaming
+                        ? "Sto rispondendo..."
+                        : tradeId
+                          ? "Scrivi quello che ti serve..."
+                          : "Oppure scrivimelo tu"
+                  }
+                  className="t-body min-w-0 flex-1 bg-transparent py-1.5 text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)] disabled:opacity-60"
+                />
+                <button
+                  type="submit"
+                  aria-label="Invia"
+                  disabled={!draft.trim() || streaming}
+                  className="btn-grad flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all duration-[var(--fast)] disabled:scale-90 disabled:opacity-25"
+                >
+                  <ArrowUpIcon />
+                </button>
+              </div>
+
+              {/* La barra degli strumenti: modello, voce, immagini. */}
+              <div className="flex items-center gap-1 border-t border-[var(--border)] px-3 py-1.5">
+                <label className="relative flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-[12.5px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]">
+                  <SparkleIcon size={13} />
+                  <span className="max-w-[180px] truncate">
+                    {modelSlug === "auto" ? "Automatico" : modelName(models, modelSlug)}
+                  </span>
+                  <ChevronDownIcon size={12} />
+                  <select
+                    value={modelSlug}
+                    onChange={(e) => setModelSlug(e.target.value)}
+                    aria-label="Scegli il modello IA"
+                    className="absolute inset-0 cursor-pointer opacity-0"
+                  >
+                    <option value="auto">Automatico (consigliato)</option>
+                    {PROVIDERS.map(({ prefix, label }) => {
+                      const group = models
+                        .filter((m) => m.id.startsWith(prefix))
+                        .sort((a, b) => a.name.localeCompare(b.name));
+                      if (group.length === 0) return null;
+                      return (
+                        <optgroup key={prefix} label={label}>
+                          {group.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
+                  </select>
+                </label>
+
+                {micAvailable && (
+                  <button
+                    type="button"
+                    onClick={toggleMic}
+                    aria-label={listening ? "Smetti di ascoltare" : "Detta col microfono"}
+                    title={listening ? "Smetti di ascoltare" : "Detta col microfono"}
+                    className={`rounded-lg p-2 transition-colors ${
+                      listening
+                        ? "animate-listening bg-[var(--accent-soft)] text-[var(--accent)]"
+                        : "text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    <MicIcon size={16} />
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => void makeImage()}
+                  disabled={!draft.trim() || imageBusy || streaming}
+                  aria-label="Crea un'immagine da quello che hai scritto"
+                  title="Crea un'immagine da quello che hai scritto"
+                  className="rounded-lg p-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)] disabled:opacity-30"
+                >
+                  <ImageIcon size={16} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  aria-label="Allega un documento"
+                  title="Allega un documento (menù, listino, tariffario)"
+                  className="rounded-lg p-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+                >
+                  <PaperclipIcon size={16} />
+                </button>
+
+                <span className="ml-auto hidden items-center gap-1.5 pr-1 text-[12px] text-[var(--text-tertiary)] sm:flex">
+                  {imageBusy ? (
+                    "Immagine in corso…"
+                  ) : listening ? (
+                    "Ti ascolto"
+                  ) : (
+                    <>
+                      <kbd className="rounded border border-[var(--border)] bg-[var(--bg-app)] px-1.5 py-0.5 font-sans text-[10.5px] text-[var(--text-secondary)]">
+                        Invio
+                      </kbd>
+                      per mandare
+                    </>
+                  )}
+                </span>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          accept=".pdf,.txt,.csv,.doc,.docx,.xlsx,.png,.jpg"
+          onChange={handleFiles}
+          className="hidden"
+        />
+      </div>
     </div>
+  );
+}
+
+/**
+ * L'interruttore chiaro/scuro.
+ *
+ * L'icona mostra **dove si va**, non dove si è: al buio si vede il sole,
+ * perché il sole è quello che ottieni premendo. Mostrare lo stato attuale è
+ * l'errore che fa esitare tutti davanti a questo pulsante.
+ */
+function ThemeButton({ theme, onToggle }: { theme: string; onToggle: () => void }) {
+  const goingToLight = theme === "dark";
+  return (
+    <button
+      onClick={onToggle}
+      aria-label={goingToLight ? "Passa al tema chiaro" : "Passa al tema scuro"}
+      title={goingToLight ? "Tema chiaro" : "Tema scuro"}
+      className="rounded-lg p-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+    >
+      {goingToLight ? <SunIcon size={17} /> : <MoonIcon size={17} />}
+    </button>
+  );
+}
+
+/** Un numero in barra di stato: l'icona, il valore che conta, cosa significa. */
+function StatChip({
+  icon,
+  value,
+  label,
+}: {
+  icon: React.ReactNode;
+  value: string;
+  label: string;
+}) {
+  return (
+    <span
+      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px]"
+      title={`${value} ${label}`}
+    >
+      <span className="text-[var(--text-tertiary)]">{icon}</span>
+      <span className="font-semibold text-[var(--text-primary)]">{value}</span>
+      <span className="hidden text-[var(--text-secondary)] xl:inline">{label}</span>
+    </span>
+  );
+}
+
+/** Il nome leggibile di un modello, o lo slug se il catalogo non è arrivato. */
+function modelName(models: CatalogModelInfo[], slug: string): string {
+  return models.find((m) => m.id === slug)?.name ?? slug;
+}
+
+/** "anthropic/claude-sonnet-5" → "claude-sonnet-5": basta per la didascalia. */
+function shortModel(slug: string): string {
+  return slug.split("/").pop() ?? slug;
+}
+
+/** Il campo nuovo progetto nella sidebar: si apre, si scrive, si conferma. */
+function NewProjectButton({ onCreate }: { onCreate: (name: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="btn-side flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[13.5px] font-medium"
+      >
+        <PlusIcon size={15} />
+        Nuovo progetto
+      </button>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const value = name.trim();
+        if (!value) return;
+        onCreate(value);
+        setName("");
+        setOpen(false);
+      }}
+      className="flex items-center gap-1.5 rounded-xl bg-[var(--side-bg-raised)] px-2.5 py-1.5"
+    >
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setName("");
+            setOpen(false);
+          }
+        }}
+        placeholder="Nome del progetto"
+        className="t-small min-w-0 flex-1 bg-transparent py-1 text-white outline-none placeholder:text-[var(--side-text-dim)]"
+      />
+      <button type="submit" aria-label="Crea" className="p-1 text-white">
+        <CheckIcon size={15} />
+      </button>
+      <button
+        type="button"
+        aria-label="Annulla"
+        onClick={() => {
+          setName("");
+          setOpen(false);
+        }}
+        className="p-1 text-[var(--side-text-dim)] hover:text-white"
+      >
+        <CloseIcon size={14} />
+      </button>
+    </form>
   );
 }
 
@@ -615,7 +1250,7 @@ function ActionCard({
       </div>
       <button
         onClick={onClick}
-        className="mt-3.5 w-full rounded-xl bg-[var(--accent)] py-3 text-[14.5px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
+        className="btn-grad mt-3.5 w-full rounded-xl py-3 text-[14.5px] font-medium"
       >
         {cta}
       </button>
@@ -637,9 +1272,7 @@ function Block({
 }) {
   return (
     <div className={last ? "px-4 py-3.5" : "border-b border-[var(--border)] px-4 py-3.5"}>
-      <div className="t-label text-[var(--accent)]">
-        {title}
-      </div>
+      <div className="t-label text-grad inline-block">{title}</div>
       <div className="mt-2 flex flex-col gap-1.5">{children}</div>
     </div>
   );

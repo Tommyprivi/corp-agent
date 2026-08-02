@@ -78,7 +78,7 @@ export default function MasterBuilder({ onReady, surveyAnswers }: MasterBuilderP
               <div
                 className={`max-w-[85%] rounded-2xl px-4 py-3 text-[15px] leading-relaxed ${
                   t.from === "user"
-                    ? "bg-[var(--accent)] text-white"
+                    ? "[background:var(--grad-primary)] [color:var(--on-primary)]"
                     : "bg-[var(--bg-card)] text-[var(--text-primary)] shadow-[0_1px_2px_rgba(16,17,30,0.04)]"
                 }`}
               >
@@ -116,7 +116,7 @@ export default function MasterBuilder({ onReady, surveyAnswers }: MasterBuilderP
                 <button
                   onClick={activate}
                   disabled={building}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] py-3.5 text-[15px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-60"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl btn-grad py-3.5 text-[15px] font-medium disabled:opacity-60"
                 >
                   {building ? (
                     "Sto costruendo la tua squadra..."

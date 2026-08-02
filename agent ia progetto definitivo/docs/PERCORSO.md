@@ -9,11 +9,15 @@
 > 3. Non si aggiungono funzioni che non sono in questo elenco senza chiedere a Tommaso.
 > 4. Quando una riga è finita, si spunta qui e si aggiorna "Fase aperta" sotto.
 >
-> **Fase aperta: FASE 1 — Il cervello.** Righe 1 e 2 **chiuse e verificate** il 2 Agosto
-> 2026: database in piedi su Neon a Francoforte e accesso con Google che arriva fino alla
-> riga in `profiles`. Prima riga da fare: la **3**, la chat che risponde davvero.
-> **Bloccata da una cosa sola: `OPENROUTER_API_KEY`.** Quella chiave sblocca sei righe su
-> dieci (3, 4, 5, 6, 7, 8): oggi sono scritte e nessuna è mai stata eseguita.
+> **Fase aperta: FASE 1 — Il cervello.** Righe **1-6 chiuse e verificate** il 2 Agosto
+> 2026. Quel giorno è arrivata `OPENROUTER_API_KEY` e per la prima volta il progetto ha
+> parlato con un modello vero: domanda in italiano, risposta in 1,5 secondi, salvata su
+> Neon, con l'avviso costi che è scattato da solo su una richiesta pesante.
+>
+> Prima riga da fare: la **7**, il Master Builder che genera l'agente in JSON.
+> Restano aperte anche la **9** (il backend è provato, ma il frontend non lo chiama
+> ancora: ricarichi la pagina e la chat riparte vuota) e la **10**, che aspetta solo la
+> chiave gratuita di Cloudflare Turnstile.
 >
 > ⚠️ **Cambio di architettura deciso da Tommaso il 1 Agosto 2026:** il backend è
 > **Neon + funzioni su Vercel + Better Auth**, non più Supabase. Neon è solo il database,
@@ -65,18 +69,27 @@ Senza questa fase il prodotto non è vendibile: l'agente non risponde davvero.
 |---|---|---|---|
 | 1 | Progetto **Neon**: database, tabelle, sicurezza per riga | Neon | ✅ 23 tabelle, 3 migrazioni, 3 ruoli, RLS provata |
 | 2 | Auth vera con Google e Apple (**Better Auth**) | Google Cloud | ✅ Google entra davvero (Apple quando vorrai i 99 €/anno) |
-| 3 | Funzione `chat` **su Vercel** che chiama OpenRouter in streaming | OpenRouter | 🔧 scritta, **mai eseguita**: manca la chiave |
-| 4 | Scelta automatica del modello per difficoltà | — | 🔧 scritta, mai eseguita |
-| 5 | Avviso prima di una richiesta dispendiosa | — | 🔧 scritto, mai eseguito |
-| 6 | Conteggio token e consumi per utente | — | 🔧 scritto, mai eseguito |
-| 7 | Master Builder vero: Structured Output che genera l'agente in JSON | OpenRouter | ⬜ |
+| 3 | Funzione `chat` **su Vercel** che chiama OpenRouter in streaming | OpenRouter | ✅ risposta vera in 1,5 s, primo pezzo dopo 1 s |
+| 4 | Scelta automatica del modello per difficoltà | — | ✅ "ciao" → modello leggero, "analizza" → Opus |
+| 5 | Avviso prima di una richiesta dispendiosa | — | ✅ scatta **prima** di spendere, con la cifra |
+| 6 | Conteggio token e consumi per utente | — | ✅ dopo la migrazione `0004` (vedi sotto) |
+| 7 | Master Builder vero: Structured Output che genera l'agente in JSON | OpenRouter | ⬜ **la prossima** |
 | 8 | Configurazione guidata vera: la conversazione diventa struttura dati salvata | OpenRouter | ⬜ |
-| 9 | Salvataggio permanente di agenti, chat, documenti, configurazioni | Neon | 🔧 endpoint pronti, la chat non li chiama ancora |
-| 10 | Turnstile vero al posto del segnaposto | Cloudflare (gratis) | ⬜ |
+| 9 | Salvataggio permanente di agenti, chat, documenti, configurazioni | Neon | 🔧 backend provato, il frontend non lo chiama ancora |
+| 10 | Turnstile vero al posto del segnaposto | Cloudflare (gratis) | ⬜ manca solo la chiave, gratuita |
 
-> ⚠️ **Sul "codice pronto".** Le righe 3-6 erano segnate come verificate: non lo erano.
-> Il codice esiste e compila, ma finché nessuno lo esegue non si sa se funziona. Adesso
-> dicono la verità: *scritta, mai eseguita*. Si spuntano quando rispondono davvero.
+> ✅ **Eseguite davvero il 2 Agosto 2026.** Le righe 3-6 erano rimaste per settimane
+> "scritte ma mai eseguite": codice che compila non è codice che funziona. Adesso sono
+> state provate contro OpenRouter vero, con una sessione vera, e i messaggi sono
+> finiti su Neon dove si possono guardare con pgAdmin.
+>
+> ⚠️ **Cosa ha trovato la prima esecuzione.** `usage.cost_eur` era `numeric(10,4)`, ma
+> una risposta breve costa circa 0,00002 €: ogni messaggio veniva contato **zero**, e
+> l'arrotondamento avveniva all'inserimento, quindi il dato era perso per sempre. Il
+> contatore giornaliero sarebbe rimasto a zero anche dopo mille conversazioni,
+> falsando gli alert di budget (riga 33) e il margine per utente (riga 41). Risolto
+> dalla migrazione `0004_precisione_costi.sql`, che porta la colonna a sei decimali —
+> gli stessi di `messages.cost_eur`. È il genere di cosa che si scopre solo eseguendo.
 
 **Fatto quando:** scrivi in chat e risponde davvero, e se ricarichi la pagina è tutto ancora lì.
 

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/api/auth/(.*)",
+      "destination": "/api/auth/[...all]"
+    }
+  ],
+  "functions": {
+    "api/images.ts": { "maxDuration": 60 },
+    "api/chat.ts": { "maxDuration": 60 },
+    "api/tts.ts": { "maxDuration": 60 }
+  }
+}

@@ -73,7 +73,7 @@ export default function ChatCard({
             <div
               className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed ${
                 m.role === "user"
-                  ? "bg-[var(--accent)] text-white"
+                  ? "[background:var(--grad-primary)] [color:var(--on-primary)]"
                   : "bg-[var(--bg-app)] text-[var(--text-primary)]"
               } ${m.pending ? "text-[var(--text-secondary)]" : ""}`}
             >
@@ -95,7 +95,7 @@ export default function ChatCard({
             type="submit"
             aria-label="Invia messaggio"
             disabled={!draft.trim()}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white transition-opacity hover:bg-[var(--accent-hover)] disabled:opacity-25"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full btn-grad transition-opacity disabled:opacity-25"
           >
             <ArrowUpIcon />
           </button>

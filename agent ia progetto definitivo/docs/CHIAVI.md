@@ -13,6 +13,17 @@
 > **Una chiave che è passata da una conversazione va considerata pubblica e si revoca**,
 > anche se la conversazione era privata.
 
+## I tutorial
+
+| Documento | Cosa copre |
+|---|---|
+| [SETUP-CHIAVI-MANCANTI.md](SETUP-CHIAVI-MANCANTI.md) | **Passo-passo per ogni chiave ancora vuota**: OpenRouter, Turnstile, OpenAI, Stripe, Apple, ElevenLabs. Costi, tempi e dove ci si incastra. |
+| [SETUP-CONNETTORI.md](SETUP-CONNETTORI.md) | Come funzionano Gmail, Slack, Shopify e gli altri, e perché le loro credenziali **non** stanno quasi mai in `.env.local`. Fase 6. |
+| [SETUP-DATABASE.md](SETUP-DATABASE.md) | Neon: progetto, ruoli, migrazioni |
+| [SETUP-ACCESSI.md](SETUP-ACCESSI.md) | Better Auth e il login con Google |
+| [SETUP-OPENROUTER.md](SETUP-OPENROUTER.md) | Il credito e la chiave di OpenRouter |
+| [SETUP-WHATSAPP.md](SETUP-WHATSAPP.md) | Meta Business, numero verificato, webhook |
+
 ## Chiavi già compromesse — da revocare
 
 Queste sono state incollate in chat durante lo sviluppo, quindi **vanno considerate

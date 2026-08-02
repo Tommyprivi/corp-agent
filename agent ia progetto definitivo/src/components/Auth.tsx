@@ -3,6 +3,7 @@ import Logo from "./Logo";
 import {
   AiIcon,
   AppleGlyph,
+  CheckIcon,
   GoogleGlyph,
   PeopleIcon,
   SearchIcon,
@@ -42,6 +43,14 @@ const WORKPLACES = [
 
 type Step = "login" | "captcha" | "source" | "team" | "workplace";
 
+/** Le quattro tappe mostrate nella colonna sinistra. Il login non è una tappa: è la porta. */
+const STAGES: Array<{ key: Step; label: string; hint: string }> = [
+  { key: "captcha", label: "Verifica", hint: "dieci secondi, serve a tenere fuori i bot" },
+  { key: "source", label: "Come ci hai conosciuto", hint: "per capire dove ci trovano" },
+  { key: "team", label: "Solo o in team", hint: "cambia cosa ti propone il Master Builder" },
+  { key: "workplace", label: "Che lavoro fai", hint: "l'ultima, poi sei dentro" },
+];
+
 /**
  * Il percorso d'ingresso: accesso con Google o Apple, verifica anti-bot, poi tre
  * domande di cui le prime due con icone e la terza senza.
@@ -57,6 +66,14 @@ type Step = "login" | "captcha" | "source" | "team" | "workplace";
  *
  * Le risposte finiscono in `profiles.survey` su Neon, non nello stato del
  * browser: dopo una ricarica sono ancora lì.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * L'ORGANIZZAZIONE, RIFATTA IL 2 AGOSTO 2026
+ * ─────────────────────────────────────────────────────────────────────────
+ * Prima era una colonna sola al centro, e non si capiva mai quanto mancasse.
+ * Adesso sono due: a sinistra il pannello scuro con le tappe — dove sei, cosa
+ * hai già fatto, quanto resta — a destra solo la domanda del momento. Sapere
+ * che le tappe sono quattro e brevi è ciò che impedisce di abbandonare.
  */
 export default function Auth({ onDone }: AuthProps) {
   const { data: session, isPending } = authClient.useSession();
@@ -125,110 +142,217 @@ export default function Auth({ onDone }: AuthProps) {
     onDone(final);
   }
 
+  const stageIndex = STAGES.findIndex((s) => s.key === step);
+
   return (
-    <div className="flex h-full w-full items-center justify-center overflow-y-auto bg-[var(--bg-app)] px-6 py-10">
-      <div className="w-full max-w-[440px]">
-        <div className="mb-10 flex justify-center">
-          <Logo size={28} />
+    <div className="flex h-full w-full overflow-hidden">
+      {/* ── Colonna sinistra: il marchio e le tappe ─────────────────── */}
+      <aside
+        className="on-dark relative hidden w-[42%] max-w-[520px] shrink-0 flex-col justify-between overflow-hidden p-12 lg:flex"
+        style={{ background: "var(--hero-bg)" }}
+      >
+        <div aria-hidden className="orb orb-violet animate-aurora left-[-15%] top-[-60px] h-[380px] w-[380px]" />
+        <div aria-hidden className="orb orb-cyan animate-aurora bottom-[-90px] right-[-12%] h-[340px] w-[340px]" style={{ animationDelay: "-5s" }} />
+
+        <div className="relative text-white [&_*]:text-white">
+          <Logo size={26} />
         </div>
 
-        {step === "login" && (
-          <div>
-            <h1 className="text-center text-[26px] font-semibold leading-tight tracking-[-0.02em] text-[var(--text-primary)]">
-              Accedi a CorpAgent
-            </h1>
-            <p className="mt-2.5 text-center text-[14.5px] text-[var(--text-secondary)]">
-              Nessun modulo da compilare. Scegli un account e sei dentro.
-            </p>
+        <div className="relative">
+          <h2
+            className="text-[30px] font-semibold leading-[1.15] tracking-[-0.028em]"
+            style={{ color: "var(--hero-text)" }}
+          >
+            Mancano <span className="text-grad">quattro passaggi</span> al tuo primo agente
+          </h2>
+          <p className="mt-3 text-[14.5px] leading-relaxed" style={{ color: "var(--hero-text-dim)" }}>
+            Sono domande brevi, e servono davvero: da queste il Master Builder capisce che
+            lavoro fai e ti monta l'agente giusto senza farti configurare niente.
+          </p>
 
-            <div className="mt-9">
-              {isPending || !config ? (
-                <p className="text-center text-[13.5px] text-[var(--text-secondary)]">
-                  Un istante...
-                </p>
-              ) : (
-                <LoginButtons config={config} busy={busy} onEnter={enter} />
-              )}
-            </div>
+          <ol className="mt-9 flex flex-col gap-1">
+            {STAGES.map((stage, i) => {
+              const done = stageIndex > i;
+              const current = stageIndex === i;
+              return (
+                <li
+                  key={stage.key}
+                  className="flex items-start gap-3.5 rounded-xl px-3 py-2.5 transition-colors duration-[var(--normal)]"
+                  style={{ background: current ? "rgba(255,255,255,0.06)" : "transparent" }}
+                >
+                  <span
+                    className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11.5px] font-semibold transition-all duration-[var(--normal)]"
+                    style={
+                      done
+                        ? { background: "var(--positive)", color: "#fff" }
+                        : current
+                          ? { background: "var(--grad-primary)", color: "#fff" }
+                          : { background: "rgba(255,255,255,0.08)", color: "var(--hero-text-dim)" }
+                    }
+                  >
+                    {done ? <CheckIcon size={13} /> : i + 1}
+                  </span>
+                  <span className="min-w-0">
+                    <span
+                      className="block text-[14px] font-medium"
+                      style={{ color: current || done ? "var(--hero-text)" : "var(--hero-text-dim)" }}
+                    >
+                      {stage.label}
+                    </span>
+                    {current && (
+                      <span className="block text-[12.5px]" style={{ color: "var(--hero-text-dim)" }}>
+                        {stage.hint}
+                      </span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+
+        <p className="relative text-[12.5px]" style={{ color: "var(--hero-text-dim)" }}>
+          Nessuna carta di credito. Puoi cancellare l'account quando vuoi.
+        </p>
+      </aside>
+
+      {/* ── Colonna destra: solo la domanda del momento ─────────────── */}
+      <div className="relative flex flex-1 items-center justify-center overflow-y-auto bg-[var(--bg-app)] px-6 py-10">
+        <div className="w-full max-w-[440px]">
+          {/* Sotto lg la colonna scura sparisce: il logo torna qui */}
+          <div className="mb-9 flex justify-center lg:hidden">
+            <Logo size={26} />
           </div>
-        )}
 
-        {step === "captcha" && (
-          <div>
-            <h1 className="text-center text-[24px] font-semibold leading-tight tracking-[-0.02em] text-[var(--text-primary)]">
-              Verifica di sicurezza
-            </h1>
-            <p className="mt-2.5 text-center text-[14.5px] text-[var(--text-secondary)]">
-              Serve solo a tenere fuori i bot.
-            </p>
-            <div className="mt-8 rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
-              <div className="flex items-center gap-3">
-                <span className="text-[var(--accent)]">
-                  <ShieldIcon size={24} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[14px] font-medium text-[var(--text-primary)]">
-                    Confermo di non essere un robot
-                  </div>
-                  <div className="text-[12.5px] text-[var(--text-secondary)]">
-                    Segnaposto: al lancio qui ci sarà Cloudflare Turnstile.
+          {step === "login" && (
+            <div className="animate-rise">
+              <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.024em] text-[var(--text-primary)]">
+                Accedi a CorpAgent
+              </h1>
+              <p className="mt-2.5 text-[15px] leading-relaxed text-[var(--text-secondary)]">
+                Nessun modulo da compilare, nessuna password da inventare. Scegli un account
+                e sei dentro.
+              </p>
+
+              <div className="mt-9">
+                {isPending || !config ? (
+                  <p className="text-[13.5px] text-[var(--text-secondary)]">Un istante...</p>
+                ) : (
+                  <LoginButtons config={config} busy={busy} onEnter={enter} />
+                )}
+              </div>
+
+              <p className="mt-6 text-[12.5px] leading-relaxed text-[var(--text-tertiary)]">
+                Continuando accetti i Termini di servizio e la Privacy. Usiamo il tuo account
+                solo per farti entrare: non pubblichiamo niente e non scriviamo a nessuno.
+              </p>
+            </div>
+          )}
+
+          {step === "captcha" && (
+            <div className="animate-rise">
+              <StepBadge index={1} />
+              <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.022em] text-[var(--text-primary)]">
+                Sei tu, vero?
+              </h1>
+              <p className="mt-2.5 text-[14.5px] leading-relaxed text-[var(--text-secondary)]">
+                Una conferma veloce, serve solo a tenere fuori i bot.
+              </p>
+              <div className="mt-7 rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-[var(--shadow-1)]">
+                <div className="flex items-center gap-3.5">
+                  <span className="ring-grad flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[var(--accent)]">
+                    <ShieldIcon size={20} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[14.5px] font-medium text-[var(--text-primary)]">
+                      Confermo di non essere un robot
+                    </div>
+                    <div className="text-[12.5px] text-[var(--text-secondary)]">
+                      Segnaposto: al lancio qui ci sarà Cloudflare Turnstile.
+                    </div>
                   </div>
                 </div>
-              </div>
-              <button
-                onClick={() => setStep("source")}
-                className="mt-4 w-full rounded-xl bg-[var(--accent)] py-3 text-[14.5px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
-              >
-                Continua
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === "source" && (
-          <Question
-            index={1}
-            title="Come ci hai conosciuto?"
-            options={SOURCES}
-            onPick={pickSource}
-          />
-        )}
-
-        {step === "team" && (
-          <Question
-            index={2}
-            title="Lavori da solo o in team?"
-            options={TEAM_SIZES}
-            onPick={pickTeam}
-          />
-        )}
-
-        {step === "workplace" && (
-          <div>
-            <Progress index={3} />
-            <h1 className="text-[24px] font-semibold leading-tight tracking-[-0.02em] text-[var(--text-primary)]">
-              Dove lavori?
-            </h1>
-            <div className="mt-7 flex flex-col gap-2">
-              {WORKPLACES.map((w) => (
                 <button
-                  key={w}
-                  disabled={busy}
-                  onClick={() => pickWorkplace(w)}
-                  className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3.5 text-left text-[14.5px] text-[var(--text-primary)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] disabled:opacity-50"
+                  onClick={() => setStep("source")}
+                  className="btn-grad mt-4 w-full rounded-xl py-3 text-[14.5px] font-medium"
                 >
-                  {w}
+                  Continua
                 </button>
-              ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {problem && (
-          <p className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-            {problem}
-          </p>
-        )}
+          {step === "source" && (
+            <Question
+              index={2}
+              title="Come ci hai conosciuto?"
+              sub="Ci aiuta a capire dove ci trovano quelli come te."
+              options={SOURCES}
+              onPick={pickSource}
+            />
+          )}
+
+          {step === "team" && (
+            <Question
+              index={3}
+              title="Lavori da solo o in team?"
+              sub="Cambia gli agenti che il Master Builder ti propone."
+              options={TEAM_SIZES}
+              onPick={pickTeam}
+            />
+          )}
+
+          {step === "workplace" && (
+            <div className="animate-rise">
+              <StepBadge index={4} />
+              <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.022em] text-[var(--text-primary)]">
+                Che lavoro fai?
+              </h1>
+              <p className="mt-2.5 text-[14.5px] leading-relaxed text-[var(--text-secondary)]">
+                L'ultima, poi entri.
+              </p>
+              <div className="mt-7 flex flex-col gap-2">
+                {WORKPLACES.map((w, i) => (
+                  <button
+                    key={w}
+                    disabled={busy}
+                    onClick={() => pickWorkplace(w)}
+                    className="animate-rise rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3.5 text-left text-[14.5px] text-[var(--text-primary)] transition-all duration-[var(--fast)] hover:-translate-y-px hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:shadow-[var(--shadow-1)] disabled:opacity-50"
+                    style={{ animationDelay: `${i * 40}ms` }}
+                  >
+                    {w}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {problem && (
+            <p className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-[13px] leading-relaxed text-[var(--text-secondary)]">
+              {problem}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** "Passaggio 2 di 4" con la barra: sotto lg è l'unico indicatore che resta. */
+function StepBadge({ index }: { index: number }) {
+  return (
+    <div className="mb-6">
+      <div className="mb-2.5 flex items-center justify-between">
+        <span className="t-label text-grad">Passaggio {index} di 4</span>
+        <span className="text-[12px] text-[var(--text-tertiary)]">
+          {4 - index === 0 ? "ultimo" : `ne mancano ${4 - index}`}
+        </span>
+      </div>
+      <div className="h-[3px] w-full overflow-hidden rounded-full bg-[var(--border)]">
+        <div
+          className="h-full rounded-full transition-[width] duration-500 ease-[var(--ease-out)]"
+          style={{ width: `${(index / 4) * 100}%`, background: "var(--grad-primary)" }}
+        />
       </div>
     </div>
   );
@@ -278,7 +402,7 @@ function LoginButtons({
         <button
           disabled={busy}
           onClick={() => onEnter("google")}
-          className="flex h-12 items-center justify-center gap-2.5 rounded-xl border border-[var(--border-strong)] bg-white text-[14.5px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--fill-quiet)] disabled:opacity-50"
+          className="flex h-13 items-center justify-center gap-2.5 rounded-xl border border-[var(--border-strong)] bg-white py-3.5 text-[14.5px] font-medium text-[var(--text-primary)] shadow-[var(--shadow-1)] transition-all duration-[var(--fast)] hover:-translate-y-px hover:shadow-[var(--shadow-2)] disabled:opacity-50"
         >
           <GoogleGlyph />
           {busy ? "Ti sto portando su Google..." : "Continua con Google"}
@@ -291,7 +415,7 @@ function LoginButtons({
         <button
           disabled={busy}
           onClick={() => onEnter("apple")}
-          className="flex h-12 items-center justify-center gap-2.5 rounded-xl bg-[var(--text-primary)] text-[14.5px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="flex items-center justify-center gap-2.5 rounded-xl bg-[var(--text-primary)] py-3.5 text-[14.5px] font-medium text-[var(--bg-card)] transition-all duration-[var(--fast)] hover:-translate-y-px hover:opacity-90 disabled:opacity-50"
         >
           <AppleGlyph />
           Continua con Apple
@@ -313,53 +437,45 @@ function Notice({ title, body }: { title: string; body: string }) {
 function Question({
   index,
   title,
+  sub,
   options,
   onPick,
 }: {
   index: number;
   title: string;
+  sub: string;
   options: Array<{ label: string; hint: string; icon: React.ReactNode }>;
   onPick: (label: string) => void;
 }) {
   return (
-    <div>
-      <Progress index={index} />
-      <h1 className="text-[24px] font-semibold leading-tight tracking-[-0.02em] text-[var(--text-primary)]">
+    <div className="animate-rise">
+      <StepBadge index={index} />
+      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.022em] text-[var(--text-primary)]">
         {title}
       </h1>
+      <p className="mt-2.5 text-[14.5px] leading-relaxed text-[var(--text-secondary)]">{sub}</p>
       <div className="mt-7 flex flex-col gap-2">
-        {options.map((o) => (
+        {options.map((o, i) => (
           <button
             key={o.label}
             onClick={() => onPick(o.label)}
-            className="flex items-center gap-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3.5 text-left transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
+            className="animate-rise group flex items-center gap-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3.5 text-left transition-all duration-[var(--fast)] hover:-translate-y-px hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:shadow-[var(--shadow-1)]"
+            style={{ animationDelay: `${i * 50}ms` }}
           >
-            <span className="shrink-0 text-[var(--text-secondary)]">{o.icon}</span>
-            <span className="min-w-0">
+            <span className="shrink-0 text-[var(--text-tertiary)] transition-colors group-hover:text-[var(--accent)]">
+              {o.icon}
+            </span>
+            <span className="min-w-0 flex-1">
               <span className="block text-[14.5px] text-[var(--text-primary)]">{o.label}</span>
               {o.hint && (
                 <span className="block text-[12.5px] text-[var(--text-secondary)]">{o.hint}</span>
               )}
             </span>
+            <span className="shrink-0 text-[var(--text-tertiary)] opacity-0 transition-opacity group-hover:opacity-100">
+              →
+            </span>
           </button>
         ))}
-      </div>
-    </div>
-  );
-}
-
-function Progress({ index }: { index: number }) {
-  return (
-    <div className="mb-8">
-      <div className="mb-3 flex items-center justify-between text-[12px] text-[var(--text-secondary)]">
-        <span>Domanda {index} di 3</span>
-        <span>Serve a personalizzare il tuo agente</span>
-      </div>
-      <div className="h-[3px] w-full overflow-hidden rounded-full bg-[var(--border)]">
-        <div
-          className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300"
-          style={{ width: `${(index / 3) * 100}%` }}
-        />
       </div>
     </div>
   );

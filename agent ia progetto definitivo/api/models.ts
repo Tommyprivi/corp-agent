@@ -9,7 +9,7 @@
  * teniamo il catalogo in memoria per dieci minuti.
  */
 
-import { chooseModel, fetchCatalog } from "./_lib/openrouter";
+import { chooseModel, fetchCatalog } from "./_lib/openrouter.js";
 
 export default {
   async fetch(request: Request): Promise<Response> {

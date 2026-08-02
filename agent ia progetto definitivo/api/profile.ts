@@ -9,8 +9,8 @@
  *   PATCH → aggiorna sondaggio, mestiere, canale
  */
 
-import { currentUser } from "./_lib/auth";
-import { ensureProfile, withUser } from "./_lib/db";
+import { currentUser } from "./_lib/auth.js";
+import { ensureProfile, withUser } from "./_lib/db.js";
 
 interface ProfileRow {
   id: string;

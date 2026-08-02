@@ -11,8 +11,8 @@
  *   DELETE /api/projects?id=...   → cancellalo (tranne quello di configurazione)
  */
 
-import { currentUser } from "./_lib/auth";
-import { withUser } from "./_lib/db";
+import { currentUser } from "./_lib/auth.js";
+import { withUser } from "./_lib/db.js";
 
 interface ProjectRow {
   id: string;

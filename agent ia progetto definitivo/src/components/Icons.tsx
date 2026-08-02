@@ -198,3 +198,113 @@ export function AppleGlyph({ size = 17 }: { size?: number }) {
     </svg>
   );
 }
+
+/** Microfono: parla con l'agente invece di scrivere. */
+export function MicIcon({ size = 19 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} {...base}>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0" />
+      <path d="M12 18v3" />
+    </svg>
+  );
+}
+
+/** Immagine con sole e montagna: la generazione di immagini. */
+export function ImageIcon({ size = 19 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} {...base}>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+      <circle cx="9" cy="9.5" r="1.6" />
+      <path d="M3.5 16.5l4.6-4.2a1.4 1.4 0 0 1 1.9 0l6.5 6.2M15 15l1.9-1.8a1.4 1.4 0 0 1 1.9 0l1.7 1.6" />
+    </svg>
+  );
+}
+
+/** Altoparlante con onde: leggi ad alta voce la risposta. */
+export function SpeakerIcon({ size = 19 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} {...base}>
+      <path d="M4 9.5v5h3.2L12 18.6V5.4L7.2 9.5H4z" />
+      <path d="M15.5 9.2a4 4 0 0 1 0 5.6M18.2 6.8a7.5 7.5 0 0 1 0 10.4" />
+    </svg>
+  );
+}
+
+/** Quadrato di stop: ferma l'audio o l'ascolto. */
+export function StopIcon({ size = 19 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} {...base}>
+      <rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/** Più: crea un progetto nuovo. */
+export function PlusIcon({ size = 19 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} {...base}>
+      <path d="M12 5.5v13M5.5 12h13" />
+    </svg>
+  );
+}
+
+/** Freccia in giù: apre il selettore dei modelli. */
+export function ChevronDownIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} {...base}>
+      <path d="M6 9.5l6 6 6-6" />
+    </svg>
+  );
+}
+
+/** Scintilla a quattro punte: il tocco IA (generazioni, suggerimenti). */
+export function SparkleIcon({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} {...base}>
+      <path
+        d="M12 3.4l1.7 4.9a2 2 0 0 0 1.2 1.2l4.9 1.7-4.9 1.7a2 2 0 0 0-1.2 1.2L12 19l-1.7-4.9a2 2 0 0 0-1.2-1.2L4.2 11.2l4.9-1.7a2 2 0 0 0 1.2-1.2z"
+        fill="currentColor"
+        stroke="none"
+      />
+    </svg>
+  );
+}
+
+/** Sole: passa al tema chiaro. */
+export function SunIcon({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} {...base}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.6v2.2M12 19.2v2.2M4.35 4.35l1.55 1.55M18.1 18.1l1.55 1.55M2.6 12h2.2M19.2 12h2.2M4.35 19.65l1.55-1.55M18.1 5.9l1.55-1.55" />
+    </svg>
+  );
+}
+
+/** Luna: passa al tema scuro. */
+export function MoonIcon({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} {...base}>
+      <path d="M20.5 14.3A8.5 8.5 0 1 1 9.7 3.5a6.8 6.8 0 0 0 10.8 10.8z" />
+    </svg>
+  );
+}
+
+/** Orologio con freccia: le ore risparmiate. */
+export function ClockIcon({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} {...base}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.2V12l3.1 1.9" />
+    </svg>
+  );
+}
+
+/** Graffetta: allega un documento. */
+export function PaperclipIcon({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} {...base}>
+      <path d="M18.2 11.3l-6.6 6.6a4.2 4.2 0 0 1-5.9-5.9l7.3-7.3a2.8 2.8 0 0 1 4 4l-7.3 7.3a1.4 1.4 0 0 1-2-2l6.6-6.6" />
+    </svg>
+  );
+}

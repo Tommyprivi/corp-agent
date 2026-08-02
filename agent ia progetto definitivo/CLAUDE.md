@@ -64,18 +64,66 @@ nella cartella `api/` si usano solo import relativi, mai alias di percorso.
 In locale `npm run dev` serve anche la cartella `api/`: l'innesto `apiRoutes()` in
 `vite.config.ts` instrada le chiamate `/api/...` agli stessi file che finiranno su Vercel.
 
+### Le tre trappole di Vercel, tutte scoperte al primo deploy (2 Agosto 2026)
+
+Il sito è online su **https://corpagent.vercel.app**. Il primo tentativo è andato in
+produzione con la pagina che si apriva e **tutto il resto rotto**. Le tre cause, scritte
+qui perché non si ripetano:
+
+1. **Gli import relativi in `api/` devono finire in `.js`**, anche se il file sorgente è
+   `.ts`. `package.json` dichiara `"type": "module"`, quindi Node lavora in ESM dove
+   l'estensione è obbligatoria, e Vercel compila i file uno per uno invece di
+   raggrupparli. In locale non si vede, perché Vite la aggiunge da sé. Sintomo:
+   `Cannot find module '/var/task/api/_lib/auth'` e 500 su ogni chiamata.
+2. **Il catch-all `[...all]` non arriva oltre il primo livello** senza una riscrittura
+   esplicita in `vercel.json`. `/api/auth/get-session` rispondeva, ma
+   `/api/auth/sign-in/social` dava 404 — cioè il login era semplicemente impossibile.
+3. **`vercel.json` non ammette commenti** né campi in più: un `comment` dentro una
+   riscrittura fa rifiutare il deploy. Le spiegazioni stanno qui, non lì.
+
 ## Estetica — non negoziabile
 
-Minimalismo Apple, ampi spazi bianchi. I colori stanno **solo** come variabili CSS in
-`src/index.css`, mai scritti in chiaro nei componenti:
+**Grafite e bianco** — deciso da Tommaso il 2 Agosto 2026. Niente gradienti colorati:
+nero, bianco, grigi, e il colore **solo dove porta informazione** (verde = attivo).
+È la scelta di Linear e Vercel: sembra costoso perché non urla. Desktop prima di tutto.
 
-| Ruolo | Variabile | Valore |
-|---|---|---|
-| Sfondo app | `--bg-app` | `#FAFAFC` |
-| Card e area principale | `--bg-card` | `#FFFFFF` |
-| Testo | `--text-primary` | `#1D1D1F` |
-| Testo secondario | `--text-secondary` | `#86868B` |
-| Accento | `--accent` | `#0071E3` |
+⚠️ Ha sostituito un tentativo viola→ciano durato poche ore, bocciato dal proprietario
+del design. Non riproporre gradienti colorati.
+
+**Due temi, un solo insieme di nomi.** `:root` è il chiaro, `:root[data-theme="dark"]`
+riscrive gli stessi nomi. I componenti non sanno quale sia attivo: usano
+`var(--bg-card)` e basta. Si parte **scuro**; la scelta vive in `localStorage`
+(preferenza del dispositivo, non della persona) ed è gestita da `src/lib/theme.ts`.
+`applyThemeEarly()` in `main.tsx` la applica **prima** del primo render, se no si vede
+un lampo bianco.
+
+| Ruolo | Variabile | Chiaro | Scuro |
+|---|---|---|---|
+| Sfondo app | `--bg-app` | `#F7F7F8` | `#08080A` |
+| Card | `--bg-card` | `#FFFFFF` | `#101013` |
+| Testo | `--text-primary` | `#0A0A0B` | `#F5F5F7` |
+| Azione primaria | `--grad-primary` | grafite scuro | **bianco** |
+| Testo sull'azione | `--on-primary` | bianco | **nero** |
+
+L'inversione è la mossa che rende la cosa elegante: nel chiaro l'azione primaria è nera
+su bianco, nello scuro bianca su nero. Sempre il massimo contrasto, mai colore.
+
+Classi pronte: `.btn-grad` (azione primaria, una per schermata), `.text-grad` (la
+parola che stacca in un titolo), `.ring-grad` (bordo attivo), `.glass`, `.orb`.
+
+### ⚠️ `.on-dark` — la trappola che è costata più bug di tutte
+
+Alcune zone restano **scure in tutti e due i temi**: l'hero della vetrina, la sua
+chiusura, il pannello sinistro dell'ingresso, la sidebar della chat, la demo dell'hero.
+
+Lì `--grad-primary` nel tema chiaro è grafite scuro, quindi il pulsante diventa
+**nero su nero** e il titolo in gradiente sparisce. La regola: **ogni zona
+permanentemente scura porta la classe `.on-dark`**, che inverte `.btn-grad`,
+`.text-grad` e `.ring-grad` una volta sola nel CSS. Dentro la sidebar si usano
+`--side-accent` / `--side-on-accent` / `--side-positive`, mai `--accent`.
+
+Stessa regola per il testo: un `text-white` sopra `--grad-primary` è un bug: nel
+tema scuro quel fondo è bianco. Si usa `var(--on-primary)`.
 
 Tipografia: Inter per l'interfaccia, Outfit ultra-light solo per il wordmark del logo.
 Il logo è un anello sottile aperto in alto a destra con un punto pieno al centro
@@ -116,6 +164,23 @@ Avanzate**. Non ce ne sono altre — se serve una quarta voce, è quasi certamen
 chiede di cosa si occupa e gli monta la Home su misura per quel mestiere. Tutto il resto
 (agenti, connettori, piani) sta in Impostazioni Avanzate o viene proposto dal Master
 Builder dentro la conversazione — mai come elenco da sfogliare all'ingresso.
+
+## Regole cambiate da Tommaso il 2 Agosto 2026
+
+Tre cose che la bibbia congelava sono state **anticipate alla V1** per decisione
+esplicita di Tommaso (le chiavi API c'erano già):
+
+1. **Il selettore dei modelli è visibile in chat.** "Automatico" resta il
+   predefinito, ma l'utente può scegliere a mano tra i fornitori del documento
+   (OpenAI, Anthropic, Google, DeepSeek, Meta, Mistral, Qwen, Perplexity, xAI,
+   Microsoft, Cohere). Il catalogo arriva vivo da `/api/models`.
+2. **Generazione di immagini** (`api/images.ts`, OpenAI `gpt-image-1`, qualità media):
+   il pennello nella casella della chat.
+3. **Voce** (`api/tts.ts`, ElevenLabs multilingua): dettatura col microfono (Web Speech,
+   solo dove il browser la offre) e lettura ad alta voce delle risposte.
+
+Il resto della bibbia — WhatsApp come unico canale, niente marketplace, niente
+white-label — resta congelato come prima.
 
 ## Regole
 

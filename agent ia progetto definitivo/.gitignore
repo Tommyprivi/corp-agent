@@ -32,3 +32,4 @@ dist-ssr
 *.sln
 *.sw?
 better-auth_migrations/
+.env*

@@ -13,6 +13,6 @@
  * Quindi: due file, due mestieri. Nessun codice di produzione importa questo.
  */
 
-import { getAuth } from "./auth";
+import { getAuth } from "./auth.js";
 
 export const auth = getAuth();

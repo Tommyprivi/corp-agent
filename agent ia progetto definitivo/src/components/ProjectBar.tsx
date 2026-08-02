@@ -83,7 +83,7 @@ export default function ProjectBar({
           <button
             type="submit"
             aria-label="Crea progetto"
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)] text-white"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--on-primary)]"
           >
             <CheckIcon size={13} />
           </button>

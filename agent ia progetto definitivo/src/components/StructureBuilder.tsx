@@ -159,7 +159,7 @@ export default function StructureBuilder({
               <div
                 className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${
                   t.from === "user"
-                    ? "bg-[var(--accent)] text-white"
+                    ? "[background:var(--grad-primary)] [color:var(--on-primary)]"
                     : "bg-[var(--bg-app)] text-[var(--text-primary)]"
                 }`}
               >
@@ -202,7 +202,7 @@ export default function StructureBuilder({
               )}
               <button
                 onClick={() => onSave({ classes, rules })}
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] py-3 text-[14.5px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl btn-grad py-3 text-[14.5px] font-medium"
               >
                 <CheckIcon size={16} />
                 Salva la configurazione
@@ -225,7 +225,7 @@ export default function StructureBuilder({
                 type="submit"
                 aria-label="Invia"
                 disabled={!draft.trim()}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white transition-opacity hover:bg-[var(--accent-hover)] disabled:opacity-25"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full btn-grad transition-opacity disabled:opacity-25"
               >
                 <ArrowUpIcon />
               </button>

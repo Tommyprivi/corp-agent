@@ -55,7 +55,7 @@ export default function Sidebar({ active, onNavigate, agentName }: SidebarProps)
       </nav>
 
       <div className="mt-auto flex items-center gap-2.5 border-t border-[var(--border)] pt-4">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[11px] font-medium text-white">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[11px] font-medium text-[var(--on-primary)]">
           IA
         </div>
         <div className="hidden min-w-0 flex-1 md:block">

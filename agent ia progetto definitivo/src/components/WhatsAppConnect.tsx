@@ -45,7 +45,7 @@ export default function WhatsAppConnect({ agentName, onClose, onConnected }: Wha
             ) : (
               <button
                 onClick={simulateScan}
-                className="w-full rounded-xl bg-[var(--accent)] py-3 text-[14.5px] font-medium text-white transition-opacity hover:bg-[var(--accent-hover)]"
+                className="btn-grad w-full rounded-xl py-3 text-[14.5px] font-medium"
               >
                 Ho scansionato il codice
               </button>
@@ -60,7 +60,7 @@ export default function WhatsAppConnect({ agentName, onClose, onConnected }: Wha
           </>
         ) : (
           <div className="flex flex-col items-center gap-3 py-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] text-white">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full" style={{ background: "var(--grad-primary)", color: "var(--on-primary)" }}>
               <CheckIcon size={22} />
             </div>
             <h2 className="text-[17px] font-semibold text-[var(--text-primary)]">

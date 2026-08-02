@@ -14,8 +14,8 @@
  * browser di nessuno, e non è scritta qui — si legge dall'ambiente.
  */
 
-import { currentUser } from "./_lib/auth";
-import { withUser } from "./_lib/db";
+import { currentUser } from "./_lib/auth.js";
+import { withUser } from "./_lib/db.js";
 import {
   chooseModel,
   costEur,
@@ -23,7 +23,7 @@ import {
   fetchCatalog,
   heavyWarning,
   type CatalogModel,
-} from "./_lib/openrouter";
+} from "./_lib/openrouter.js";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 

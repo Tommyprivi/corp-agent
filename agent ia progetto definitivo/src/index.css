@@ -4,55 +4,84 @@
  * ─────────────────────────────────────────────────────────────────────────
  * I VALORI DA CUI DIPENDE TUTTO IL RESTO
  * ─────────────────────────────────────────────────────────────────────────
- * Direzione: "Apple, ma fatto sul serio" — vedi docs/DESIGN.md.
- * Il minimalismo Apple non è una pagina vuota: è tipografia grande e sicura,
- * gerarchia netta e dettagli precisi. Il vuoto va guadagnato.
+ * Direzione decisa da Tommaso il 2 Agosto 2026: **grafite e bianco**.
+ * Niente gradienti colorati — nero, bianco, grigi, e il colore usato solo
+ * dove porta informazione (verde = attivo, rosso = errore). È la stessa
+ * scelta di Linear e Vercel: sembra costoso perché non urla.
  *
- * Nessun colore va scritto in chiaro nei componenti: si usano queste variabili.
+ * Sostituisce il viola→ciano della versione precedente.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * DUE TEMI, UN SOLO INSIEME DI NOMI
+ * ─────────────────────────────────────────────────────────────────────────
+ * `:root` è il tema chiaro. `[data-theme="dark"]` riscrive gli stessi nomi
+ * coi valori scuri. I componenti non sanno quale tema è attivo: usano
+ * `var(--bg-card)` e basta. Aggiungere un tema domani significa aggiungere
+ * un blocco qui, senza toccare una riga di React.
+ *
+ * L'inversione è la mossa che rende la cosa elegante: nel chiaro l'azione
+ * primaria è nera su bianco, nello scuro è bianca su nero. Sempre il massimo
+ * contrasto possibile, sempre senza colore.
  */
 
 :root {
   /* ── Superfici, dalla più lontana alla più vicina ────────────────── */
-  --bg-app: #fafafc;
+  --bg-app: #f7f7f8;
   --bg-card: #ffffff;
-  /* Un gradino intermedio: serve a distinguere una zona senza disegnare
-     un bordo attorno a tutto. Prima non c'era, ed è uno dei motivi per cui
-     l'interfaccia sembrava piatta. */
-  --bg-sunken: #f4f4f7;
+  --bg-sunken: #efeff1;
+
+  /* ── La sidebar: nel chiaro è grafite, nello scuro sparisce nel fondo ─ */
+  --side-bg: #0b0b0d;
+  --side-bg-raised: #17171a;
+  --side-border: rgba(255, 255, 255, 0.08);
+  --side-text: rgba(245, 245, 247, 0.92);
+  --side-text-dim: rgba(245, 245, 247, 0.5);
+  --side-active: rgba(255, 255, 255, 0.1);
+  /* ⚠️ La sidebar è scura in ENTRAMBI i temi, quindi non può usare
+     --accent né --grad-primary: nel tema chiaro quelli sono grafite scuro, e
+     su fondo nero diventano invisibili. Qui l'accento è sempre il bianco. */
+  --side-accent: #ffffff;
+  --side-on-accent: #0a0a0b;
+  --side-positive: #3ddc97;
 
   /* ── Testo ───────────────────────────────────────────────────────── */
-  --text-primary: #1d1d1f;
-  /* Era #86868b: contro il bianco dava 3,5:1, sotto il minimo di 4,5:1
-     richiesto per il testo normale. Questo dà ~4,6:1 ed è il grigio che usa
-     davvero Apple. "Colori spenti" non era un'impressione: era un difetto. */
-  --text-secondary: #6e6e73;
-  /* Per quello che deve esserci ma non deve farsi notare: didascalie, note.
-     Da non usare mai per testo che l'utente deve leggere per forza. */
-  --text-tertiary: #8e8e93;
+  --text-primary: #0a0a0b;
+  --text-secondary: #62626b;
+  --text-tertiary: #9a9aa2;
 
-  /* ── Accento e stati ─────────────────────────────────────────────── */
-  --accent: #0071e3;
-  --accent-hover: #0077ed;
-  --accent-soft: rgba(0, 113, 227, 0.08);
-  --accent-ring: rgba(0, 113, 227, 0.28);
+  /* ── L'azione primaria: grafite pieno, con un velo di luce sopra ──── */
+  --grad-primary: linear-gradient(180deg, #2c2c33 0%, #0a0a0b 100%);
+  --grad-text: linear-gradient(120deg, #0a0a0b 0%, #55555e 100%);
+  --grad-soft: linear-gradient(135deg, rgba(10, 10, 11, 0.05), rgba(10, 10, 11, 0.02));
+  --on-primary: #ffffff;
 
-  /* Il secondo colore che mancava: prima "agente attivo", "WhatsApp
-     collegato" e "ore risparmiate" erano blu come tutto il resto, quindi non
-     si distinguevano da un semplice collegamento. */
-  --positive: #1d8a4e;
-  --positive-soft: rgba(29, 138, 78, 0.1);
+  --accent: #0a0a0b;
+  --accent-hover: #26262c;
+  --accent-soft: rgba(10, 10, 11, 0.05);
+  --accent-ring: rgba(10, 10, 11, 0.14);
 
-  /* ── Bordi ───────────────────────────────────────────────────────── */
-  --border: #e6e6ec;
-  --border-strong: #d2d2d7;
-  --fill-quiet: #f1f1f4;
+  /* Il colore resta solo dove significa qualcosa. */
+  --positive: #0d8a4f;
+  --positive-soft: rgba(13, 138, 79, 0.1);
+
+  /* ── Bordi e vetro ───────────────────────────────────────────────── */
+  --border: #e7e7ea;
+  --border-strong: #d3d3d8;
+  --fill-quiet: #f1f1f3;
+  --glass: rgba(255, 255, 255, 0.74);
 
   /* ── Profondità ──────────────────────────────────────────────────── */
-  /* Tre livelli invece di un'ombra sola uguale ovunque: è quello che fa
-     sembrare le cose appoggiate su qualcosa invece che disegnate sopra. */
-  --shadow-1: 0 1px 2px rgba(16, 17, 30, 0.04);
-  --shadow-2: 0 1px 3px rgba(16, 17, 30, 0.06), 0 6px 16px rgba(16, 17, 30, 0.05);
-  --shadow-3: 0 2px 6px rgba(16, 17, 30, 0.08), 0 18px 40px rgba(16, 17, 30, 0.1);
+  --shadow-1: 0 1px 2px rgba(10, 10, 11, 0.05);
+  --shadow-2: 0 1px 3px rgba(10, 10, 11, 0.06), 0 8px 24px rgba(10, 10, 11, 0.06);
+  --shadow-3: 0 2px 8px rgba(10, 10, 11, 0.08), 0 24px 56px rgba(10, 10, 11, 0.12);
+  --shadow-grad: 0 6px 20px rgba(10, 10, 11, 0.22);
+
+  /* ── L'hero della vetrina: sempre scuro, in entrambi i temi ──────── */
+  --hero-bg: #08080a;
+  --hero-card: rgba(255, 255, 255, 0.05);
+  --hero-border: rgba(255, 255, 255, 0.1);
+  --hero-text: #f6f6f8;
+  --hero-text-dim: rgba(240, 240, 245, 0.6);
 
   /* ── Movimento ───────────────────────────────────────────────────── */
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -63,6 +92,53 @@
   --font-logo: "Outfit", "Inter", sans-serif;
 
   color-scheme: light;
+}
+
+/*
+ * Il tema scuro. Stessi nomi, valori invertiti.
+ * L'azione primaria diventa bianca su nero: nel buio il bianco è il grafite.
+ */
+:root[data-theme="dark"] {
+  --bg-app: #08080a;
+  --bg-card: #101013;
+  --bg-sunken: #17171b;
+
+  --side-bg: #0b0b0d;
+  --side-bg-raised: #1a1a1f;
+  --side-border: rgba(255, 255, 255, 0.07);
+  --side-text: rgba(245, 245, 247, 0.9);
+  --side-text-dim: rgba(245, 245, 247, 0.45);
+  --side-active: rgba(255, 255, 255, 0.09);
+
+  --text-primary: #f5f5f7;
+  --text-secondary: #9d9da6;
+  --text-tertiary: #6c6c76;
+
+  --grad-primary: linear-gradient(180deg, #ffffff 0%, #d8d8dd 100%);
+  --grad-text: linear-gradient(120deg, #ffffff 0%, #9b9ba4 100%);
+  --grad-soft: linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  --on-primary: #0a0a0b;
+
+  --accent: #f5f5f7;
+  --accent-hover: #ffffff;
+  --accent-soft: rgba(255, 255, 255, 0.07);
+  --accent-ring: rgba(255, 255, 255, 0.16);
+
+  --positive: #2ecc82;
+  --positive-soft: rgba(46, 204, 130, 0.12);
+
+  --border: #232328;
+  --border-strong: #32323a;
+  --fill-quiet: #1b1b20;
+  --glass: rgba(16, 16, 19, 0.76);
+
+  /* Nel buio le ombre non si vedono: la profondità la fa il bordo chiaro. */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 2px 8px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 8px 40px rgba(0, 0, 0, 0.6);
+  --shadow-grad: 0 6px 20px rgba(0, 0, 0, 0.5);
+
+  color-scheme: dark;
 }
 
 * {
@@ -79,59 +155,59 @@ body,
 body {
   background: var(--bg-app);
   color: var(--text-primary);
-  /* Da 14px a 16px. Sedici è la misura a cui si legge senza sforzo, ed è il
-     motivo principale per cui l'interfaccia sembrava "da pannello di
-     amministrazione" invece che da prodotto. */
   font: 16px/1.55 var(--font-ui);
   letter-spacing: -0.011em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Il cambio di tema non deve essere uno sbattere di luce. */
+  transition:
+    background-color var(--normal) var(--ease-out),
+    color var(--normal) var(--ease-out);
 }
 
 /*
  * ─────────────────────────────────────────────────────────────────────────
  * LA SCALA TIPOGRAFICA
  * ─────────────────────────────────────────────────────────────────────────
- * Salti netti, non mezze misure: la gerarchia si costruisce con la differenza
- * di dimensione, non con cinque pesi diversi tutti simili tra loro.
- * Prima i titoli stavano tra 24 e 26px — timidi. Un titolo deve essere grosso.
+ * Senza colore, la gerarchia la fa tutta la tipografia: i salti devono essere
+ * netti. Un titolo timido, in una palette grigia, sparisce.
  */
 
 .t-display {
-  font-size: clamp(2.25rem, 1.6rem + 2.6vw, 3.5rem); /* 36 → 56px */
+  font-size: clamp(2.25rem, 1.6rem + 2.6vw, 3.5rem);
   line-height: 1.05;
   letter-spacing: -0.032em;
   font-weight: 600;
 }
 
 .t-title {
-  font-size: clamp(1.625rem, 1.35rem + 1.1vw, 2.125rem); /* 26 → 34px */
+  font-size: clamp(1.625rem, 1.35rem + 1.1vw, 2.125rem);
   line-height: 1.12;
   letter-spacing: -0.026em;
   font-weight: 600;
 }
 
 .t-heading {
-  font-size: 1.3125rem; /* 21px */
+  font-size: 1.3125rem;
   line-height: 1.25;
   letter-spacing: -0.018em;
   font-weight: 600;
 }
 
 .t-body {
-  font-size: 1rem; /* 16px */
+  font-size: 1rem;
   line-height: 1.6;
   letter-spacing: -0.011em;
 }
 
 .t-small {
-  font-size: 0.875rem; /* 14px */
+  font-size: 0.875rem;
   line-height: 1.5;
   letter-spacing: -0.006em;
 }
 
 .t-label {
-  font-size: 0.6875rem; /* 11px */
+  font-size: 0.6875rem;
   line-height: 1.3;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -144,10 +220,142 @@ body {
 
 /*
  * ─────────────────────────────────────────────────────────────────────────
+ * LE TRE FORME DELL'AZIONE — grafite, non colore
+ * ─────────────────────────────────────────────────────────────────────────
+ *   .btn-grad   l'azione primaria (una per schermata)
+ *   .text-grad  la parola che stacca in un titolo
+ *   .ring-grad  il bordo attivo
+ */
+
+.btn-grad {
+  background: var(--grad-primary);
+  color: var(--on-primary);
+  box-shadow: var(--shadow-grad);
+  transition:
+    transform var(--fast) var(--ease-out),
+    box-shadow var(--normal) var(--ease-out),
+    filter var(--fast) var(--ease-out);
+}
+.btn-grad:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 28px rgba(10, 10, 11, 0.28);
+  filter: brightness(1.12);
+}
+:root[data-theme="dark"] .btn-grad:hover {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
+  filter: brightness(0.94);
+}
+.btn-grad:active {
+  transform: translateY(0);
+}
+.btn-grad:disabled {
+  box-shadow: none;
+  filter: none;
+}
+
+/* L'azione primaria dentro la sidebar: bianca su nero, in tutti e due i temi. */
+.btn-side {
+  background: var(--side-accent);
+  color: var(--side-on-accent);
+  transition:
+    transform var(--fast) var(--ease-out),
+    opacity var(--fast) var(--ease-out);
+}
+.btn-side:hover {
+  transform: translateY(-1px);
+  opacity: 0.9;
+}
+.btn-side:active {
+  transform: translateY(0);
+}
+
+.text-grad {
+  background: var(--grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/*
+ * ⚠️ `.on-dark` va su ogni zona che resta scura in TUTTI E DUE i temi:
+ * l'hero della vetrina, la chiusura, il pannello dell'ingresso.
+ *
+ * Senza, nel tema chiaro succede il disastro: `--grad-primary` è grafite
+ * scuro, quindi il pulsante "Prova CorpAgent" diventa nero su nero e il
+ * titolo in gradiente sparisce. Qui dentro si inverte tutto una volta sola,
+ * e i componenti continuano a scrivere `.btn-grad` come altrove.
+ */
+.on-dark .text-grad {
+  background: linear-gradient(120deg, #ffffff 0%, #8e8e99 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.on-dark .btn-grad {
+  background: var(--side-accent);
+  color: var(--side-on-accent);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.on-dark .btn-grad:hover {
+  filter: brightness(0.94);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
+.on-dark .ring-grad {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ring-grad {
+  border: 1px solid var(--border-strong);
+  background: var(--bg-card);
+}
+
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+}
+
+/*
+ * Le sfere sfocate: senza colore diventano luce e ombra. È quello che dà
+ * profondità all'hero adesso che non c'è più il viola.
+ */
+.orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+.orb-violet {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.16), transparent 70%);
+}
+.orb-cyan {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1), transparent 70%);
+}
+.orb-blue {
+  background: radial-gradient(circle, rgba(190, 195, 215, 0.12), transparent 70%);
+}
+
+@keyframes drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(24px, -18px) scale(1.06);
+  }
+}
+.animate-drift {
+  animation: drift 9s ease-in-out infinite;
+}
+
+/*
+ * ─────────────────────────────────────────────────────────────────────────
  * MOVIMENTO
  * ─────────────────────────────────────────────────────────────────────────
- * Breve e discreto. Serve a far capire che una cosa è appena arrivata, non a
- * farsi notare: sopra i 300ms comincia a sembrare lento.
  */
 
 @keyframes rise {
@@ -163,6 +371,21 @@ body {
 
 .animate-rise {
   animation: rise var(--normal) var(--ease-out) both;
+}
+
+/* L'arrivo di un messaggio: sale e si mette a fuoco, come una cosa che appare. */
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-msg {
+  animation: msg-in 0.36s var(--ease-out) both;
 }
 
 @keyframes breathe {
@@ -181,6 +404,151 @@ body {
   animation: breathe 1.3s var(--ease-out) infinite;
 }
 
+@keyframes listening {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--accent-ring);
+  }
+  60% {
+    box-shadow: 0 0 0 9px transparent;
+  }
+}
+.animate-listening {
+  animation: listening 1.4s ease-out infinite;
+}
+
+/*
+ * ─────────────────────────────────────────────────────────────────────────
+ * LA VETRINA
+ * ─────────────────────────────────────────────────────────────────────────
+ */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition:
+    opacity 0.7s var(--ease-out),
+    transform 0.7s var(--ease-out);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes word-rise {
+  from {
+    opacity: 0;
+    transform: translateY(28px) rotate(2deg);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+.word-rise {
+  display: inline-block;
+  animation: word-rise 0.7s var(--ease-out) both;
+}
+
+/*
+ * La stessa animazione, ma per una PAROLA dentro una frase.
+ *
+ * ⚠️ Serve una classe separata, e il motivo è una trappola vera: uno spazio
+ * scritto dentro un `inline-block` viene mangiato dal browser, perché cade sul
+ * bordo della scatola. Con `.word-rise` su ogni parola il titolo usciva
+ * "Iltuodipendente IA" — attaccato. Qui lo spazio è un margine, che nessuno
+ * può collassare, e `word-spacing: normal` tiene il testo selezionabile e
+ * leggibile dagli screen reader come una frase vera.
+ */
+.word-rise-w {
+  display: inline-block;
+  margin-right: 0.26em;
+  animation: word-rise 0.7s var(--ease-out) both;
+}
+
+/* Il bagliore che segue il mouse: ora è luce bianca, non viola. */
+.hero-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    620px circle at var(--mx, 50%) var(--my, 35%),
+    rgba(255, 255, 255, 0.09),
+    rgba(255, 255, 255, 0.03) 45%,
+    transparent 70%
+  );
+  transition: background 120ms linear;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.caret::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: currentColor;
+  animation: caret 0.9s steps(1) infinite;
+}
+
+@keyframes marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+.marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee 32s linear infinite;
+}
+.marquee:hover {
+  animation-play-state: paused;
+}
+
+@keyframes aurora {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    opacity: 0.7;
+    transform: translate(30px, -20px) scale(1.12);
+  }
+  66% {
+    opacity: 0.55;
+    transform: translate(-24px, 14px) scale(0.95);
+  }
+}
+.animate-aurora {
+  animation: aurora 11s ease-in-out infinite;
+}
+
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -197,13 +565,16 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--border-strong);
   border-radius: 8px;
-  /* Il bordo trasparente assottiglia il pollice lasciandogli l'area
-     cliccabile piena: è il trucco che usa macOS. */
   border: 3px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-tertiary);
+  background-clip: content-box;
+}
+
+.side-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
   background-clip: content-box;
 }
 
@@ -213,5 +584,9 @@ body {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
   }
 }

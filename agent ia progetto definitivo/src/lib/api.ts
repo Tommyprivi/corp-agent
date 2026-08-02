@@ -253,6 +253,73 @@ export async function askChat(
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// MODELLI
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Un modello del catalogo OpenRouter, coi prezzi veri. */
+export interface CatalogModelInfo {
+  id: string;
+  name: string;
+  promptUsd: number;
+  completionUsd: number;
+  context: number;
+}
+
+export interface ModelsResponse {
+  /** Cosa sceglierebbe il server, adesso, per i tre pesi di richiesta. */
+  chosen: { light: string; standard: string; heavy: string };
+  models: CatalogModelInfo[];
+}
+
+/**
+ * Il catalogo vero, dal server (che lo tiene in memoria dieci minuti).
+ * È quello che alimenta il selettore dei modelli nella chat.
+ */
+export async function getModels(): Promise<ModelsResponse> {
+  const response = await fetch("/api/models", { credentials: "same-origin" });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as ModelsResponse;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// IMMAGINI E VOCE
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Genera un'immagine con OpenAI. Ci mette 15-40 secondi: mostrare l'attesa. */
+export async function generateImage(prompt: string): Promise<{ dataUrl: string }> {
+  const response = await fetch("/api/images", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ prompt }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as { dataUrl: string };
+}
+
+/**
+ * Fa leggere un testo alla voce dell'agente (ElevenLabs) e lo suona.
+ * Restituisce l'elemento audio, così chi chiama può fermarlo.
+ */
+export async function speak(text: string): Promise<HTMLAudioElement> {
+  const response = await fetch("/api/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) throw await readError(response);
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  // L'URL temporaneo va liberato quando l'audio finisce, o resta in memoria.
+  audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
+  await audio.play();
+  return audio;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // CONFIGURAZIONE E PROFILO
 // ─────────────────────────────────────────────────────────────────────────
 

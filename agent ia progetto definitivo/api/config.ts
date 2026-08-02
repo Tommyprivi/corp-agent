@@ -10,8 +10,8 @@
  * pubblici per definizione — mai il loro contenuto.
  */
 
-import { authMissing, availableProviders } from "./_lib/auth";
-import { dbConfigured } from "./_lib/db";
+import { authMissing, availableProviders } from "./_lib/auth.js";
+import { dbConfigured } from "./_lib/db.js";
 
 export default {
   async fetch(request: Request): Promise<Response> {

@@ -69,7 +69,15 @@ Costruito prima della bibbia, resta nel codice ma **fuori dall'interfaccia V1**:
 
 - I 68 agenti preimpostati (`src/data/presetAgents.ts`) — il Master Builder ne genera uno
   su misura, non si sfogliano elenchi
-- I 64 modelli (`src/data/models.ts`) — la scelta è automatica, l'utente non la vede
 - I 31 connettori (`src/data/connectors.ts`) — in V1 esiste solo WhatsApp
 - Flussi di Automazione — post-lancio
 - Computer-Use, Electron, Play Store — post-lancio
+
+## Scongelato da Tommaso il 2 Agosto 2026
+
+Tre eccezioni decise dal proprietario delle regole, perché le chiavi API c'erano già:
+
+- **La scelta del modello è visibile in chat** — "Automatico" resta il predefinito, ma
+  il selettore c'è (catalogo vivo da OpenRouter, non più `src/data/models.ts`)
+- **Generazione di immagini** in chat (OpenAI)
+- **Voce**: dettatura col microfono e risposte lette ad alta voce (ElevenLabs)

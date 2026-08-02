@@ -13,7 +13,7 @@
  */
 
 import { betterAuth } from "better-auth";
-import { getPool } from "./db";
+import { getPool } from "./db.js";
 
 /**
  * Il minimo indispensabile per costruire l'istanza. Volutamente **non** include

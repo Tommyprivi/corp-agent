@@ -35,7 +35,7 @@ export default function Structure({
 
       <button
         onClick={onConfigure}
-        className="mt-7 w-full rounded-xl bg-[var(--accent)] py-3.5 text-[15px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
+        className="mt-7 w-full rounded-xl btn-grad py-3.5 text-[15px] font-medium"
       >
         {empty ? `Configura ${vocab.plural} parlando` : "Continua la configurazione"}
       </button>

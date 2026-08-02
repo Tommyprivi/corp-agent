@@ -11,8 +11,8 @@
  *   DELETE → /api/agents?id=...
  */
 
-import { currentUser } from "./_lib/auth";
-import { withUser } from "./_lib/db";
+import { currentUser } from "./_lib/auth.js";
+import { withUser } from "./_lib/db.js";
 
 interface AgentRow {
   id: string;
