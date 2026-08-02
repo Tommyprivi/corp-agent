@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.api.tsbuildinfo",
+    "target": "es2023",
+    /* DOM serve per Request, Response, TransformStream e TextDecoder: le
+       funzioni su Vercel usano le API web standard, non quelle di Express. */
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Vercel raggruppa i file di /api con un bundler, quindi gli import
+       relativi non portano l'estensione. Da qui "bundler" e non "nodenext". */
+    "moduleResolution": "bundler",
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["api"]
+}

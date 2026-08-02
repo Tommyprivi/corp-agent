@@ -1,0 +1,34 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Chiavi API. Nessuna di queste entra mai nel repo: vivono in .env.local sul
+# computer di Tommaso e nelle Environment Variables di Vercel. Vedi docs/CHIAVI.md.
+.env
+.env.*
+!.env.example
+
+# Cartelle di lavoro di Vercel
+.vercel
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+better-auth_migrations/

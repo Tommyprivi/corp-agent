@@ -1,0 +1,217 @@
+@import "tailwindcss";
+
+/*
+ * ─────────────────────────────────────────────────────────────────────────
+ * I VALORI DA CUI DIPENDE TUTTO IL RESTO
+ * ─────────────────────────────────────────────────────────────────────────
+ * Direzione: "Apple, ma fatto sul serio" — vedi docs/DESIGN.md.
+ * Il minimalismo Apple non è una pagina vuota: è tipografia grande e sicura,
+ * gerarchia netta e dettagli precisi. Il vuoto va guadagnato.
+ *
+ * Nessun colore va scritto in chiaro nei componenti: si usano queste variabili.
+ */
+
+:root {
+  /* ── Superfici, dalla più lontana alla più vicina ────────────────── */
+  --bg-app: #fafafc;
+  --bg-card: #ffffff;
+  /* Un gradino intermedio: serve a distinguere una zona senza disegnare
+     un bordo attorno a tutto. Prima non c'era, ed è uno dei motivi per cui
+     l'interfaccia sembrava piatta. */
+  --bg-sunken: #f4f4f7;
+
+  /* ── Testo ───────────────────────────────────────────────────────── */
+  --text-primary: #1d1d1f;
+  /* Era #86868b: contro il bianco dava 3,5:1, sotto il minimo di 4,5:1
+     richiesto per il testo normale. Questo dà ~4,6:1 ed è il grigio che usa
+     davvero Apple. "Colori spenti" non era un'impressione: era un difetto. */
+  --text-secondary: #6e6e73;
+  /* Per quello che deve esserci ma non deve farsi notare: didascalie, note.
+     Da non usare mai per testo che l'utente deve leggere per forza. */
+  --text-tertiary: #8e8e93;
+
+  /* ── Accento e stati ─────────────────────────────────────────────── */
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --accent-soft: rgba(0, 113, 227, 0.08);
+  --accent-ring: rgba(0, 113, 227, 0.28);
+
+  /* Il secondo colore che mancava: prima "agente attivo", "WhatsApp
+     collegato" e "ore risparmiate" erano blu come tutto il resto, quindi non
+     si distinguevano da un semplice collegamento. */
+  --positive: #1d8a4e;
+  --positive-soft: rgba(29, 138, 78, 0.1);
+
+  /* ── Bordi ───────────────────────────────────────────────────────── */
+  --border: #e6e6ec;
+  --border-strong: #d2d2d7;
+  --fill-quiet: #f1f1f4;
+
+  /* ── Profondità ──────────────────────────────────────────────────── */
+  /* Tre livelli invece di un'ombra sola uguale ovunque: è quello che fa
+     sembrare le cose appoggiate su qualcosa invece che disegnate sopra. */
+  --shadow-1: 0 1px 2px rgba(16, 17, 30, 0.04);
+  --shadow-2: 0 1px 3px rgba(16, 17, 30, 0.06), 0 6px 16px rgba(16, 17, 30, 0.05);
+  --shadow-3: 0 2px 6px rgba(16, 17, 30, 0.08), 0 18px 40px rgba(16, 17, 30, 0.1);
+
+  /* ── Movimento ───────────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --fast: 140ms;
+  --normal: 240ms;
+
+  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-logo: "Outfit", "Inter", sans-serif;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-app);
+  color: var(--text-primary);
+  /* Da 14px a 16px. Sedici è la misura a cui si legge senza sforzo, ed è il
+     motivo principale per cui l'interfaccia sembrava "da pannello di
+     amministrazione" invece che da prodotto. */
+  font: 16px/1.55 var(--font-ui);
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * ─────────────────────────────────────────────────────────────────────────
+ * LA SCALA TIPOGRAFICA
+ * ─────────────────────────────────────────────────────────────────────────
+ * Salti netti, non mezze misure: la gerarchia si costruisce con la differenza
+ * di dimensione, non con cinque pesi diversi tutti simili tra loro.
+ * Prima i titoli stavano tra 24 e 26px — timidi. Un titolo deve essere grosso.
+ */
+
+.t-display {
+  font-size: clamp(2.25rem, 1.6rem + 2.6vw, 3.5rem); /* 36 → 56px */
+  line-height: 1.05;
+  letter-spacing: -0.032em;
+  font-weight: 600;
+}
+
+.t-title {
+  font-size: clamp(1.625rem, 1.35rem + 1.1vw, 2.125rem); /* 26 → 34px */
+  line-height: 1.12;
+  letter-spacing: -0.026em;
+  font-weight: 600;
+}
+
+.t-heading {
+  font-size: 1.3125rem; /* 21px */
+  line-height: 1.25;
+  letter-spacing: -0.018em;
+  font-weight: 600;
+}
+
+.t-body {
+  font-size: 1rem; /* 16px */
+  line-height: 1.6;
+  letter-spacing: -0.011em;
+}
+
+.t-small {
+  font-size: 0.875rem; /* 14px */
+  line-height: 1.5;
+  letter-spacing: -0.006em;
+}
+
+.t-label {
+  font-size: 0.6875rem; /* 11px */
+  line-height: 1.3;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.font-logo {
+  font-family: var(--font-logo);
+}
+
+/*
+ * ─────────────────────────────────────────────────────────────────────────
+ * MOVIMENTO
+ * ─────────────────────────────────────────────────────────────────────────
+ * Breve e discreto. Serve a far capire che una cosa è appena arrivata, non a
+ * farsi notare: sopra i 300ms comincia a sembrare lento.
+ */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-rise {
+  animation: rise var(--normal) var(--ease-out) both;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-breathe {
+  animation: breathe 1.3s var(--ease-out) infinite;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 8px;
+  /* Il bordo trasparente assottiglia il pollice lasciandogli l'area
+     cliccabile piena: è il trucco che usa macOS. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+  background-clip: content-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,264 @@
+# Il percorso completo — tutte le funzioni del documento, in ordine
+
+> ⚠️ **QUESTO È L'ORDINE DI LAVORO VINCOLANTE.** Fissato da Tommaso il 1 Agosto 2026:
+> *"fissati questo percorso, questo è quello che devi seguire"*.
+>
+> Regole d'uso:
+> 1. Si prende la **prima riga non spuntata** della fase aperta e si fa quella.
+> 2. Non si salta avanti a fasi successive, nemmeno se sembrano più divertenti.
+> 3. Non si aggiungono funzioni che non sono in questo elenco senza chiedere a Tommaso.
+> 4. Quando una riga è finita, si spunta qui e si aggiorna "Fase aperta" sotto.
+>
+> **Fase aperta: FASE 1 — Il cervello.** Righe 1 e 2 **chiuse e verificate** il 2 Agosto
+> 2026: database in piedi su Neon a Francoforte e accesso con Google che arriva fino alla
+> riga in `profiles`. Prima riga da fare: la **3**, la chat che risponde davvero.
+> **Bloccata da una cosa sola: `OPENROUTER_API_KEY`.** Quella chiave sblocca sei righe su
+> dieci (3, 4, 5, 6, 7, 8): oggi sono scritte e nessuna è mai stata eseguita.
+>
+> ⚠️ **Cambio di architettura deciso da Tommaso il 1 Agosto 2026:** il backend è
+> **Neon + funzioni su Vercel + Better Auth**, non più Supabase. Neon è solo il database,
+> quindi login e chiavi li gestiamo noi. L'ordine delle righe **non cambia**: cambiano due
+> nomi. Dettagli in [SETUP-DATABASE.md](SETUP-DATABASE.md) e [SETUP-ACCESSI.md](SETUP-ACCESSI.md).
+
+Ordinate per **dipendenza tecnica**: ogni fase usa quello che ha costruito la precedente.
+Non si può invertire l'ordine — senza la Fase 2 (backend) nulla di quello che segue
+funziona davvero, resta interfaccia.
+
+Legenda: ✅ fatto · 🔧 in corso · ⬜ da fare · 🔑 richiede una chiave API
+
+---
+
+## FASE 0 — Fondazioni ✅ FATTA
+
+| Funzione | Stato |
+|---|---|
+| Interfaccia minimale stile Apple, palette e tipografia | ✅ |
+| Logo (anello aperto + punto) | ✅ |
+| Landing pubblica con "Prova CorpAgent" | ✅ |
+| Documentazione, Termini di servizio, Privacy | ✅ (bozze da far vedere a un legale) |
+| Login Google / Apple (interfaccia) | ✅ |
+| CAPTCHA / verifica anti-bot (segnaposto) | ✅ |
+| Sondaggio: come ci hai conosciuto, solo o in team, dove lavori | ✅ |
+| Chat unica a tutto schermo con scorrimento automatico | ✅ |
+| Master Builder: una domanda, propone tutto | ✅ |
+| Kit pronti per 5 mestieri (agenti + connettori + piano in 1 clic) | ✅ |
+| Motore di raccomandazione a 3 livelli (Mente / Mani / Budget) | ✅ |
+| 135 agenti preimpostati in catalogo | ✅ |
+| 64 modelli IA in catalogo | ✅ |
+| 53 connettori in catalogo | ✅ |
+| 5 piani di abbonamento + funzione che consiglia quale | ✅ |
+| Configurazione guidata delle "classi" parlando (sale, reparti, turni) | ✅ |
+| Base di conoscenza: carica e rimuovi documenti | ✅ |
+| Contatore Risparmio (calcolo dichiarato) | ✅ |
+| Impostazioni Avanzate dietro un'icona | ✅ |
+
+**Cosa manca a questa fase:** niente. Tutto è interfaccia funzionante, con le risposte
+dell'IA dichiarate come simulate.
+
+---
+
+## FASE 1 — Il cervello 🔑 LA PIÙ IMPORTANTE
+
+Senza questa fase il prodotto non è vendibile: l'agente non risponde davvero.
+
+| Ordine | Funzione | Chiave | Stato |
+|---|---|---|---|
+| 1 | Progetto **Neon**: database, tabelle, sicurezza per riga | Neon | ✅ 23 tabelle, 3 migrazioni, 3 ruoli, RLS provata |
+| 2 | Auth vera con Google e Apple (**Better Auth**) | Google Cloud | ✅ Google entra davvero (Apple quando vorrai i 99 €/anno) |
+| 3 | Funzione `chat` **su Vercel** che chiama OpenRouter in streaming | OpenRouter | 🔧 scritta, **mai eseguita**: manca la chiave |
+| 4 | Scelta automatica del modello per difficoltà | — | 🔧 scritta, mai eseguita |
+| 5 | Avviso prima di una richiesta dispendiosa | — | 🔧 scritto, mai eseguito |
+| 6 | Conteggio token e consumi per utente | — | 🔧 scritto, mai eseguito |
+| 7 | Master Builder vero: Structured Output che genera l'agente in JSON | OpenRouter | ⬜ |
+| 8 | Configurazione guidata vera: la conversazione diventa struttura dati salvata | OpenRouter | ⬜ |
+| 9 | Salvataggio permanente di agenti, chat, documenti, configurazioni | Neon | 🔧 endpoint pronti, la chat non li chiama ancora |
+| 10 | Turnstile vero al posto del segnaposto | Cloudflare (gratis) | ⬜ |
+
+> ⚠️ **Sul "codice pronto".** Le righe 3-6 erano segnate come verificate: non lo erano.
+> Il codice esiste e compila, ma finché nessuno lo esegue non si sa se funziona. Adesso
+> dicono la verità: *scritta, mai eseguita*. Si spuntano quando rispondono davvero.
+
+**Fatto quando:** scrivi in chat e risponde davvero, e se ricarichi la pagina è tutto ancora lì.
+
+**Dove sta il codice:** `db/migrations/0001_init.sql` (riga 1), `api/_lib/auth.ts` e
+`api/auth/[...all].ts` (riga 2), `api/chat.ts` (righe 3, 6, 9), `api/_lib/openrouter.ts`
+(righe 4, 5).
+
+---
+
+## FASE 2 — La memoria (RAG) 🔑
+
+| Ordine | Funzione | Chiave |
+|---|---|---|
+| 11 | Vector store e indicizzazione dei documenti | Supabase (pgvector) |
+| 12 | L'agente pesca dai documenti prima di rispondere | OpenRouter |
+| 13 | Cita da dove ha preso il prezzo | — |
+| 14 | Supporto multi-formato: PDF, Word, Excel, CSV, immagini | — |
+| 15 | OCR per foto di listini e menù | OpenAI o Google Vision |
+| 16 | Batch-processor: trascina 500 PDF insieme | — |
+| 17 | Memoria contestuale continua (ricorda accordi passati) | — |
+| 18 | Time-Machine: riavvolgi la memoria a una data | — |
+
+**Fatto quando:** carichi il menù e l'agente risponde col prezzo giusto, citando la riga.
+
+---
+
+## FASE 3 — WhatsApp 🔑 IL CANALE
+
+| Ordine | Funzione | Chiave |
+|---|---|---|
+| 19 | WhatsApp Business API: numero verificato e webhook | Meta Business |
+| 20 | Ricezione e invio messaggi reali | Meta |
+| 21 | Human-in-the-Loop: l'agente si ferma e ti chiama | — |
+| 22 | Modalità Ghost: approvi le risposte prima dell'invio | — |
+| 23 | Agent Watchdog: blocca le risposte fuori dalle regole | — |
+| 24 | Notifiche al titolare (push, WhatsApp, email) | — |
+| 25 | Coda intelligente se la connessione salta | — |
+| 26 | Riconoscimento automatico della lingua del cliente | — |
+| 27 | Agent Pulse: riepilogo serale su WhatsApp | — |
+| 28 | Contatore Risparmio alimentato dai messaggi veri | — |
+
+**Fatto quando:** un cliente scrive al tuo numero e l'agente risponde da solo, corretto.
+
+---
+
+## FASE 4 — Vendere 🔑
+
+| Ordine | Funzione | Chiave |
+|---|---|---|
+| 29 | Stripe: abbonamenti Starter / Pro / Enterprise | Stripe (serve P.IVA) |
+| 30 | Wallet a crediti e ricariche rapide | Stripe |
+| 31 | BYOK: l'utente mette la sua chiave OpenRouter | — |
+| 32 | Fatturazione elettronica italiana (P.IVA, codice univoco, PEC) | Provider e-fattura |
+| 33 | Alert di budget quando i token stanno finendo | — |
+| 34 | Beta con negozi e ristoranti veri | — |
+
+**Fatto quando:** un ristoratore paga con la carta e l'agente si attiva da solo.
+
+---
+
+## FASE 5 — Il tuo pannello admin
+
+| Ordine | Funzione |
+|---|---|
+| 35 | MRR, ARR, fatturato netto vs lordo |
+| 36 | Suddivisione incassi per piano, LTV, CAC, churn rate |
+| 37 | Anagrafica utenti e aziende con ricerca |
+| 38 | Profilo utente: iscrizione, connettori, token, pagamenti |
+| 39 | Azioni admin: bannare, estendere, regalare un mese |
+| 40 | Consumo token globale e classifica modelli più usati |
+| 41 | Costo vivo API e margine per utente |
+| 42 | Alert anomalie (picchi sospetti di consumo) |
+| 43 | Stato connettori verde/rosso e uptime server |
+| 44 | Broadcast email a tutti gli utenti |
+| 45 | Feature flags per accendere e spegnere funzioni |
+| 46 | Codici promo e coupon |
+| 47 | Audit log completo |
+| 48 | Ticket di supporto con stati |
+
+---
+
+## FASE 6 — Automazioni e connettori
+
+| Ordine | Funzione |
+|---|---|
+| 49 | Editor visivo di flussi a nodi (drag and drop) |
+| 50 | Trigger temporali (cron): "ogni venerdì alle 18 il report" |
+| 51 | Trigger condizionali se/allora |
+| 52 | Connettori ondata 1: Gmail, Google Calendar, Drive/Sheets |
+| 53 | Connettori ondata 2: Shopify, WooCommerce, Stripe |
+| 54 | Connettori ondata 3: Telegram, Instagram, Slack, Discord, Teams |
+| 55 | Connettori ondata 4: Notion, Airtable, CRM, database SQL |
+| 56 | Connettori ondata 5: Fatture in Cloud, Zucchetti, VIES, corrieri |
+| 57 | Zapier e Make, webhook in uscita, API pubbliche + SDK |
+| 58 | Sync bidirezionale in tempo reale |
+| 59 | Smart-routing dei canali per complessità |
+| 60 | Multi-channel fallback (SMS/email se WhatsApp non recapita) |
+| 61 | Recupero carrelli abbandonati |
+| 62 | Follow-up e nurturing automatico |
+| 63 | Monitoraggio reputazione online e risposta alle recensioni |
+| 64 | Smart Drive: archiviazione e rinomina automatica dei file |
+| 65 | Scanner fatture e scontrini da fotocamera |
+| 66 | Nexus Flash-Campaign (promozioni a tempo) |
+
+---
+
+## FASE 7 — Aziende e team
+
+| Ordine | Funzione |
+|---|---|
+| 67 | Organizzazioni e workspace condivisi |
+| 68 | Fino a 200 postazioni con contatore |
+| 69 | RBAC: Owner, Admin, Agent Creator, Operator/Viewer |
+| 70 | Inviti via email e revoca postazioni |
+| 71 | Profilo aziendale: nome, logo, dominio verificato, settore |
+| 72 | Budget cap e cost-cap per reparto |
+| 73 | Multi-workspace a reparti stagni |
+| 74 | SSO (Active Directory, Okta), 2FA forzato per admin |
+| 75 | PII Masking automatico + masking personalizzato |
+| 76 | No-training data agreements |
+| 77 | Audit trail immutabile ed esportabile |
+| 78 | Cancellazione dati a norma GDPR, log retention |
+| 79 | IP whitelisting, timeout inattività |
+| 80 | Vault crittografato zero-knowledge |
+| 81 | Export certificato per il commercialista |
+| 82 | Ghost Mode collaborativo, session recording |
+
+---
+
+## FASE 8 — Voce, immagini, video 🔑
+
+| Ordine | Funzione | Chiave |
+|---|---|---|
+| 83 | Trascrizione note vocali WhatsApp | OpenAI Whisper |
+| 84 | Risposte vocali su WhatsApp | ElevenLabs |
+| 85 | Voice-clone aziendale | ElevenLabs |
+| 86 | Modalità walkie-talkie in tempo reale | ElevenLabs |
+| 87 | Chiamate telefoniche vocali | Twilio + ElevenLabs |
+| 88 | Note vocali d'azienda (racconti l'attività, si autoconfigura) | Whisper |
+| 89 | Voice-to-report giornaliero | Whisper |
+| 90 | Generazione immagini in chat | OpenAI / Flux |
+| 91 | Generazione video | Runway / Luma / Kling (il più caro) |
+
+---
+
+## FASE 9 — Crescita
+
+| Ordine | Funzione |
+|---|---|
+| 92 | Multi-lingua UI (8 lingue core + traduttore dinamico) |
+| 93 | Traduttore culturale incrociato |
+| 94 | Nexus Store: marketplace di agenti con revenue share |
+| 95 | White-label per agenzie (logo, colori, dominio) |
+| 96 | White-label app mobile iOS/Android |
+| 97 | Programma affiliazione Nexus Partner |
+| 98 | Nexus Audit: check-up gratuito come lead magnet |
+| 99 | Report di competitività automatizzati |
+| 100 | Gamification e badge di efficienza |
+| 101 | Licenze stagionali / pass temporanei |
+| 102 | Widget incorporabile per siti web |
+| 103 | Personalizzazioni estetiche avanzate (CSS, font, temi, Lottie) |
+| 104 | A/B testing dei prompt, red teaming, certificazioni agenti |
+| 105 | Multi-agent swarm, auto-healing dei prompt |
+| 106 | Browser Conductor, Computer-Use |
+| 107 | Desktop Electron |
+| 108 | Play Store con Capacitor |
+
+---
+
+## Cosa dice questo elenco, onestamente
+
+Le funzioni sono **108**. Le Fasi 0-3 (le prime 28) sono quelle che rendono il prodotto
+vendibile: un ristoratore paga per quelle. Le Fasi 5-9 sono ciò che serve quando hai già
+centinaia di clienti paganti — costruirle prima significa costruire per nessuno.
+
+La Fase 0 è finita. La Fase 1 è il prossimo passo e cambia tutto: è dove il prodotto
+smette di essere una bella interfaccia e inizia a funzionare.
+
+**Per partire con la Fase 1 servono tre cose da te:**
+1. Un progetto Neon (gratis) → [SETUP-DATABASE.md](SETUP-DATABASE.md)
+2. Un account OpenRouter con 10-20 € di credito → [SETUP-OPENROUTER.md](SETUP-OPENROUTER.md)
+3. Un client OAuth di Google per il login → [SETUP-ACCESSI.md](SETUP-ACCESSI.md)
+
+Le chiavi si incollano nel file `.env.local` (già creato, ignorato da git) e nel pannello di
+Vercel, come spiegato in [CHIAVI.md](CHIAVI.md). **Mai in chat.**

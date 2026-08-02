@@ -1,0 +1,36 @@
+{
+  "name": "agent-ia-progetto-definitivo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "db:apply": "node db/apply.mjs",
+    "db:role": "node db/create-app-role.mjs",
+    "db:analyst": "node db/create-analyst-role.mjs"
+  },
+  "dependencies": {
+    "better-auth": "^1.6.25",
+    "lucide-react": "^1.28.0",
+    "pg": "^8.22.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^24.13.3",
+    "@types/pg": "^8.20.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "autoprefixer": "^10.5.4",
+    "oxlint": "^1.75.0",
+    "postcss": "^8.5.25",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0"
+  }
+}
