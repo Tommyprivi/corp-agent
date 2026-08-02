@@ -6,7 +6,7 @@
  * il collegamento, più un messaggio chiaro se le chiavi non ci sono ancora.
  */
 
-import { getAuth } from "../_lib/auth";
+import { getAuth } from "../_lib/auth.js";
 
 export default {
   async fetch(request: Request): Promise<Response> {
