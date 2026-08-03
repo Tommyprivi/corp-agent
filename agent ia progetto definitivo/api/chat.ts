@@ -19,6 +19,7 @@ import { withUser } from "./_lib/db.js";
 import { conflictingSources, embeddingConfigured, search, type Passage } from "./_lib/embed.js";
 import {
   chooseModel,
+  classifyLoad,
   costEur,
   estimateLoad,
   fetchCatalog,
@@ -157,8 +158,14 @@ export default {
       );
     }
 
-    const load = estimateLoad(lastUserText);
     const asked = body.modelSlug && body.modelSlug !== "auto" ? body.modelSlug : null;
+
+    // Se l'utente ha scelto il modello a mano non si classifica niente: sarebbe
+    // una chiamata pagata per un'informazione che non useremo.
+    const { load, classified } = asked
+      ? { load: estimateLoad(lastUserText), classified: false }
+      : await classifyLoad(lastUserText, catalog, apiKey);
+
     const model =
       (asked ? catalog.find((m) => m.id === asked) : undefined) ?? chooseModel(load, catalog);
 
@@ -201,6 +208,23 @@ export default {
       body: JSON.stringify({
         model: model.id,
         stream: true,
+        /**
+         * ⚠️ Un tetto esplicito, e non è un dettaglio.
+         *
+         * Senza questo campo OpenRouter chiede al modello il suo massimo — per
+         * Claude Opus sono 65.536 token. Trovato il 2 Agosto 2026: appena
+         * Tommaso ha messo un limite di spesa sulla chiave, **ogni richiesta
+         * impegnativa ha cominciato a fallire con 402**, perché OpenRouter
+         * verifica in anticipo di poter pagare il caso peggiore:
+         *
+         *   "You requested up to 65536 tokens, but can only afford 27371"
+         *
+         * Cioè: mettere il tetto di spesa — la cosa giusta da fare — rompeva
+         * il prodotto. Nessuna risposta in chat ha bisogno di 65.000 token:
+         * sono quaranta pagine. Il tetto per peso è generoso e limita anche il
+         * costo massimo di un singolo messaggio, che è l'altra metà del motivo.
+         */
+        max_tokens: load === "heavy" ? 4000 : load === "standard" ? 2000 : 1000,
         // Chiediamo il conteggio dei token nell'ultimo pezzo dello stream:
         // è quello che alimenta il Contatore Risparmio e il pannello admin.
         usage: { include: true },
@@ -260,6 +284,9 @@ export default {
       // Così l'interfaccia può dire quale modello ha risposto e quanto pesava.
       "X-Model-Used": model.id,
       "X-Load": load,
+      // "vero" = deciso da un modello, "stima" = euristica o corsia veloce.
+      // Serve a capire, guardando le richieste, se la classificazione lavora.
+      "X-Load-Source": classified ? "vero" : "stima",
     });
 
     // Le fonti viaggiano nelle intestazioni, non nel testo: il cliente legge
