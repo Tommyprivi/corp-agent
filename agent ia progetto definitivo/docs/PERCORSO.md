@@ -26,8 +26,17 @@
 > Lo stesso giorno i **125 agenti del catalogo** sono diventati funzionanti: avevano nome
 > e descrizione ma nessuna istruzione, quindi attivarne uno non produceva niente.
 >
-> Prima riga da fare: la **8**, la configurazione guidata che diventa struttura dati.
-> Resta aperta anche la **10**, che aspetta solo la chiave gratuita di Cloudflare Turnstile.
+> Chiusa anche la **8**: racconti com'è fatta l'attività come viene — «ho tre sale, dentro
+> 40, la veranda 20 ma solo d'estate» — e un modello la mette in ordine prima di
+> indicizzarla. Le eccezioni non si perdono: a «possiamo cenare in veranda a gennaio?»
+> l'agente risponde no, e a «siamo in 60» non inventa, gira la domanda al titolare.
+>
+> ⚠️ La tabella `structures` della migrazione 0001 **non si usa**, di proposito: il
+> perché sta scritto in `api/documents.ts`. Una seconda memoria vorrebbe dire una seconda
+> ricerca, una seconda iniezione nel prompt e due modi di andare fuori sincrono.
+>
+> **Della Fase 1 resta solo la riga 10**, che aspetta la chiave gratuita di Cloudflare
+> Turnstile. Della Fase 2 sono chiuse le righe 11-15; restano 16, 17 e 18.
 >
 > ⚠️ **Cambio di architettura deciso da Tommaso il 1 Agosto 2026:** il backend è
 > **Neon + funzioni su Vercel + Better Auth**, non più Supabase. Neon è solo il database,
@@ -84,7 +93,7 @@ Senza questa fase il prodotto non è vendibile: l'agente non risponde davvero.
 | 5 | Avviso prima di una richiesta dispendiosa | — | ✅ scatta **prima** di spendere, con la cifra |
 | 6 | Conteggio token e consumi per utente | — | ✅ dopo la migrazione `0004` (vedi sotto) |
 | 7 | Master Builder vero: Structured Output che genera l'agente in JSON | OpenRouter | ✅ genera, chiede, non mente — e i 125 preset funzionano |
-| 8 | Configurazione guidata vera: la conversazione diventa struttura dati salvata | OpenRouter | ⬜ **la prossima** |
+| 8 | Configurazione guidata vera: la conversazione diventa struttura dati salvata | OpenRouter | ✅ racconti di fretta, diventa memoria organizzata |
 | 9 | Salvataggio permanente di agenti, chat, documenti, configurazioni | Neon | ✅ chat, progetti e agenti — i documenti alla Fase 2 |
 | 10 | Turnstile vero al posto del segnaposto | Cloudflare (gratis) | ⬜ manca solo la chiave, gratuita |
 
@@ -111,18 +120,22 @@ Senza questa fase il prodotto non è vendibile: l'agente non risponde davvero.
 
 ## FASE 2 — La memoria (RAG) 🔑
 
-| Ordine | Funzione | Chiave |
-|---|---|---|
-| 11 | Vector store e indicizzazione dei documenti | Supabase (pgvector) |
-| 12 | L'agente pesca dai documenti prima di rispondere | OpenRouter |
-| 13 | Cita da dove ha preso il prezzo | — |
-| 14 | Supporto multi-formato: PDF, Word, Excel, CSV, immagini | — |
-| 15 | OCR per foto di listini e menù | OpenAI o Google Vision |
-| 16 | Batch-processor: trascina 500 PDF insieme | — |
-| 17 | Memoria contestuale continua (ricorda accordi passati) | — |
-| 18 | Time-Machine: riavvolgi la memoria a una data | — |
+| Ordine | Funzione | Chiave | Stato |
+|---|---|---|---|
+| 11 | Vector store e indicizzazione dei documenti | Neon (pgvector) | ✅ |
+| 12 | L'agente pesca dai documenti prima di rispondere | OpenRouter | ✅ |
+| 13 | Cita da dove ha preso il prezzo | — | ✅ a te, non ai clienti |
+| 14 | Supporto multi-formato: PDF, Word, Excel, CSV, immagini | — | ✅ |
+| 15 | OCR per foto di listini e menù | OpenRouter (visione) | ✅ |
+| 16 | Batch-processor: trascina 500 PDF insieme | — | 🔧 si caricano in gruppo, uno per volta |
+| 17 | Memoria contestuale continua (ricorda accordi passati) | — | ⬜ |
+| 18 | Time-Machine: riavvolgi la memoria a una data | — | ⬜ |
 
 **Fatto quando:** carichi il menù e l'agente risponde col prezzo giusto, citando la riga.
+✅ **Succede dal 2 Agosto 2026.** Provato: menù indicizzato in 3 secondi, «quanto viene la
+pizza col pomodoro e mozzarella» → 7,50 € (la parola *margherita* non era nella domanda: la
+ricerca è per significato), «fate il tiramisù senza uova?» → non inventa, gira la domanda al
+titolare, e quando il titolare risponde quella risposta **entra in memoria per sempre**.
 
 ---
 

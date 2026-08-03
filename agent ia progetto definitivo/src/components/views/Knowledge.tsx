@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckIcon, CloseIcon, ImageIcon, PaperclipIcon, SparkleIcon } from "../Icons";
+import {
+  ChatSparkIcon,
+  CheckIcon,
+  CloseIcon,
+  ImageIcon,
+  PaperclipIcon,
+  SparkleIcon,
+} from "../Icons";
 import {
   addDocument,
   answerQuestion,
@@ -110,7 +117,8 @@ function Memory({
   setDocs: React.Dispatch<React.SetStateAction<StoredDocument[]>>;
   loaded: boolean;
 }) {
-  const [pasting, setPasting] = useState(false);
+  /** `"paste"` = testo gia in ordine · `"tell"` = raccontato, da sistemare. */
+  const [writing, setWriting] = useState<"paste" | "tell" | null>(null);
   const [pasted, setPasted] = useState("");
   const [pasteName, setPasteName] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -118,11 +126,16 @@ function Memory({
   const fileRef = useRef<HTMLInputElement>(null);
   const photoRef = useRef<HTMLInputElement>(null);
 
-  async function save(name: string, text: string, source: "paste" | "upload" | "photo") {
+  async function save(
+    name: string,
+    text: string,
+    source: "paste" | "upload" | "photo",
+    organise = false
+  ) {
     setProblem(null);
     setBusy(name);
     try {
-      const created = await addDocument({ name, text, source });
+      const created = await addDocument({ name, text, source, organise });
       // Se è lo stesso documento di prima il server lo aggiorna invece di
       // duplicarlo: qui si sostituisce la riga corrispondente.
       setDocs((prev) => [created, ...prev.filter((d) => d.id !== created.id)]);
@@ -159,18 +172,24 @@ function Memory({
   return (
     <>
       {/* Le tre strade, in ordine di attrito crescente. */}
-      <div className="mt-7 grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className="mt-7 grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <Way
+          icon={<ChatSparkIcon size={17} />}
+          title="Racconta"
+          hint="scrivi come parli"
+          onClick={() => setWriting((w) => (w === "tell" ? null : "tell"))}
+          primary
+        />
         <Way
           icon={<SparkleIcon size={17} />}
           title="Incolla"
-          hint="il modo più veloce"
-          onClick={() => setPasting((p) => !p)}
-          primary
+          hint="menù o listino"
+          onClick={() => setWriting((w) => (w === "paste" ? null : "paste"))}
         />
         <Way
           icon={<ImageIcon size={17} />}
           title="Fotografa"
-          hint="il menù appeso al muro"
+          hint="il menù al muro"
           onClick={() => photoRef.current?.click()}
         />
         <Way
@@ -181,12 +200,16 @@ function Memory({
         />
       </div>
 
-      {pasting && (
+      {writing && (
         <div className="animate-rise mt-3 rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
           <input
             value={pasteName}
             onChange={(e) => setPasteName(e.target.value)}
-            placeholder="Come si chiama? (es. Menù estate 2026)"
+            placeholder={
+              writing === "tell"
+                ? "Di cosa parla? (es. Sale e capienza)"
+                : "Come si chiama? (es. Menù estate 2026)"
+            }
             className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[14px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
           />
           <textarea
@@ -194,7 +217,9 @@ function Memory({
             onChange={(e) => setPasted(e.target.value)}
             rows={9}
             placeholder={
-              "Incolla qui il menù, il listino, gli orari…\n\nMargherita  7,50 €\nMarinara  6,00 €"
+              writing === "tell"
+                ? "Racconta come viene, senza pensarci troppo.\n\nEs. «ho tre sale, dentro ci stanno 40 persone, la veranda 20 ma solo d'estate, e il giardino lo apro solo per gli eventi»\n\nCi penso io a metterlo in ordine."
+                : "Incolla qui il menù, il listino, gli orari…\n\nMargherita  7,50 €\nMarinara  6,00 €"
             }
             className="mt-2 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-[13.5px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
           />
@@ -203,18 +228,27 @@ function Memory({
               onClick={async () => {
                 const text = pasted.trim();
                 if (!text) return;
-                await save(pasteName.trim() || "Testo incollato", text, "paste");
+                await save(
+                  pasteName.trim() || (writing === "tell" ? "Come funziona la mia attività" : "Testo incollato"),
+                  text,
+                  "paste",
+                  writing === "tell"
+                );
                 setPasted("");
                 setPasteName("");
-                setPasting(false);
+                setWriting(null);
               }}
               disabled={!pasted.trim() || busy !== null}
               className="btn-grad flex-1 rounded-xl py-2.5 text-[14px] font-medium disabled:opacity-40"
             >
-              {busy ? "Lo sto leggendo…" : "Mettilo in memoria"}
+              {busy
+                ? writing === "tell"
+                  ? "Lo sto mettendo in ordine…"
+                  : "Lo sto leggendo…"
+                : "Mettilo in memoria"}
             </button>
             <button
-              onClick={() => setPasting(false)}
+              onClick={() => setWriting(null)}
               className="rounded-xl border border-[var(--border)] px-4 py-2.5 text-[13.5px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             >
               Annulla
@@ -223,7 +257,7 @@ function Memory({
         </div>
       )}
 
-      {busy && !pasting && (
+      {busy && !writing && (
         <p className="mt-4 flex items-center gap-2 text-[13.5px] text-[var(--text-secondary)]">
           <span className="animate-breathe inline-block h-[7px] w-[7px] rounded-full bg-[var(--accent)]" />
           Sto leggendo {busy}…

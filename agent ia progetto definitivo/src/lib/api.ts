@@ -504,6 +504,13 @@ export async function addDocument(input: {
   text: string;
   source: DocumentSource;
   externalId?: string;
+  /**
+   * Vero quando il testo e parlato o scritto di fretta: il server lo fa mettere
+   * in ordine da un modello prima di indicizzarlo (riga 8 del PERCORSO).
+   * "Ho tre sale, dentro 40, la veranda 20 ma solo d'estate" diventa un elenco
+   * con le sue sezioni, e le eccezioni non si perdono.
+   */
+  organise?: boolean;
 }): Promise<StoredDocument> {
   const response = await fetch("/api/documents", {
     method: "POST",

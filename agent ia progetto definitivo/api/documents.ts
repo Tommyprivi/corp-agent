@@ -31,10 +31,105 @@
 import { currentUser } from "./_lib/auth.js";
 import { withUser } from "./_lib/db.js";
 import { chunk, embed, embeddingConfigured, toVector } from "./_lib/embed.js";
+import { chooseModel, fetchCatalog } from "./_lib/openrouter.js";
 
 /** Un menù sta in poche pagine. Oltre, è qualcuno che incolla un libro. */
 const MAX_TEXT = 400_000;
 const MAX_NAME = 200;
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * RIGA 8: LA CONVERSAZIONE DIVENTA STRUTTURA SALVATA
+ * ─────────────────────────────────────────────────────────────────────────
+ * Il PERCORSO chiedeva "la conversazione diventa struttura dati salvata": uno
+ * racconta com'è fatta la sua attività — "ho tre sale, dentro ci stanno
+ * quaranta, la veranda venti ma solo d'estate" — e quello diventa qualcosa che
+ * l'agente sa.
+ *
+ * ⚠️ SCELTA DI ARCHITETTURA, PRESA IL 2 AGOSTO 2026
+ * C'era una tabella `structures` pronta dalla migrazione 0001, con `kind`
+ * ('class' | 'rule') e `details`. Non la si usa, e vale spiegare perché.
+ *
+ * Una seconda tabella vorrebbe dire un secondo posto dove l'agente sa le cose:
+ * una sua ricerca, una sua iniezione nel prompt, un suo pannello, e due modi di
+ * andare fuori sincrono. Ma "in veranda ci stanno venti persone d'estate" è
+ * esattamente della stessa natura di "la margherita costa 7,50" — è un fatto
+ * sull'attività, e l'agente lo deve trovare quando serve.
+ *
+ * Quindi il parlato passa da un modello che lo mette in ordine, e finisce nella
+ * **stessa memoria** dei documenti. Una ricerca, una fonte di verità, un
+ * pannello. La struttura resta (il testo prodotto è organizzato in sezioni e
+ * righe), ma non si sdoppia il sistema per ottenerla.
+ */
+const ORGANISE = [
+  "Ti passo quello che il titolare di un'attività ha raccontato a voce o di fretta sulla sua",
+  "azienda. Rimettilo in ordine perché un assistente possa usarlo per rispondere ai clienti.",
+  "",
+  "REGOLE",
+  "Scrivi in italiano, in righe brevi, raggruppate sotto titoli di sezione in MAIUSCOLO.",
+  "Una informazione per riga. Metti una riga vuota prima di ogni titolo.",
+  "",
+  "Non aggiungere NIENTE che non sia stato detto: né prezzi, né orari, né capienze, né",
+  "condizioni. Non completare, non arrotondare, non dedurre. Se una cosa è detta a metà,",
+  "riportala a metà così com'è.",
+  "",
+  "Togli le esitazioni e le ripetizioni, tieni tutti i numeri e tutte le eccezioni: le",
+  "eccezioni ('solo d'estate', 'tranne il lunedì') sono la parte che conta di più.",
+  "",
+  "Non scrivere introduzioni, commenti o spiegazioni: solo il testo organizzato.",
+  "",
+  "ESEMPIO",
+  "Detto: «allora ho tre sale, dentro ci stanno 40 persone, la veranda 20 ma solo d'estate,",
+  "e il giardino lo apro solo per gli eventi»",
+  "",
+  "Diventa:",
+  "",
+  "SALE E CAPIENZA",
+  "",
+  "Sala interna — 40 posti",
+  "Veranda — 20 posti — solo d'estate",
+  "Giardino — solo per eventi",
+].join("\n");
+
+/**
+ * Mette in ordine quello che il titolare ha raccontato.
+ *
+ * Se il modello non risponde si tiene il testo grezzo: una memoria disordinata
+ * è comunque meglio di un errore in faccia a chi ha appena finito di parlare.
+ */
+async function organise(raw: string, apiKey: string): Promise<string> {
+  try {
+    const catalog = await fetchCatalog();
+    const model = chooseModel("standard", catalog);
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Title": "CorpAgent",
+      },
+      body: JSON.stringify({
+        model: model.id,
+        stream: false,
+        max_tokens: 3000,
+        messages: [
+          { role: "system", content: ORGANISE },
+          { role: "user", content: raw.slice(0, 20_000) },
+        ],
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!response.ok) return raw;
+    const body = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    return body.choices?.[0]?.message?.content?.trim() || raw;
+  } catch {
+    return raw;
+  }
+}
 
 interface DocumentRow {
   id: string;
@@ -90,7 +185,14 @@ export default {
         );
       }
 
-      let body: { name?: string; text?: string; source?: string; externalId?: string };
+      let body: {
+        name?: string;
+        text?: string;
+        source?: string;
+        externalId?: string;
+        /** Vero quando il testo e parlato da mettere in ordine (riga 8). */
+        organise?: boolean;
+      };
       try {
         body = (await request.json()) as typeof body;
       } catch {
@@ -107,7 +209,16 @@ export default {
         return json({ error: "Il documento è arrivato vuoto: non c'è testo da leggere." }, 400);
       }
 
-      const pieces = chunk(text);
+      // ── Riga 8: il parlato diventa struttura ─────────────────────────
+      // Si mette in ordine PRIMA di spezzare: un racconto di fretta, spezzato
+      // com'e, produrrebbe pezzi che non dicono niente da soli.
+      let content = text;
+      if (body.organise) {
+        const key = process.env.OPENROUTER_API_KEY;
+        if (key) content = await organise(text, key);
+      }
+
+      const pieces = chunk(content);
       if (pieces.length === 0) {
         return json({ error: "Non ho trovato testo utilizzabile in questo documento." }, 400);
       }
@@ -145,7 +256,7 @@ export default {
                 set name = $3, size_bytes = $4, status = 'indexed', chunk_count = $5,
                     error = null, updated_at = now()
               where id = $1 and user_id = $2`,
-            [documentId, userId, name, text.length, pieces.length]
+            [documentId, userId, name, content.length, pieces.length]
           );
         } else {
           const created = await client.query<{ id: string }>(
@@ -153,7 +264,7 @@ export default {
                (user_id, name, source, external_id, size_bytes, status, chunk_count, updated_at)
              values ($1, $2, $3, $4, $5, 'indexed', $6, now())
              returning id`,
-            [userId, name, source, clean(body.externalId, 200), text.length, pieces.length]
+            [userId, name, source, clean(body.externalId, 200), content.length, pieces.length]
           );
           documentId = created.rows[0].id;
         }
