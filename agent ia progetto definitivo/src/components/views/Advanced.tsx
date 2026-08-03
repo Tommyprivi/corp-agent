@@ -1,6 +1,7 @@
 import { useState } from "react";
 import MyAgents from "./MyAgents";
 import AgentCatalog from "./AgentCatalog";
+import Knowledge from "./Knowledge";
 import { PLANS } from "../../data/plans";
 import type { PresetAgent, RoleAgent } from "../../types";
 
@@ -13,7 +14,7 @@ interface AdvancedProps {
   onActivatePreset: (agent: PresetAgent, systemPrompt: string) => Promise<void> | void;
 }
 
-type Tab = "agents" | "catalog" | "account";
+type Tab = "agents" | "catalog" | "memory" | "account";
 
 /**
  * Impostazioni Avanzate: dove sta tutto quello che non serve all'ingresso.
@@ -35,6 +36,7 @@ export default function Advanced({
           <div className="flex gap-1">
             <Tab label="I miei agenti" active={tab === "agents"} onClick={() => setTab("agents")} />
             <Tab label="Agenti pronti" active={tab === "catalog"} onClick={() => setTab("catalog")} />
+            <Tab label="Memoria" active={tab === "memory"} onClick={() => setTab("memory")} />
             <Tab label="Account e piano" active={tab === "account"} onClick={() => setTab("account")} />
           </div>
         </div>
@@ -54,6 +56,7 @@ export default function Advanced({
           onActivate={onActivatePreset}
         />
       )}
+      {tab === "memory" && <Knowledge />}
       {tab === "account" && <Account />}
     </div>
   );

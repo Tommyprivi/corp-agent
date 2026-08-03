@@ -444,6 +444,144 @@ export async function deleteAgent(id: string): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// LA MEMORIA: I DOCUMENTI (Fase 2)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Come è entrato un documento nella memoria dell'agente. */
+export type DocumentSource = "upload" | "paste" | "photo" | "drive";
+
+export interface StoredDocument {
+  id: string;
+  name: string;
+  source: DocumentSource;
+  sizeBytes: number | null;
+  status: "pending" | "indexed" | "error";
+  /** In quanti pezzi è stato diviso: è la misura di quanto ne sa l'agente. */
+  chunkCount: number;
+  error: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export async function listDocuments(): Promise<StoredDocument[]> {
+  const response = await fetch("/api/documents", { credentials: "same-origin" });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as StoredDocument[];
+}
+
+/**
+ * Manda un documento alla memoria dell'agente.
+ *
+ * ⚠️ Arriva **testo**, non un file. L'estrazione da PDF e Word avviene nel
+ * browser (`src/lib/extract.ts`), per due motivi: le librerie stanno già lì, e
+ * una funzione su Vercel ha un tempo massimo che un PDF di cento pagine
+ * supererebbe.
+ *
+ * `externalId` serve ai documenti che vengono da fuori (Google Drive): lo
+ * stesso file aggiornato sostituisce il precedente invece di duplicarlo.
+ */
+export async function addDocument(input: {
+  name: string;
+  text: string;
+  source: DocumentSource;
+  externalId?: string;
+}): Promise<StoredDocument> {
+  const response = await fetch("/api/documents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as StoredDocument;
+}
+
+export async function deleteDocument(id: string): Promise<void> {
+  const response = await fetch(`/api/documents?id=${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw await readError(response);
+}
+
+/**
+ * Legge il testo da una foto, con un modello che vede.
+ *
+ * È la strada più vicina all'obiettivo "zero documenti": nessun file da
+ * preparare, si fotografa il menù appeso al muro. Gira sul server perché è lì
+ * che vivono le chiavi, e usa un modello di visione invece di una libreria di
+ * OCR — più preciso su un menù scritto a mano, e due megabyte in meno da
+ * scaricare a ogni visita.
+ */
+export async function readPhoto(dataUrl: string): Promise<{ text: string }> {
+  const response = await fetch("/api/media", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ kind: "ocr", image: dataUrl }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as { text: string };
+}
+
+/** Da dove l'agente ha preso l'informazione. La vede solo il titolare. */
+export interface AnswerSource {
+  name: string;
+  heading: string | null;
+  ordinal: number;
+  /** Da 0 a 1: quanto il pezzo somigliava alla domanda. */
+  similarity: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LE DOMANDE RIMASTE APERTE
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface OpenQuestion {
+  id: string;
+  channel: "chat" | "whatsapp" | "web";
+  question: string;
+  holdingReply: string | null;
+  status: "open" | "answered" | "dismissed";
+  answer: string | null;
+  createdAt: string;
+}
+
+export async function listOpenQuestions(): Promise<OpenQuestion[]> {
+  const response = await fetch("/api/questions", { credentials: "same-origin" });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as OpenQuestion[];
+}
+
+/**
+ * Rispondi a una domanda rimasta aperta.
+ *
+ * La risposta non chiude solo quella riga: diventa **memoria permanente**, così
+ * la stessa domanda non tornerà mai più senza risposta. È il meccanismo che fa
+ * crescere l'agente usandolo, senza caricare niente.
+ */
+export async function answerQuestion(id: string, answer: string): Promise<OpenQuestion> {
+  const response = await fetch("/api/questions", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ id, answer }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as OpenQuestion;
+}
+
+export async function dismissQuestion(id: string): Promise<void> {
+  const response = await fetch("/api/questions", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ id, dismiss: true }),
+  });
+  if (!response.ok) throw await readError(response);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // MODELLI
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -478,11 +616,11 @@ export async function getModels(): Promise<ModelsResponse> {
 
 /** Genera un'immagine con OpenAI. Ci mette 15-40 secondi: mostrare l'attesa. */
 export async function generateImage(prompt: string): Promise<{ dataUrl: string }> {
-  const response = await fetch("/api/images", {
+  const response = await fetch("/api/media", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ kind: "image", prompt }),
   });
   if (!response.ok) throw await readError(response);
   return (await response.json()) as { dataUrl: string };
@@ -493,11 +631,11 @@ export async function generateImage(prompt: string): Promise<{ dataUrl: string }
  * Restituisce l'elemento audio, così chi chiama può fermarlo.
  */
 export async function speak(text: string): Promise<HTMLAudioElement> {
-  const response = await fetch("/api/tts", {
+  const response = await fetch("/api/media", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ kind: "speech", text }),
   });
   if (!response.ok) throw await readError(response);
 

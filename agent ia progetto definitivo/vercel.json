@@ -7,8 +7,9 @@
     }
   ],
   "functions": {
-    "api/images.ts": { "maxDuration": 60 },
     "api/chat.ts": { "maxDuration": 60 },
-    "api/tts.ts": { "maxDuration": 60 }
+    "api/media.ts": { "maxDuration": 60 },
+    "api/documents.ts": { "maxDuration": 60 },
+    "api/build-agent.ts": { "maxDuration": 60 }
   }
 }
