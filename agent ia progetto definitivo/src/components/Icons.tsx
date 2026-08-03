@@ -308,3 +308,22 @@ export function PaperclipIcon({ size = 17 }: { size?: number }) {
     </svg>
   );
 }
+
+/** Tre righe: apre l'elenco delle chat sul telefono. */
+export function MenuIcon({ size = 19 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} {...base}>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
+
+/** Matita: rinomina una chat. */
+export function PencilIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} {...base}>
+      <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z" />
+      <path d="M14.5 5.5l3 3" />
+    </svg>
+  );
+}

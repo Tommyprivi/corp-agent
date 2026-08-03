@@ -366,6 +366,25 @@ export async function createProject(input: {
   return (await response.json()) as StoredProject;
 }
 
+/**
+ * Cambia il nome di una chat.
+ *
+ * Serve soprattutto al battesimo automatico: una chat nasce come "Nuova chat"
+ * con un tocco solo, e prende il suo nome dalle prime parole che ci scrivi.
+ * Chiedere di inventare un titolo prima di aver scritto niente è il tipo di
+ * attrito che fa smettere di creare chat nuove.
+ */
+export async function renameProject(id: string, name: string): Promise<StoredProject> {
+  const response = await fetch("/api/projects", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ id, name }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as StoredProject;
+}
+
 export async function deleteProject(id: string): Promise<void> {
   const response = await fetch(`/api/projects?id=${encodeURIComponent(id)}`, {
     method: "DELETE",

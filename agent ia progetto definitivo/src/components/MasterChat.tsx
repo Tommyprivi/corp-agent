@@ -9,9 +9,11 @@ import {
   CloseIcon,
   GearIcon,
   ImageIcon,
+  MenuIcon,
   MicIcon,
   MoonIcon,
   PaperclipIcon,
+  PencilIcon,
   PlusIcon,
   SparkleIcon,
   SpeakerIcon,
@@ -33,6 +35,7 @@ import {
   getModels,
   getProject,
   listProjects,
+  renameProject,
   speak,
   streamChat,
   type CatalogModelInfo,
@@ -67,6 +70,14 @@ let seq = 0;
 const nid = () => `e-${++seq}`;
 
 const SETUP_ID = "setup";
+
+/**
+ * Il nome che porta una chat appena creata, finche non ne prende uno dalla
+ * prima frase che ci si scrive. E anche il segnale che dice "questa non l'ha
+ * ancora battezzata nessuno": se il nome e diverso, l'ha scelto l'utente e
+ * non si tocca.
+ */
+const NEW_CHAT_NAME = "Nuova chat";
 
 /**
  * I fornitori che compaiono nel selettore, nell'ordine del documento di
@@ -214,6 +225,16 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
 
   /** Chiaro o scuro: parte scuro, la scelta resta sul dispositivo. */
   const { theme, toggle: toggleTheme } = useTheme();
+
+  /**
+   * L'elenco delle chat, sul telefono.
+   *
+   * Su schermo grande la sidebar e sempre li. Sotto md non c'era affatto:
+   * chi apriva CorpAgent dal telefono non aveva alcun modo di creare o
+   * cambiare chat, perche l'unico posto da cui si fa era `hidden md:flex`.
+   * Qui diventa un pannello che si apre da sopra il contenuto.
+   */
+  const [chatsOpen, setChatsOpen] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -379,6 +400,14 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
    * Un progetto nuovo. Nasce nel database, non nello stato del browser: così
    * l'identificativo è quello vero e i messaggi finiscono nel posto giusto.
    */
+  /**
+   * Una chat nuova con un tocco.
+   *
+   * Il nome non si chiede: nasce "Nuova chat" e si ribattezza da se dopo il
+   * primo messaggio (vedi `send`). Fermare qualcuno davanti a un campo di
+   * testo per farsi dire come si chiamera una conversazione che non e ancora
+   * cominciata e il modo migliore per fargli smettere di crearne.
+   */
   async function createProject(name: string) {
     if (serverReady) {
       try {
@@ -444,6 +473,7 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
   /** Apre un progetto e ne carica la conversazione se non è già in memoria. */
   function switchProject(id: string) {
     setActiveProject(id);
+    setChatsOpen(false);
     void openThread(id);
   }
 
@@ -684,11 +714,30 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
     }
   }
 
+  /**
+   * Da' un nome alla chat prendendolo dalla prima cosa che ci hai scritto.
+   * Si fa una volta sola, e solo se il nome e ancora quello predefinito: se
+   * l'utente l'ha rinominata a mano, la sua scelta vince.
+   */
+  function baptize(text: string) {
+    if (!serverReady || isSetup) return;
+    const current = projects.find((p) => p.id === activeProject);
+    if (!current || current.name !== NEW_CHAT_NAME) return;
+
+    const title = text.replace(/\s+/g, " ").trim().slice(0, 48);
+    const name = text.length > 48 ? `${title}...` : title;
+    setProjects((prev) => prev.map((p) => (p.id === activeProject ? { ...p, name } : p)));
+    void renameProject(activeProject, name).catch(() => {
+      // Il nome resta quello di prima: e cosmetica, non vale un errore in faccia.
+    });
+  }
+
   function send(e: React.FormEvent) {
     e.preventDefault();
     const text = draft.trim();
     if (!text || streaming) return;
     setDraft("");
+    baptize(text);
     add({ kind: "user", text });
     const conversation = [...history(entries), { role: "user" as const, content: text }];
 
@@ -787,7 +836,22 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
           righe: in alto chi sei e cosa crei, al centro dove lavori, in basso
           lo stato del canale e le impostazioni. Prima era un elenco unico e
           non si capiva cosa fosse cosa. */}
-      <aside className="on-dark side-scroll relative hidden w-[268px] shrink-0 flex-col overflow-y-auto bg-[var(--side-bg)] text-[var(--side-text)] md:flex">
+      {/* Il velo scuro dietro il pannello, solo sul telefono: chiude toccando fuori. */}
+      {chatsOpen && (
+        <button
+          aria-label="Chiudi l'elenco delle chat"
+          onClick={() => setChatsOpen(false)}
+          className="animate-rise fixed inset-0 z-30 bg-black/50 md:hidden"
+        />
+      )}
+
+      <aside
+        className={`on-dark side-scroll flex-col overflow-y-auto bg-[var(--side-bg)] text-[var(--side-text)] md:relative md:flex md:w-[268px] md:shrink-0 md:translate-x-0 ${
+          chatsOpen
+            ? "fixed inset-y-0 left-0 z-40 flex w-[280px] shadow-[var(--shadow-3)]"
+            : "hidden"
+        }`}
+      >
         <div aria-hidden className="orb orb-violet absolute left-[-40%] top-[-60px] h-[240px] w-[240px] opacity-30" />
 
         <div className="relative flex items-center px-5 pb-2 pt-5 text-white [&_*]:text-white">
@@ -898,7 +962,18 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
       <div className="flex min-w-0 flex-1 flex-col">
         {/* La testata mobile: sotto md la sidebar non c'è, il minimo resta qui. */}
         <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-card)] px-5 py-3 md:hidden">
-          <Logo size={22} />
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              onClick={() => setChatsOpen(true)}
+              aria-label="Le tue chat"
+              className="-ml-1 rounded-lg p-2 text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+            >
+              <MenuIcon size={19} />
+            </button>
+            <span className="truncate text-[14.5px] font-semibold text-[var(--text-primary)]">
+              {activeName}
+            </span>
+          </div>
           <div className="flex items-center gap-1">
             <ThemeButton theme={theme} onToggle={toggleTheme} />
             <button
@@ -1537,13 +1612,25 @@ function NewProjectButton({ onCreate }: { onCreate: (name: string) => void }) {
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="btn-side flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[13.5px] font-medium"
-      >
-        <PlusIcon size={15} />
-        Nuovo progetto
-      </button>
+      <div className="flex gap-1.5">
+        {/* Un tocco e la chat esiste: il nome arriva dopo, dalla prima frase. */}
+        <button
+          onClick={() => onCreate(NEW_CHAT_NAME)}
+          className="btn-side flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-[13.5px] font-medium"
+        >
+          <PlusIcon size={15} />
+          Nuova chat
+        </button>
+        {/* Per chi il titolo lo ha gia in testa. */}
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Nuova chat con un nome scelto da te"
+          title="Dai un nome tu"
+          className="rounded-xl border border-[var(--side-border)] px-2.5 text-[var(--side-text-dim)] transition-colors hover:text-white"
+        >
+          <PencilIcon size={15} />
+        </button>
+      </div>
     );
   }
 

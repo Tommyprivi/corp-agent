@@ -112,6 +112,36 @@ export default {
       return created ? json(shape(created), 201) : json({ error: "Progetto non creato." }, 500);
     }
 
+    // ── Rinominare ───────────────────────────────────────────────────────
+    // Serve a due cose: correggere un nome a mano, e dare un titolo sensato a
+    // una chat creata con un tocco solo. Chiedere di inventare un nome prima
+    // di aver scritto la prima parola è attrito inutile: la chat nasce come
+    // "Nuova chat" e si ribattezza da sé dopo il primo messaggio.
+    if (request.method === "PATCH") {
+      let patch: { id?: string; name?: string };
+      try {
+        patch = (await request.json()) as { id?: string; name?: string };
+      } catch {
+        return json({ error: "Richiesta non leggibile." }, 400);
+      }
+
+      if (!patch.id) return json({ error: "Serve l'identificativo del progetto." }, 400);
+      const newName = clean(patch.name, MAX_NAME);
+      if (!newName) return json({ error: "Serve un nome." }, 400);
+
+      const renamed = await withUser(userId, async (client) => {
+        const result = await client.query<ProjectRow>(
+          `update public.projects set name = $3
+            where id = $1 and user_id = $2
+            returning *`,
+          [patch.id, userId, newName]
+        );
+        return result.rows[0];
+      });
+
+      return renamed ? json(shape(renamed), 200) : json({ error: "Progetto non trovato." }, 404);
+    }
+
     if (request.method === "DELETE") {
       if (!id) return json({ error: "Serve l'identificativo del progetto." }, 400);
 
