@@ -35,6 +35,97 @@ import type { PresetAgent, PresetFamily } from "../types";
  * regola che tiene in piedi la promessa del prodotto.
  */
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * COSA SERVE A UN AGENTE PER LAVORARE
+ * ─────────────────────────────────────────────────────────────────────────
+ * Obiettivo fissato da Tommaso il 2 Agosto 2026: **l'utente non deve dare
+ * nessun documento.** Un agente che per partire chiede di caricare un file è
+ * un agente che non verrà usato.
+ *
+ * La maggior parte non ne ha bisogno: gli incolli il materiale nella chat, o
+ * lavora di pura testa. Una minoranza ha bisogno di dati che non possono
+ * essere inventati — lo stato di una spedizione, i numeri dei social — e per
+ * quelli non è una questione di fasi: servono i collegamenti (Fase 6).
+ *
+ * Questa etichetta compare nel catalogo, così si vede a colpo d'occhio cosa
+ * si può usare stasera. Prima non c'era modo di saperlo, e si scopriva
+ * attivando.
+ */
+export type AgentNeeds = "subito" | "documento" | "collegamento";
+
+export const NEEDS_LABEL: Record<AgentNeeds, { short: string; long: string }> = {
+  subito: {
+    short: "Funziona subito",
+    long: "Non serve niente: scrivigli e lavora. Se ha bisogno di un testo, incollalo nella chat.",
+  },
+  documento: {
+    short: "Meglio con un documento",
+    long:
+      "Funziona anche subito, ma dà il meglio quando può leggere un tuo documento — listino, menù, manuale. " +
+      "La lettura dei documenti arriva con la Fase 2.",
+  },
+  collegamento: {
+    short: "Serve un collegamento",
+    long:
+      "Ha bisogno di dati che stanno fuori da qui — spedizioni, social, contabilità, posta — e nessun " +
+      "modello può inventarli. Si attiva coi connettori (Fase 6).",
+  },
+};
+
+/**
+ * Chi ha bisogno di un collegamento esterno per dire qualcosa di vero.
+ *
+ * Elencati uno per uno invece di indovinati da parole chiave: sbagliare
+ * questa etichetta significa promettere all'utente qualcosa che non funziona,
+ * ed è esattamente il tipo di bugia che il progetto non vuole raccontare.
+ */
+const NEEDS_CONNECTION = new Set([
+  // Dati contabili e di cassa
+  "credit-manager",
+  "recupero-crediti",
+  "tesoreria",
+  "financial-controller",
+  "responsabile-budget",
+  "tax-collector",
+  // Logistica e magazzino
+  "supply-chain-monitor",
+  // Numeri dei social e del web
+  "social-analytics",
+  "analista-trend",
+  "reputazione-online",
+  "content-monitor",
+  // Caselle di posta e chat aziendali
+  "coordinatore-esecutivo",
+  "filtro-esecutivo",
+  "assistente-corrispondenza",
+  "kb-curator",
+  // Calendario
+  "analista-calendario",
+  "costi-riunione",
+  // Interazioni storiche dei clienti
+  "customer-success",
+]);
+
+/** Chi lavora molto meglio con un documento sotto gli occhi. */
+const NEEDS_DOCUMENT = new Set([
+  "gdpr-checker",
+  "document-analyst",
+  "legale-interno",
+  "ricercatore-bibliografico",
+  "analista-carriera",
+  "budget-familiare",
+  "pianificatore-domestico",
+  "inventario-regali",
+]);
+
+/** Cosa serve a questo agente per lavorare davvero. */
+export function agentNeeds(id: string): AgentNeeds {
+  if (NEEDS_CONNECTION.has(id)) return "collegamento";
+  if (NEEDS_DOCUMENT.has(id)) return "documento";
+  return "subito";
+}
+
 /** Gli agenti che chiedono di mentire: nel catalogo non ci vanno. */
 const NOT_ACTIVATABLE = new Set([
   "deadline-fittizie",

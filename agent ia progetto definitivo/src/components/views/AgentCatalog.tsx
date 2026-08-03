@@ -1,6 +1,12 @@
 import { useMemo, useState } from "react";
 import { CheckIcon, PlusIcon, SearchIcon } from "../Icons";
-import { agentsByFamily, presetSystemPrompt } from "../../data/agentPrompts";
+import {
+  NEEDS_LABEL,
+  agentNeeds,
+  agentsByFamily,
+  presetSystemPrompt,
+  type AgentNeeds,
+} from "../../data/agentPrompts";
 import type { PresetAgent, PresetFamily } from "../../types";
 
 /**
@@ -33,6 +39,14 @@ interface AgentCatalogProps {
 export default function AgentCatalog({ activeNames, onActivate }: AgentCatalogProps) {
   const [query, setQuery] = useState("");
   const [family, setFamily] = useState<PresetFamily | "all">("all");
+  /**
+   * Il filtro che conta davvero.
+   *
+   * Obiettivo di Tommaso: zero documenti. Chi apre il catalogo vuole sapere
+   * cosa puo usare stasera, non leggersi 125 schede per scoprire che tre
+   * hanno bisogno di un collegamento che non esiste ancora.
+   */
+  const [onlyReady, setOnlyReady] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [doneIds, setDoneIds] = useState<string[]>([]);
 
@@ -44,18 +58,23 @@ export default function AgentCatalog({ activeNames, onActivate }: AgentCatalogPr
       .filter((g) => family === "all" || g.family === family)
       .map((g) => ({
         ...g,
-        agents: needle
-          ? g.agents.filter(
-              (a) =>
-                a.name.toLowerCase().includes(needle) ||
-                a.description.toLowerCase().includes(needle)
-            )
-          : g.agents,
+        agents: g.agents
+          .filter((a) => !onlyReady || agentNeeds(a.id) === "subito")
+          .filter(
+            (a) =>
+              !needle ||
+              a.name.toLowerCase().includes(needle) ||
+              a.description.toLowerCase().includes(needle)
+          ),
       }))
       .filter((g) => g.agents.length > 0);
-  }, [groups, query, family]);
+  }, [groups, query, family, onlyReady]);
 
   const total = groups.reduce((n, g) => n + g.agents.length, 0);
+  const readyCount = groups.reduce(
+    (n, g) => n + g.agents.filter((a) => agentNeeds(a.id) === "subito").length,
+    0
+  );
   const shown = filtered.reduce((n, g) => n + g.agents.length, 0);
 
   async function activate(agent: PresetAgent) {
@@ -75,7 +94,7 @@ export default function AgentCatalog({ activeNames, onActivate }: AgentCatalogPr
       </h1>
       <p className="mt-2 text-[14.5px] leading-relaxed text-[var(--text-secondary)]">
         {total} lavoratori digitali già configurati. Attivane uno e comincia a usarlo subito —
-        oppure raccontа al Master Builder cosa ti serve e te ne costruisce uno su misura.
+        oppure racconta al Master Builder cosa ti serve e te ne costruisce uno su misura.
       </p>
 
       {/* Ricerca e filtri: con 127 voci, scorrere non è un modo di trovare. */}
@@ -112,9 +131,27 @@ export default function AgentCatalog({ activeNames, onActivate }: AgentCatalogPr
           ))}
         </div>
 
-        {query && (
+        {/* Il filtro che risponde alla domanda vera: cosa posso usare stasera? */}
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3.5 py-3">
+          <input
+            type="checkbox"
+            checked={onlyReady}
+            onChange={(e) => setOnlyReady(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
+          />
+          <span className="min-w-0">
+            <span className="block text-[13.5px] font-medium text-[var(--text-primary)]">
+              Solo quelli che funzionano subito
+            </span>
+            <span className="block text-[12.5px] leading-snug text-[var(--text-secondary)]">
+              {readyCount} su {total} non hanno bisogno di niente: gli scrivi e lavorano.
+            </span>
+          </span>
+        </label>
+
+        {(query || onlyReady) && (
           <p className="text-[12.5px] text-[var(--text-secondary)]">
-            {shown === 0 ? "Nessun agente per questa ricerca." : `${shown} su ${total}`}
+            {shown === 0 ? "Nessun agente con questi filtri." : `${shown} su ${total}`}
           </p>
         )}
       </div>
@@ -140,6 +177,7 @@ export default function AgentCatalog({ activeNames, onActivate }: AgentCatalogPr
                       <p className="mt-0.5 text-[13px] leading-relaxed text-[var(--text-secondary)]">
                         {agent.description}
                       </p>
+                      <NeedsBadge needs={agentNeeds(agent.id)} />
                     </div>
                     <button
                       onClick={() => void activate(agent)}
@@ -172,6 +210,34 @@ export default function AgentCatalog({ activeNames, onActivate }: AgentCatalogPr
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * Cosa serve a questo agente, detto in faccia.
+ *
+ * Il verde non e decorazione: e lunica informazione che qualcuno cerca
+ * davvero in questo elenco. "Serve un collegamento" e scritto in chiaro
+ * perche scoprirlo dopo aver attivato e la cosa che fa perdere fiducia.
+ */
+function NeedsBadge({ needs }: { needs: AgentNeeds }) {
+  const label = NEEDS_LABEL[needs];
+  const style =
+    needs === "subito"
+      ? { color: "var(--positive)", background: "var(--positive-soft)" }
+      : { color: "var(--text-secondary)", background: "var(--fill-quiet)" };
+
+  return (
+    <span
+      className="mt-2 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11.5px] font-medium"
+      style={style}
+      title={label.long}
+    >
+      {needs === "subito" && (
+        <span className="h-[5px] w-[5px] rounded-full" style={{ background: "var(--positive)" }} />
+      )}
+      {label.short}
+    </span>
   );
 }
 
