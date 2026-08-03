@@ -253,6 +253,151 @@ export async function askChat(
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// PROGETTI E CONVERSAZIONI (riga 9 della Fase 1)
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Un progetto come lo restituisce il server.
+ *
+ * Ha in più `isSetup`: è il progetto di configurazione, quello dove vive la
+ * conversazione col Master Builder. Non si può cancellare, e ce n'è uno solo
+ * per utente. `deletable` è il suo contrario, ed esiste perché l'interfaccia
+ * ragiona in termini di "questo si può chiudere".
+ */
+export interface StoredProject {
+  id: string;
+  name: string;
+  agentId: string | null;
+  isSetup: boolean;
+  deletable: boolean;
+  createdAt: string;
+}
+
+/** Un messaggio salvato, con quanto è costato. */
+export interface StoredMessage {
+  id: string;
+  role: "user" | "agent" | "system";
+  content: string;
+  modelSlug: string | null;
+  tokensIn: number;
+  tokensOut: number;
+  costEur: number;
+  handledAlone: boolean;
+  createdAt: string;
+}
+
+export interface StoredProjectWithMessages extends StoredProject {
+  messages: StoredMessage[];
+}
+
+export async function listProjects(): Promise<StoredProject[]> {
+  const response = await fetch("/api/projects", { credentials: "same-origin" });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as StoredProject[];
+}
+
+/** Un progetto con dentro tutta la sua conversazione: serve a riaprirla dov'era. */
+export async function getProject(id: string): Promise<StoredProjectWithMessages> {
+  const response = await fetch(`/api/projects?id=${encodeURIComponent(id)}`, {
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as StoredProjectWithMessages;
+}
+
+export async function createProject(input: {
+  name: string;
+  agentId?: string;
+  isSetup?: boolean;
+}): Promise<StoredProject> {
+  const response = await fetch("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as StoredProject;
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  const response = await fetch(`/api/projects?id=${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw await readError(response);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AGENTI
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface StoredAgent {
+  id: string;
+  name: string;
+  role: string;
+  systemPrompt: string | null;
+  modelSlug: string | null;
+  active: boolean;
+  isCustom: boolean;
+  createdAt: string;
+}
+
+export async function listAgents(): Promise<StoredAgent[]> {
+  const response = await fetch("/api/agents", { credentials: "same-origin" });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as StoredAgent[];
+}
+
+export async function createAgent(input: {
+  name: string;
+  role: string;
+  systemPrompt?: string;
+  modelSlug?: string;
+  isCustom?: boolean;
+}): Promise<StoredAgent> {
+  const response = await fetch("/api/agents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as StoredAgent;
+}
+
+/**
+ * Cambia un agente. Si manda **solo** quello che cambia: il server usa
+ * `coalesce` su ogni campo, quindi accendere un interruttore è
+ * `updateAgent({ id, active: false })` e nient'altro.
+ */
+export async function updateAgent(patch: {
+  id: string;
+  name?: string;
+  role?: string;
+  systemPrompt?: string;
+  modelSlug?: string;
+  active?: boolean;
+}): Promise<StoredAgent> {
+  const response = await fetch("/api/agents", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as StoredAgent;
+}
+
+export async function deleteAgent(id: string): Promise<void> {
+  const response = await fetch(`/api/agents?id=${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw await readError(response);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // MODELLI
 // ─────────────────────────────────────────────────────────────────────────
 

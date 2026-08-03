@@ -14,9 +14,13 @@
 > parlato con un modello vero: domanda in italiano, risposta in 1,5 secondi, salvata su
 > Neon, con l'avviso costi che è scattato da solo su una richiesta pesante.
 >
+> Chiusa anche la **9** lo stesso giorno: conversazioni, progetti e agenti vivono su
+> Neon. Ricarichi la pagina e ritrovi tutto — provato leggendo indietro dal database
+> i messaggi appena scritti.
+>
 > Prima riga da fare: la **7**, il Master Builder che genera l'agente in JSON.
-> Restano aperte anche la **9** (il backend è provato, ma il frontend non lo chiama
-> ancora: ricarichi la pagina e la chat riparte vuota) e la **10**, che aspetta solo la
+> Serve una decisione di Tommaso sul carattere dell'agente (tono, tu o lei, quanti
+> agenti propone) prima di scriverlo. Resta aperta anche la **10**, che aspetta solo la
 > chiave gratuita di Cloudflare Turnstile.
 >
 > ⚠️ **Cambio di architettura deciso da Tommaso il 1 Agosto 2026:** il backend è
@@ -75,7 +79,7 @@ Senza questa fase il prodotto non è vendibile: l'agente non risponde davvero.
 | 6 | Conteggio token e consumi per utente | — | ✅ dopo la migrazione `0004` (vedi sotto) |
 | 7 | Master Builder vero: Structured Output che genera l'agente in JSON | OpenRouter | ⬜ **la prossima** |
 | 8 | Configurazione guidata vera: la conversazione diventa struttura dati salvata | OpenRouter | ⬜ |
-| 9 | Salvataggio permanente di agenti, chat, documenti, configurazioni | Neon | 🔧 backend provato, il frontend non lo chiama ancora |
+| 9 | Salvataggio permanente di agenti, chat, documenti, configurazioni | Neon | ✅ chat, progetti e agenti — i documenti alla Fase 2 |
 | 10 | Turnstile vero al posto del segnaposto | Cloudflare (gratis) | ⬜ manca solo la chiave, gratuita |
 
 > ✅ **Eseguite davvero il 2 Agosto 2026.** Le righe 3-6 erano rimaste per settimane

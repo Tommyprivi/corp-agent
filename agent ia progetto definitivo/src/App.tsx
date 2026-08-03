@@ -5,11 +5,35 @@ import MasterChat from "./components/MasterChat";
 import Advanced from "./components/views/Advanced";
 import { CloseIcon } from "./components/Icons";
 import Logo from "./components/Logo";
-import { authClient, getProfile, surveyComplete, type Profile } from "./lib/api";
+import {
+  authClient,
+  createAgent,
+  getProfile,
+  listAgents,
+  surveyComplete,
+  updateAgent,
+  type Profile,
+  type StoredAgent,
+} from "./lib/api";
 import type { RoleAgent, SurveyAnswers } from "./types";
 
-let idCounter = 0;
-const nextId = (p: string) => `${p}-${++idCounter}`;
+/**
+ * Da come li salva il database a come li disegna l'interfaccia.
+ *
+ * Due nomi diversi per la stessa cosa: il database dice `model_slug` e
+ * `is_custom`, il frontend dice `modelId` e `custom`. La traduzione sta qui,
+ * in un posto solo, invece che sparsa in ogni componente.
+ */
+function toRoleAgent(a: StoredAgent): RoleAgent {
+  return {
+    id: a.id,
+    name: a.name,
+    role: a.role,
+    modelId: a.modelSlug ?? "auto",
+    active: a.active,
+    custom: a.isCustom,
+  };
+}
 
 /**
  * Chi decide cosa si vede.
@@ -54,6 +78,27 @@ export default function App() {
       })
       .finally(() => {
         if (alive) setProfileLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [session]);
+
+  // Gli agenti salvati (riga 9). Prima vivevano solo nello stato del browser:
+  // bastava una ricarica e il lavoro era perso.
+  useEffect(() => {
+    if (!session) {
+      setAgents([]);
+      return;
+    }
+    let alive = true;
+    listAgents()
+      .then((rows) => {
+        if (alive) setAgents(rows.map(toRoleAgent));
+      })
+      .catch(() => {
+        // Nessun agente da mostrare invece di un errore in faccia: la chat
+        // funziona comunque, e il Master Builder ne propone di nuovi.
       });
     return () => {
       alive = false;
@@ -107,26 +152,32 @@ export default function App() {
           <div className="flex-1 overflow-y-auto">
             <Advanced
               agents={agents}
-              onToggleAgent={(id) =>
-                setAgents((prev) =>
-                  prev.map((a) => (a.id === id ? { ...a, active: !a.active } : a))
-                )
-              }
+              onToggleAgent={(id) => {
+                // Prima si accende l'interruttore, poi si avvisa il server:
+                // un interruttore che aspetta la rete per muoversi sembra rotto.
+                const next = !agents.find((a) => a.id === id)?.active;
+                setAgents((prev) => prev.map((a) => (a.id === id ? { ...a, active: next } : a)));
+                void updateAgent({ id, active: next }).catch(() => {
+                  setAgents((prev) =>
+                    prev.map((a) => (a.id === id ? { ...a, active: !next } : a))
+                  );
+                });
+              }}
               onStartChat={() => setAdvancedOpen(false)}
-              onCreateAgent={(description) =>
-                setAgents((prev) => [
-                  ...prev,
-                  {
-                    id: nextId("agent"),
-                    name:
-                      description.length > 34 ? `${description.slice(0, 34)}...` : description,
-                    role: description,
-                    modelId: "claude-3-5-sonnet",
-                    active: true,
-                    custom: true,
-                  },
-                ])
-              }
+              onCreateAgent={(description) => {
+                void createAgent({
+                  name: description.length > 34 ? `${description.slice(0, 34)}...` : description,
+                  role: description,
+                  // "auto" e non un modello scritto a mano: la scelta la fa il
+                  // server in base alla difficoltà della domanda.
+                  modelSlug: "auto",
+                  isCustom: true,
+                })
+                  .then((created) => setAgents((prev) => [...prev, toRoleAgent(created)]))
+                  .catch(() => {
+                    // Non si è salvato: non lo mostriamo come se fosse fatto.
+                  });
+              }}
             />
           </div>
         </div>

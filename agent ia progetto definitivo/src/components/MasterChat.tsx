@@ -24,8 +24,12 @@ import { KITS } from "../data/kits";
 import { planById } from "../data/plans";
 import {
   ApiError,
+  createProject as apiCreateProject,
+  deleteProject as apiDeleteProject,
   generateImage,
   getModels,
+  getProject,
+  listProjects,
   speak,
   streamChat,
   type CatalogModelInfo,
@@ -156,6 +160,26 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
     updater: (prev: Array<Entry & { id: string }>) => Array<Entry & { id: string }>
   ) => setThreads((prev) => ({ ...prev, [activeProject]: updater(prev[activeProject] ?? []) }));
 
+  /**
+   * Vero quando i progetti arrivano davvero dal database (riga 9).
+   *
+   * Se resta falso — database giù, sessione scaduta — la chat continua a
+   * funzionare con lo stato locale come faceva prima: si risponde, ma non si
+   * archivia. È la stessa scelta di `api/chat.ts`: prima consegnare la
+   * risposta, poi provare a salvarla. Un salvataggio che non riesce non deve
+   * impedire di lavorare.
+   */
+  const [serverReady, setServerReady] = useState(false);
+
+  /**
+   * L identificativo del progetto di configurazione.
+   *
+   * Prima era la costante "setup" scritta a mano. Ora è un UUID vero che
+   * arriva da Neon: SETUP_ID resta solo come valore di partenza, per il
+   * mezzo secondo prima che la lettura dal database finisca.
+   */
+  const setupId = projects.find((p) => !p.deletable)?.id ?? SETUP_ID;
+
   const [tradeId, setTradeId] = useState<TradeId | null>(null);
   const [agents, setAgents] = useState<string[]>([]);
   const [whatsAppConnected, setWhatsAppConnected] = useState(false);
@@ -195,11 +219,110 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
       });
   }, []);
 
+  /**
+   * L'apertura vera (riga 9): i progetti si leggono da Neon.
+   *
+   * Il progetto di configurazione è quello con `isSetup`: ce n'è uno solo per
+   * utente ed è dove vive la conversazione col Master Builder. Al primo
+   * ingresso non esiste ancora, quindi lo creiamo qui — è l'unico posto in cui
+   * viene creato, e per questo non possono nascerne due.
+   */
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const list = await listProjects();
+        let setup = list.find((p) => p.isSetup);
+        if (!setup) {
+          setup = await apiCreateProject({ name: "I miei agenti", isSetup: true });
+        }
+        if (!alive) return;
+
+        // Il progetto di configurazione per primo, come li ordina il server.
+        const ordered = [setup, ...list.filter((p) => p.id !== setup.id)];
+        setProjects(ordered.map((p) => ({ id: p.id, name: p.name, deletable: p.deletable })));
+        setActiveProject(setup.id);
+        setServerReady(true);
+        await openThread(setup.id, true);
+      } catch {
+        // Si resta sullo stato locale: `serverReady` non diventa vero e la
+        // chat lavora come prima, senza archiviare.
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+    // Una volta sola, all'ingresso: le dipendenze qui sarebbero funzioni
+    // ricreate a ogni render e rifarebbero il giro in continuazione.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** Scorrimento automatico: la conversazione si segue da sola. */
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [entries.length, typing, imageBusy]);
+
+  /**
+   * Apre una conversazione leggendo i messaggi salvati (riga 9).
+   *
+   * Si legge una volta sola per progetto: `threads` fa da memoria, e passare
+   * da un progetto all'altro non rifà il giro di rete. `force` serve
+   * all'apertura, quando la memoria contiene ancora il segnaposto locale.
+   *
+   * Il saluto e le carte dei mestieri non sono messaggi: sono impalcatura
+   * dell'interfaccia. Per questo si rimettono a mano quando la conversazione
+   * risulta vuota, invece di salvarli nel database — dove sporcherebbero la
+   * cronologia e verrebbero rimandati al modello a ogni domanda.
+   */
+  async function openThread(projectId: string, force = false) {
+    if (!force && threads[projectId]) return;
+
+    try {
+      const project = await getProject(projectId);
+      const restored: Array<Entry & { id: string }> = project.messages
+        .filter((m) => m.role === "user" || m.role === "agent")
+        .map((m) =>
+          m.role === "user"
+            ? { id: `m-${m.id}`, kind: "user" as const, text: m.content }
+            : {
+                id: `m-${m.id}`,
+                kind: "master" as const,
+                text: m.content,
+                model: m.modelSlug ?? undefined,
+              }
+        );
+
+      if (restored.length === 0) {
+        setThreads((prev) => ({
+          ...prev,
+          [projectId]: project.isSetup
+            ? [
+                {
+                  id: nid(),
+                  kind: "master",
+                  text: "Ciao. Dimmi di cosa ti occupi e ti metto in piedi tutto io: gli agenti, i canali, il piano.",
+                },
+                { id: nid(), kind: "trades" },
+              ]
+            : [
+                {
+                  id: nid(),
+                  kind: "master",
+                  text: `"${project.name}". Raccontami cosa vuoi fare e lo pianifichiamo insieme.`,
+                },
+              ],
+        }));
+        return;
+      }
+
+      setThreads((prev) => ({ ...prev, [projectId]: restored }));
+    } catch {
+      // Non si riesce a rileggere: si lascia quello che c'è già in memoria.
+    }
+  }
 
   function add(...items: Entry[]) {
     setEntries((prev) => [...prev, ...items.map((i) => ({ ...i, id: nid() }))]);
@@ -219,7 +342,34 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
     );
   }
 
-  function createProject(name: string) {
+  /**
+   * Un progetto nuovo. Nasce nel database, non nello stato del browser: così
+   * l'identificativo è quello vero e i messaggi finiscono nel posto giusto.
+   */
+  async function createProject(name: string) {
+    if (serverReady) {
+      try {
+        const created = await apiCreateProject({ name });
+        setProjects((prev) => [...prev, { id: created.id, name: created.name, deletable: true }]);
+        setThreads((prev) => ({
+          ...prev,
+          [created.id]: [
+            {
+              id: nid(),
+              kind: "master",
+              text: `"${created.name}". Raccontami cosa vuoi fare e lo pianifichiamo insieme.`,
+            },
+          ],
+        }));
+        setActiveProject(created.id);
+        return;
+      } catch (error) {
+        add({ kind: "master", text: explain(error) });
+        return;
+      }
+    }
+
+    // Senza database si lavora in locale, come prima.
     const id = nid();
     setProjects((prev) => [...prev, { id, name, deletable: true }]);
     setThreads((prev) => ({
@@ -235,14 +385,33 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
     setActiveProject(id);
   }
 
-  function deleteProject(id: string) {
+  async function deleteProject(id: string) {
+    // Si toglie prima dallo schermo: l'utente ha premuto "chiudi" e deve
+    // vedere il progetto sparire subito, non dopo il giro di rete.
+    const previous = projects;
     setProjects((prev) => prev.filter((p) => p.id !== id));
     setThreads((prev) => {
       const next = { ...prev };
       delete next[id];
       return next;
     });
-    if (activeProject === id) setActiveProject(SETUP_ID);
+    if (activeProject === id) setActiveProject(setupId);
+
+    if (!serverReady) return;
+    try {
+      await apiDeleteProject(id);
+    } catch (error) {
+      // Non si è cancellato davvero: rimetterlo è meno peggio che far credere
+      // di averlo chiuso e ritrovarlo alla prossima ricarica.
+      setProjects(previous);
+      add({ kind: "master", text: explain(error) });
+    }
+  }
+
+  /** Apre un progetto e ne carica la conversazione se non è già in memoria. */
+  function switchProject(id: string) {
+    setActiveProject(id);
+    void openThread(id);
   }
 
   /** Il master "pensa" un attimo prima di rispondere: rende la guida credibile. */
@@ -368,6 +537,11 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
         systemPrompt: systemPrompt(),
         modelSlug,
         confirmHeavy,
+        // ⚠️ LA RIGA 9. Senza questo il server risponde e non archivia: era
+        // il motivo per cui una ricarica azzerava tutte le conversazioni.
+        // Si manda solo se i progetti vengono davvero dal database, altrimenti
+        // sarebbe un identificativo inventato e il salvataggio fallirebbe.
+        projectId: serverReady ? activeProject : undefined,
       })) {
         if (event.kind === "warning") {
           setTyping(false);
@@ -504,7 +678,7 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
         </div>
 
         <div className="relative px-3 pt-4">
-          <NewProjectButton onCreate={createProject} />
+          <NewProjectButton onCreate={(name) => void createProject(name)} />
         </div>
 
         <nav className="relative flex-1 px-3 pb-4">
@@ -521,7 +695,7 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
                 }`}
               >
                 <button
-                  onClick={() => setActiveProject(p.id)}
+                  onClick={() => switchProject(p.id)}
                   className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5 text-left"
                 >
                   <span
@@ -538,7 +712,7 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
                 </button>
                 {p.deletable && (
                   <button
-                    onClick={() => deleteProject(p.id)}
+                    onClick={() => void deleteProject(p.id)}
                     aria-label={`Chiudi ${p.name}`}
                     className="mr-1.5 hidden rounded-md p-1 text-[var(--side-text-dim)] hover:text-white group-hover:block"
                   >
