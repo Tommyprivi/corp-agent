@@ -268,11 +268,35 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Quanti caratteri ci sono in tutta la conversazione.
+   *
+   * ⚠️ Serve solo come dipendenza dello scorrimento, ed è la riga che ha
+   * risolto il difetto più fastidioso del prodotto. Prima lo scorrimento
+   * dipendeva da `entries.length`, che **non cambia mentre una risposta
+   * cresce**: la riga è già lì, si allunga soltanto. Risultato: il testo
+   * scorreva sotto il bordo dello schermo e sembrava che l'agente non
+   * finisse le frasi. Erano finite: stavano fuori vista.
+   */
+  const streamedChars = entries.reduce(
+    (n, e) => n + (e.kind === "master" || e.kind === "user" ? e.text.length : 0),
+    0
+  );
+
   /** Scorrimento automatico: la conversazione si segue da sola. */
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [entries.length, typing, imageBusy]);
+    if (!el) return;
+
+    // Se l'utente è scorso su per rileggere qualcosa, non lo si strappa in
+    // fondo a ogni parola che arriva: si segue solo chi era già in fondo.
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom > 220) return;
+
+    // Mentre il testo arriva lo scorrimento è istantaneo: "smooth" a ogni
+    // pezzo si accavalla con sé stesso e produce un tremolio.
+    el.scrollTo({ top: el.scrollHeight, behavior: streaming ? "auto" : "smooth" });
+  }, [entries.length, streamedChars, typing, imageBusy, streaming]);
 
   /**
    * Apre una conversazione leggendo i messaggi salvati (riga 9).
