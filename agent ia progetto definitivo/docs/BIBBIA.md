@@ -81,3 +81,7 @@ Tre eccezioni decise dal proprietario delle regole, perché le chiavi API c'eran
   il selettore c'è (catalogo vivo da OpenRouter, non più `src/data/models.ts`)
 - **Generazione di immagini** in chat (OpenAI)
 - **Voce**: dettatura col microfono e risposte lette ad alta voce (ElevenLabs)
+- **I 125 agenti del catalogo sono attivabili**, con istruzioni vere composte da
+  `src/data/agentPrompts.ts`. Ma **non all'ingresso**: stanno dietro Impostazioni
+  Avanzate, quindi il principio 1 resta intatto. Esclusi gli 8 surreali e i 2 che
+  chiederebbero all'agente di ingannare qualcuno

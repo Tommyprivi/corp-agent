@@ -253,6 +253,52 @@ export async function askChat(
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// IL MASTER BUILDER (riga 7 della Fase 1)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** I toni che l'agente può usare coi clienti finali. */
+export type AgentTone = "cordiale" | "neutro" | "formale" | "come-parlo-io";
+
+export interface ProposedAgent {
+  name: string;
+  role: string;
+  /** Le istruzioni operative: nascoste dietro "vedi le istruzioni". */
+  instructions: string;
+  tone: AgentTone;
+}
+
+/**
+ * Cosa risponde il Master Builder.
+ *
+ * Due forme, perché si comporta come un consulente: prima fa due o tre
+ * domande, poi propone. Il frontend guarda `kind` e sa cosa disegnare.
+ */
+export type BuildResult =
+  | { kind: "question"; message: string; question: string }
+  | { kind: "proposal"; message: string; agents: ProposedAgent[] };
+
+/**
+ * Chiede al Master Builder di leggere la conversazione e generare gli agenti.
+ *
+ * Non è streaming: all'utente non serve vedere un JSON che si scrive, gli
+ * serve la carta pronta da confermare. Ci vogliono 3-8 secondi.
+ */
+export async function buildAgent(options: {
+  messages: ChatMessage[];
+  /** Quanti agenti ha già: serve per l'avviso sul limite del piano Free. */
+  agentCount?: number;
+}): Promise<BuildResult> {
+  const response = await fetch("/api/build-agent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(options),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as BuildResult;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // PROGETTI E CONVERSAZIONI (riga 9 della Fase 1)
 // ─────────────────────────────────────────────────────────────────────────
 

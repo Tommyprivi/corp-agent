@@ -18,10 +18,16 @@
 > Neon. Ricarichi la pagina e ritrovi tutto — provato leggendo indietro dal database
 > i messaggi appena scritti.
 >
-> Prima riga da fare: la **7**, il Master Builder che genera l'agente in JSON.
-> Serve una decisione di Tommaso sul carattere dell'agente (tono, tu o lei, quanti
-> agenti propone) prima di scriverlo. Resta aperta anche la **10**, che aspetta solo la
-> chiave gratuita di Cloudflare Turnstile.
+> Chiusa anche la **7**: il Master Builder genera l'agente in JSON garantito, si comporta
+> come un consulente (due domande al massimo, poi propone) e non promette cose che il
+> prodotto non sa fare. Il carattere è stato deciso da Tommaso domanda per domanda il
+> 2 Agosto 2026: sta scritto in `api/build-agent.ts` e non si cambia senza chiederglielo.
+>
+> Lo stesso giorno i **125 agenti del catalogo** sono diventati funzionanti: avevano nome
+> e descrizione ma nessuna istruzione, quindi attivarne uno non produceva niente.
+>
+> Prima riga da fare: la **8**, la configurazione guidata che diventa struttura dati.
+> Resta aperta anche la **10**, che aspetta solo la chiave gratuita di Cloudflare Turnstile.
 >
 > ⚠️ **Cambio di architettura deciso da Tommaso il 1 Agosto 2026:** il backend è
 > **Neon + funzioni su Vercel + Better Auth**, non più Supabase. Neon è solo il database,
@@ -77,8 +83,8 @@ Senza questa fase il prodotto non è vendibile: l'agente non risponde davvero.
 | 4 | Scelta automatica del modello per difficoltà | — | ✅ "ciao" → modello leggero, "analizza" → Opus |
 | 5 | Avviso prima di una richiesta dispendiosa | — | ✅ scatta **prima** di spendere, con la cifra |
 | 6 | Conteggio token e consumi per utente | — | ✅ dopo la migrazione `0004` (vedi sotto) |
-| 7 | Master Builder vero: Structured Output che genera l'agente in JSON | OpenRouter | ⬜ **la prossima** |
-| 8 | Configurazione guidata vera: la conversazione diventa struttura dati salvata | OpenRouter | ⬜ |
+| 7 | Master Builder vero: Structured Output che genera l'agente in JSON | OpenRouter | ✅ genera, chiede, non mente — e i 125 preset funzionano |
+| 8 | Configurazione guidata vera: la conversazione diventa struttura dati salvata | OpenRouter | ⬜ **la prossima** |
 | 9 | Salvataggio permanente di agenti, chat, documenti, configurazioni | Neon | ✅ chat, progetti e agenti — i documenti alla Fase 2 |
 | 10 | Turnstile vero al posto del segnaposto | Cloudflare (gratis) | ⬜ manca solo la chiave, gratuita |
 

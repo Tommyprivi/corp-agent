@@ -163,6 +163,23 @@ export default function App() {
                   );
                 });
               }}
+              onActivatePreset={async (preset, systemPrompt) => {
+                // Il catalogo non e piu una vetrina: attivare scrive su Neon
+                // con le istruzioni composte, e da quel momento l agente
+                // risponde davvero come qualunque altro.
+                try {
+                  const created = await createAgent({
+                    name: preset.name,
+                    role: preset.description,
+                    systemPrompt,
+                    modelSlug: "auto",
+                    isCustom: false,
+                  });
+                  setAgents((prev) => [...prev, toRoleAgent(created)]);
+                } catch {
+                  // Non salvato: non lo mostriamo come se fosse attivo.
+                }
+              }}
               onStartChat={() => setAdvancedOpen(false)}
               onCreateAgent={(description) => {
                 void createAgent({

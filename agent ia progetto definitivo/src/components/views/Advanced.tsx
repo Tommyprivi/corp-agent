@@ -1,16 +1,19 @@
 import { useState } from "react";
 import MyAgents from "./MyAgents";
+import AgentCatalog from "./AgentCatalog";
 import { PLANS } from "../../data/plans";
-import type { RoleAgent } from "../../types";
+import type { PresetAgent, RoleAgent } from "../../types";
 
 interface AdvancedProps {
   agents: RoleAgent[];
   onToggleAgent: (agentId: string) => void;
   onStartChat: (agentId: string) => void;
   onCreateAgent: (description: string) => void;
+  /** Attiva un agente del catalogo: lo salva su Neon con le sue istruzioni. */
+  onActivatePreset: (agent: PresetAgent, systemPrompt: string) => Promise<void> | void;
 }
 
-type Tab = "agents" | "account";
+type Tab = "agents" | "catalog" | "account";
 
 /**
  * Impostazioni Avanzate: dove sta tutto quello che non serve all'ingresso.
@@ -21,6 +24,7 @@ export default function Advanced({
   onToggleAgent,
   onStartChat,
   onCreateAgent,
+  onActivatePreset,
 }: AdvancedProps) {
   const [tab, setTab] = useState<Tab>("agents");
 
@@ -29,22 +33,28 @@ export default function Advanced({
       <div className="border-b border-[var(--border)] px-6 pt-8 md:px-10">
         <div className="mx-auto max-w-[640px]">
           <div className="flex gap-1">
-            <Tab label="Agenti" active={tab === "agents"} onClick={() => setTab("agents")} />
+            <Tab label="I miei agenti" active={tab === "agents"} onClick={() => setTab("agents")} />
+            <Tab label="Agenti pronti" active={tab === "catalog"} onClick={() => setTab("catalog")} />
             <Tab label="Account e piano" active={tab === "account"} onClick={() => setTab("account")} />
           </div>
         </div>
       </div>
 
-      {tab === "agents" ? (
+      {tab === "agents" && (
         <MyAgents
           agents={agents}
           onToggleAgent={onToggleAgent}
           onStartChat={onStartChat}
           onCreateAgent={onCreateAgent}
         />
-      ) : (
-        <Account />
       )}
+      {tab === "catalog" && (
+        <AgentCatalog
+          activeNames={agents.map((a) => a.name)}
+          onActivate={onActivatePreset}
+        />
+      )}
+      {tab === "account" && <Account />}
     </div>
   );
 }

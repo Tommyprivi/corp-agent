@@ -19,11 +19,14 @@ import {
   SunIcon,
 } from "./Icons";
 import BrandTile from "./BrandTile";
+import AgentProposal from "./AgentProposal";
 import { TRADES, tradeById } from "../data/trades";
 import { KITS } from "../data/kits";
 import { planById } from "../data/plans";
 import {
   ApiError,
+  buildAgent,
+  createAgent,
   createProject as apiCreateProject,
   deleteProject as apiDeleteProject,
   generateImage,
@@ -35,6 +38,7 @@ import {
   type CatalogModelInfo,
   type ChatMessage,
   type HeavyWarning,
+  type ProposedAgent,
 } from "../lib/api";
 import { useTheme } from "../lib/theme";
 import type { KnowledgeDoc, Project, SurveyAnswers, TradeId } from "../types";
@@ -54,6 +58,8 @@ type Entry =
   | { kind: "whatsapp" }
   | { kind: "knowledge" }
   | { kind: "recap" }
+  /** Un agente generato dal Master Builder, da confermare o rifiutare (riga 7). */
+  | { kind: "proposal"; agent: ProposedAgent }
   /** L'avviso costi: la richiesta è impegnativa, si chiede il permesso prima di spendere. */
   | { kind: "warning"; warning: HeavyWarning };
 
@@ -202,6 +208,9 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
 
   /** Immagini: vero mentre OpenAI disegna (15-40 secondi). */
   const [imageBusy, setImageBusy] = useState(false);
+
+  /** L identificativo della carta che sta salvando, per non premere due volte. */
+  const [creatingAgent, setCreatingAgent] = useState<string | null>(null);
 
   /** Chiaro o scuro: parte scuro, la scelta resta sul dispositivo. */
   const { theme, toggle: toggleTheme } = useTheme();
@@ -572,13 +581,97 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
     }
   }
 
+  /**
+   * Il Master Builder vero (riga 7): legge la conversazione e genera l'agente.
+   *
+   * Si usa **solo dentro il progetto di configurazione**, che è il posto dove
+   * si costruisce la squadra. Negli altri progetti la chat resta una chat
+   * normale: proporre un agente mentre uno pianifica il menù di primavera
+   * sarebbe fuori posto. È la stessa distinzione che fa il database con
+   * `is_setup`.
+   */
+  async function askMaster(messages: ChatMessage[]) {
+    setTyping(true);
+    setStreaming(true);
+    try {
+      const result = await buildAgent({ messages, agentCount: agents.length });
+      setTyping(false);
+
+      if (result.kind === "question") {
+        // Messaggio e domanda arrivano separati: se il modello ripete la
+        // domanda dentro il messaggio si leggerebbe due volte.
+        const same = result.question.trim() === result.message.trim();
+        add({
+          kind: "master",
+          text: same ? result.message : `${result.message}\n\n${result.question}`,
+        });
+        return;
+      }
+
+      add({ kind: "master", text: result.message });
+      // Una carta per agente: si confermano uno alla volta, così chi ne vuole
+      // due su tre non è costretto a prendere tutto o niente.
+      for (const proposed of result.agents) add({ kind: "proposal", agent: proposed });
+    } catch (error) {
+      setTyping(false);
+      add({ kind: "master", text: explain(error) });
+    } finally {
+      setTyping(false);
+      setStreaming(false);
+    }
+  }
+
+  /**
+   * L'agente proposto diventa un agente vero, salvato su Neon.
+   *
+   * Poi parte la sequenza decisa da Tommaso: prima lo provi in chat, poi i
+   * documenti, poi WhatsApp. In quest'ordine perché toccare con mano che
+   * funziona è quello che convince — i collegamenti vengono dopo.
+   */
+  async function confirmAgent(entryId: string, proposed: ProposedAgent) {
+    setCreatingAgent(entryId);
+    try {
+      const created = await createAgent({
+        name: proposed.name,
+        role: proposed.role,
+        systemPrompt: agentSystemPrompt(proposed, entries),
+        modelSlug: "auto",
+        isCustom: true,
+      });
+
+      setAgents((prev) => [...prev, created.name]);
+      setEntries((prev) => prev.filter((e) => e.id !== entryId));
+
+      const total = agents.length + 1;
+      master(
+        `${created.name} è attivo. Lo provi subito: scriva qui sotto come se fosse un suo cliente, ` +
+          "e vedrà come risponde." +
+          (total >= 3
+            ? "\n\nUna nota: con questo arriva a tre agenti, il limite del piano gratuito. " +
+              "Gli abbonamenti arrivano tra poco e la avviserò."
+            : ""),
+        [{ kind: "knowledge" }],
+        800
+      );
+    } catch (error) {
+      add({ kind: "master", text: explain(error) });
+    } finally {
+      setCreatingAgent(null);
+    }
+  }
+
   function send(e: React.FormEvent) {
     e.preventDefault();
     const text = draft.trim();
     if (!text || streaming) return;
     setDraft("");
     add({ kind: "user", text });
-    void ask([...history(entries), { role: "user", content: text }]);
+    const conversation = [...history(entries), { role: "user" as const, content: text }];
+
+    // Nel progetto di configurazione parla il Master Builder, che costruisce.
+    // Negli altri è una chat normale: la squadra si monta in un posto solo.
+    if (isSetup) void askMaster(conversation);
+    else void ask(conversation);
   }
 
   /** Il microfono: detta il messaggio invece di scriverlo. */
@@ -1073,6 +1166,31 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
                 );
               }
 
+              if (entry.kind === "proposal") {
+                return (
+                  <AgentProposal
+                    key={entry.id}
+                    agent={entry.agent}
+                    busy={creatingAgent === entry.id}
+                    onCreate={(edited) => void confirmAgent(entry.id, edited)}
+                    onReject={() => {
+                      setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+                      master(
+                        "Nessun problema. Mi dica cosa non torna e lo rifaccio: può essere il nome, " +
+                          "quello di cui si occupa, o tutto quanto.",
+                        undefined,
+                        400
+                      );
+                    }}
+                    note={
+                      agents.length >= 3
+                        ? "Sul piano gratuito gli agenti sono tre. Gliene creo comunque altri: gli abbonamenti arrivano tra poco."
+                        : undefined
+                    }
+                  />
+                );
+              }
+
               if (entry.kind === "warning") {
                 return (
                   <div
@@ -1311,6 +1429,71 @@ function StatChip({
       <span className="hidden text-[var(--text-secondary)] xl:inline">{label}</span>
     </span>
   );
+}
+
+/**
+ * Le istruzioni definitive dell'agente, quelle che finiscono su Neon.
+ *
+ * Prende quello che ha generato il Master Builder e ci aggiunge due cose che
+ * il modello non può sapere da solo:
+ *
+ *   1. **il tono scelto dall'utente** sulla carta. Il generatore ne suggerisce
+ *      uno in base al settore, ma la decisione finale è di chi vende, non
+ *      dell'IA: un ristoratore può volere il formale e un notaio il cordiale.
+ *   2. **il divieto di inventare**, ripetuto qui anche se il generatore lo ha
+ *      già messo. È l'unica regola che non può mancare: la promessa venduta è
+ *      "non sbaglia mai i prezzi", e la ripetizione costa due righe mentre un
+ *      prezzo inventato costa un cliente.
+ */
+function agentSystemPrompt(
+  agent: ProposedAgent,
+  conversation: Array<Entry & { id: string }>
+): string {
+  const parts = [agent.instructions.trim(), "", "COME PARLI CON I CLIENTI"];
+
+  if (agent.tone === "cordiale") {
+    parts.push(
+      "Tono cordiale e amichevole: dai del tu, frasi calde e brevi. Puoi usare un'emoji, mai più di una."
+    );
+  } else if (agent.tone === "formale") {
+    parts.push(
+      "Tono formale: dai del lei, frasi complete e curate, nessuna emoji, nessuna abbreviazione."
+    );
+  } else if (agent.tone === "come-parlo-io") {
+    // Il tono "come parlo io" si costruisce dai messaggi veri dell'utente: è
+    // l'unico modo di imitare un modo di scrivere senza chiederglielo a parole.
+    const mine = conversation
+      .filter((e) => e.kind === "user")
+      .map((e) => (e.kind === "user" ? e.text : ""))
+      .filter((t) => t.length > 12)
+      .slice(-6);
+
+    parts.push(
+      "Imita il modo di scrivere del titolare: stessa lunghezza delle frasi, stesso livello di " +
+        "formalità, stesse espressioni tipiche. Non imitare eventuali errori di battitura."
+    );
+    if (mine.length > 0) {
+      parts.push("", "Esempi di come scrive il titolare:", ...mine.map((t) => `— ${t}`));
+    } else {
+      // Senza esempi non si può imitare niente: meglio dirlo che fingere.
+      parts.push(
+        "(Non ci sono ancora abbastanza messaggi del titolare per imitarne lo stile: " +
+          "usa un tono neutro e naturale finché non ne avrai.)"
+      );
+    }
+  } else {
+    parts.push("Tono neutro e professionale: chiaro, gentile, senza fronzoli e senza emoji.");
+  }
+
+  parts.push(
+    "",
+    "LA REGOLA CHE NON PUOI VIOLARE",
+    "Non conosci prezzi, orari, disponibilità o condizioni di questa attività se non te li ha dati " +
+      "il titolare o non li trovi nei documenti caricati. Non inventarli MAI, nemmeno per fare una " +
+      "stima o un esempio. Se non lo sai, dillo con semplicità e di' che fai verificare dal titolare."
+  );
+
+  return parts.join("\n");
 }
 
 /** Il nome leggibile di un modello, o lo slug se il catalogo non è arrivato. */
