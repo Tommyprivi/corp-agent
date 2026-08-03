@@ -16,6 +16,7 @@
 
 import { currentUser } from "./_lib/auth.js";
 import { withUser } from "./_lib/db.js";
+import { conflictingSources, embeddingConfigured, search, type Passage } from "./_lib/embed.js";
 import {
   chooseModel,
   costEur,
@@ -41,6 +42,63 @@ interface Body {
   projectId?: string;
   /** L'utente ha visto l'avviso costi e ha detto di procedere. */
   confirmHeavy?: boolean;
+  /**
+   * Falso per non cercare nei documenti. Serve al Master Builder, che sta
+   * costruendo la squadra e non deve rispondere come un agente operativo.
+   */
+  useKnowledge?: boolean;
+}
+
+/**
+ * Le istruzioni che si aggiungono quando l'agente ha dei documenti da cui
+ * pescare (righe 12 e 13 della Fase 2).
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LA DECISIONE PIÙ IMPORTANTE DELLA FASE
+ * ─────────────────────────────────────────────────────────────────────────
+ * Deciso da Tommaso il 2 Agosto 2026: se l'informazione non c'è, l'agente
+ * **non risponde** e avvisa il titolare. Non prova a essere utile, non
+ * approssima, non offre "qualcosa di simile" su prezzi e disponibilità.
+ *
+ * È la traduzione tecnica della promessa venduta al ristoratore: "non sbaglia
+ * mai i prezzi". Un agente che indovina fa perdere un cliente vero, e nessuno
+ * si accorge dell'errore finché non è tardi.
+ *
+ * La citazione è per il titolare, non per il cliente (altra decisione dello
+ * stesso giorno): il cliente legge una risposta pulita, il titolare vede da
+ * quale documento e da quale riga arriva il dato.
+ */
+function knowledgePrompt(passages: Passage[]): string {
+  const sources = passages
+    .map((p, i) => {
+      const where = p.heading ? `${p.documentName} — ${p.heading}` : p.documentName;
+      return `[${i + 1}] ${where}\n${p.content}`;
+    })
+    .join("\n\n");
+
+  return [
+    "─────────────────────────────────────────────",
+    "QUELLO CHE SAI DI QUESTA ATTIVITÀ",
+    "─────────────────────────────────────────────",
+    "Questi sono estratti dai documenti che il titolare ti ha dato. Sono la tua",
+    "UNICA fonte di verità su prezzi, orari, prodotti, disponibilità e condizioni.",
+    "",
+    sources,
+    "",
+    "─────────────────────────────────────────────",
+    "COME USARLI",
+    "─────────────────────────────────────────────",
+    "Rispondi usando solo quello che c'è scritto qui sopra.",
+    "",
+    "Se la risposta NON è qui dentro, non inventarla e non dedurla: di' con",
+    "semplicità che su quel punto devi far verificare al titolare, e che gli",
+    "risponderete a breve. Non proporre alternative sui prezzi, non fare stime,",
+    "non dire 'di solito' o 'in genere'. Una risposta che manca costa un minuto,",
+    "un prezzo sbagliato costa un cliente.",
+    "",
+    "Non citare i numeri tra parentesi quadre e non nominare i documenti: al",
+    "cliente arriva una risposta pulita, come se lo sapessi.",
+  ].join("\n");
 }
 
 export default {
@@ -112,6 +170,25 @@ export default {
       return json({ needsConfirmation: true, warning }, 200);
     }
 
+    // ── Righe 12 e 13: pescare dai documenti prima di rispondere ───────
+    // Si cerca solo se ha senso: il Master Builder sta costruendo la squadra e
+    // non deve rispondere come un agente operativo, quindi manda
+    // useKnowledge: false. Se la chiave OpenAI manca, la chat funziona come
+    // prima — senza memoria, ma funziona.
+    let passages: Passage[] = [];
+    if (body.useKnowledge !== false && embeddingConfigured() && lastUserText.length > 2) {
+      try {
+        passages = await withUser(user.id, (client) => search(client, user.id, lastUserText));
+      } catch (error) {
+        // Una ricerca che non riesce non deve impedire di rispondere: si
+        // risponde senza memoria, come faceva prima della Fase 2.
+        console.error("Ricerca nei documenti fallita, rispondo senza:", error);
+      }
+    }
+
+    const knowledge = passages.length > 0 ? knowledgePrompt(passages) : null;
+    const conflicts = conflictingSources(passages);
+
     const upstream = await fetch(OPENROUTER_URL, {
       method: "POST",
       headers: {
@@ -129,6 +206,10 @@ export default {
         usage: { include: true },
         messages: [
           ...(body.systemPrompt ? [{ role: "system", content: body.systemPrompt }] : []),
+          // La conoscenza va DOPO le istruzioni dell'agente e PRIMA della
+          // conversazione: così il "non inventare" è l'ultima regola che il
+          // modello legge prima di sentire la domanda del cliente.
+          ...(knowledge ? [{ role: "system", content: knowledge }] : []),
           ...messages.map((m) => ({
             role: m.role === "agent" ? "assistant" : m.role,
             content: m.content,
@@ -160,17 +241,51 @@ export default {
         tokensOut,
         cost,
       });
+
+      // ── La domanda rimasta senza risposta ─────────────────────────────
+      // Se l'agente ha dovuto passare la parola al titolare, quella domanda
+      // va registrata: un avviso non salvato è un avviso perso. Se il cliente
+      // scrive alle 23 e il titolare guarda il telefono la mattina, la
+      // domanda deve essere ancora lì.
+      if (knowledge && looksUnanswered(answer)) {
+        await recordOpenQuestion(user.id, lastUserText, answer).catch((error) => {
+          console.error("Domanda aperta non registrata:", error);
+        });
+      }
     });
 
-    return new Response(upstream.body.pipeThrough(accounting), {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        // Così l'interfaccia può dire quale modello ha risposto e quanto pesava.
-        "X-Model-Used": model.id,
-        "X-Load": load,
-      },
+    const headers = new Headers({
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      // Così l'interfaccia può dire quale modello ha risposto e quanto pesava.
+      "X-Model-Used": model.id,
+      "X-Load": load,
     });
+
+    // Le fonti viaggiano nelle intestazioni, non nel testo: il cliente legge
+    // una risposta pulita, il titolare le vede nel pannello. È la decisione
+    // di Tommaso sulla citazione, ed è anche il modo più semplice — non
+    // sporca lo stream, che deve restare puro testo.
+    if (passages.length > 0) {
+      headers.set(
+        "X-Sources",
+        encodeURIComponent(
+          JSON.stringify(
+            passages.map((p) => ({
+              name: p.documentName,
+              heading: p.heading,
+              ordinal: p.ordinal,
+              similarity: Math.round(p.similarity * 100) / 100,
+            }))
+          )
+        )
+      );
+    }
+    if (conflicts.length > 0) {
+      headers.set("X-Source-Conflict", encodeURIComponent(JSON.stringify(conflicts)));
+    }
+
+    return new Response(upstream.body.pipeThrough(accounting), { headers });
   },
 };
 
@@ -276,5 +391,57 @@ function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
+  });
+}
+
+/**
+ * Riconosce se l'agente ha passato la parola al titolare invece di rispondere.
+ *
+ * ⚠️ È una euristica, e va detto: non c'è modo affidabile di sapere se una
+ * risposta in italiano è un "non lo so" senza chiedere a un altro modello, e
+ * spendere una seconda chiamata per ogni messaggio non ha senso.
+ *
+ * Quindi si guardano le frasi che il prompt gli dice di usare in quel caso —
+ * "devo far verificare", "le rispondiamo a breve" — e si sbaglia **verso il
+ * registrare troppo**: una domanda aperta in più nel pannello è una seccatura,
+ * una domanda persa è un cliente che aspetta per sempre.
+ */
+function looksUnanswered(answer: string): boolean {
+  const a = answer.toLowerCase();
+  return (
+    /far\s+verificare|faccio\s+verificare|devo\s+verificare|chiedo\s+al\s+titolare/.test(a) ||
+    /non\s+(ho|dispongo\s+di|trovo)\s+(questa|l')?\s*informazion/.test(a) ||
+    /non\s+(ho|dispongo\s+di)\s+(il|i|questo|questi)\s+dat/.test(a) ||
+    /le\s+(rispondiamo|facciamo\s+sapere)\s+a\s+breve/.test(a)
+  );
+}
+
+/**
+ * Salva una domanda a cui l'agente non ha saputo rispondere.
+ *
+ * La stessa domanda non si registra due volte in un giorno: un cliente
+ * insistente che riscrive tre volte non deve produrre tre righe identiche nel
+ * pannello del titolare.
+ */
+async function recordOpenQuestion(
+  userId: string,
+  question: string,
+  holdingReply: string
+): Promise<void> {
+  await withUser(userId, async (client) => {
+    const existing = await client.query(
+      `select 1 from public.open_questions
+        where user_id = $1 and status = 'open' and lower(question) = lower($2)
+          and created_at > now() - interval '1 day'
+        limit 1`,
+      [userId, question]
+    );
+    if (existing.rows.length > 0) return;
+
+    await client.query(
+      `insert into public.open_questions (user_id, channel, question, holding_reply)
+       values ($1, 'chat', $2, $3)`,
+      [userId, question.slice(0, 2000), holdingReply.slice(0, 2000)]
+    );
   });
 }
