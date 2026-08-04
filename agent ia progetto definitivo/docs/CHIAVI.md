@@ -22,6 +22,7 @@
 | [SETUP-DATABASE.md](SETUP-DATABASE.md) | Neon: progetto, ruoli, migrazioni |
 | [SETUP-ACCESSI.md](SETUP-ACCESSI.md) | Better Auth e il login con Google |
 | [SETUP-OPENROUTER.md](SETUP-OPENROUTER.md) | Il credito e la chiave di OpenRouter |
+| [SETUP-TURNSTILE.md](SETUP-TURNSTILE.md) | **La verifica anti-bot, passo per passo.** Gratis, 4 minuti: è l'ultima riga della Fase 1 |
 | [SETUP-WHATSAPP.md](SETUP-WHATSAPP.md) | Meta Business, numero verificato, webhook |
 
 ## Chiavi già compromesse — da revocare

@@ -65,6 +65,9 @@ C'è già un tutorial dedicato: **[SETUP-OPENROUTER.md](SETUP-OPENROUTER.md)**. 
 
 # 2. Cloudflare Turnstile — la verifica anti-bot
 
+> 📖 **Tutorial completo: [SETUP-TURNSTILE.md](SETUP-TURNSTILE.md)** — con le trappole,
+> le chiavi di prova di Cloudflare e cosa fa il codice. Qui sotto solo l'essenziale.
+
 Gratis, senza limiti, e a differenza del CAPTCHA di Google nella maggior parte dei casi
 l'utente non deve cliccare niente. È la riga 10 della Fase 1: oggi nel sito c'è un
 segnaposto che non verifica nulla.

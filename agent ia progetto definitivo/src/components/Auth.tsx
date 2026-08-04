@@ -7,12 +7,12 @@ import {
   GoogleGlyph,
   PeopleIcon,
   SearchIcon,
-  ShieldIcon,
   SinglePersonIcon,
   SocialIcon,
   TeamIcon,
 } from "./Icons";
-import { authClient, getConfig, saveProfile, type PublicConfig } from "../lib/api";
+import Turnstile from "./Turnstile";
+import { authClient, getConfig, saveProfile, verifyHuman, type PublicConfig } from "../lib/api";
 import type { SurveyAnswers } from "../types";
 
 interface AuthProps {
@@ -82,6 +82,8 @@ export default function Auth({ onDone }: AuthProps) {
   const [answers, setAnswers] = useState<SurveyAnswers>({});
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  /** Vero mentre il server controlla il gettone di Turnstile. */
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     getConfig()
@@ -107,6 +109,31 @@ export default function Auth({ onDone }: AuthProps) {
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error));
       setBusy(false);
+    }
+  }
+
+  /**
+   * Il gettone passa dal server, che e l'unico a conoscere la chiave segreta.
+   *
+   * Verificarlo nel browser non avrebbe senso: chiunque puo dire "sono umano"
+   * a un pezzo di codice che gira sul suo computer. Il controllo vero lo fa
+   * Cloudflare, e solo il server puo chiederglielo.
+   *
+   * Se la verifica non riesce per un problema nostro — Cloudflare non
+   * raggiungibile, chiave mancante — si entra comunque: il server risponde
+   * "passato" e lo annota. Bloccare l'ingresso per un guasto che non e
+   * dell'utente costa un cliente, non ferma un bot.
+   */
+  async function passCaptcha(token: string) {
+    setVerifying(true);
+    setProblem(null);
+    try {
+      await verifyHuman(token);
+      setStep("source");
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : String(error));
+    } finally {
+      setVerifying(false);
     }
   }
 
@@ -258,26 +285,16 @@ export default function Auth({ onDone }: AuthProps) {
               <p className="mt-2.5 text-[14.5px] leading-relaxed text-[var(--text-secondary)]">
                 Una conferma veloce, serve solo a tenere fuori i bot.
               </p>
-              <div className="mt-7 rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-[var(--shadow-1)]">
-                <div className="flex items-center gap-3.5">
-                  <span className="ring-grad flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[var(--accent)]">
-                    <ShieldIcon size={20} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[14.5px] font-medium text-[var(--text-primary)]">
-                      Confermo di non essere un robot
-                    </div>
-                    <div className="text-[12.5px] text-[var(--text-secondary)]">
-                      Segnaposto: al lancio qui ci sarà Cloudflare Turnstile.
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setStep("source")}
-                  className="btn-grad mt-4 w-full rounded-xl py-3 text-[14.5px] font-medium"
-                >
-                  Continua
-                </button>
+              {/* Riga 10: la verifica vera. Il widget si disegna da sé e nella
+                  maggior parte dei casi passa senza che l'utente clicchi
+                  niente. Senza la chiave dichiara di essere un segnaposto e
+                  lascia entrare, invece di bloccare chi sta provando. */}
+              <div className="mt-7">
+                <Turnstile
+                  busy={verifying}
+                  theme={document.documentElement.dataset.theme === "light" ? "light" : "dark"}
+                  onVerified={(token) => void passCaptcha(token)}
+                />
               </div>
             </div>
           )}

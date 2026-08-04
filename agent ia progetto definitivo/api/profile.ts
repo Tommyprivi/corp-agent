@@ -6,11 +6,25 @@
  * ricarica; da qui in poi vivono in `profiles` e le vedi in pgAdmin.
  *
  *   GET   → il profilo (lo crea se è il primo accesso)
+ *   POST  → verifica il gettone di Cloudflare Turnstile (riga 10)
  *   PATCH → aggiorna sondaggio, mestiere, canale
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * PERCHÉ LA VERIFICA ANTI-BOT STA QUI E NON IN UNA FUNZIONE SUA
+ * ─────────────────────────────────────────────────────────────────────────
+ * Vercel, sul piano Hobby, ammette **12 funzioni per deploy** — e il 2 Agosto
+ * 2026 il deploy si è già rotto una volta per questo. Siamo a undici, e il
+ * posto che resta serve al webhook di WhatsApp (Fase 3): senza quello il canale
+ * non esiste, mentre verificare un gettone sono quattro righe.
+ *
+ * La casa però non è arbitraria: passare il controllo anti-bot è un fatto
+ * dell'ingresso di quell'utente, ed è questo file che si occupa dell'ingresso.
  */
 
 import { currentUser } from "./_lib/auth.js";
 import { ensureProfile, withUser } from "./_lib/db.js";
+
+const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 interface ProfileRow {
   id: string;
@@ -49,6 +63,60 @@ export default {
       return profile
         ? json(shape(profile), 200)
         : json({ error: "Profilo non trovato subito dopo averlo creato." }, 500);
+    }
+
+    // ── Riga 10: la verifica anti-bot ────────────────────────────────────
+    if (request.method === "POST") {
+      const secret = process.env.TURNSTILE_SECRET_KEY;
+
+      // Senza la chiave la verifica non si può fare. Si risponde "passato" con
+      // `configured: false`: in sviluppo, e finché Tommaso non prende la chiave
+      // gratuita, l'ingresso deve funzionare comunque. Un cancello che nessuno
+      // può aprire è peggio di nessun cancello — e l'interfaccia lo dichiara,
+      // invece di far credere che ci sia una protezione che non c'è.
+      if (!secret) return json({ ok: true, configured: false }, 200);
+
+      let body: { token?: string };
+      try {
+        body = (await request.json()) as { token?: string };
+      } catch {
+        return json({ error: "Richiesta non leggibile." }, 400);
+      }
+
+      const token = typeof body.token === "string" ? body.token : "";
+      if (!token) return json({ error: "Verifica non completata." }, 400);
+
+      try {
+        // Cloudflare vuole i campi come un modulo, non come JSON.
+        const form = new URLSearchParams({ secret, response: token });
+        const verify = await fetch(SITEVERIFY, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: form,
+          signal: AbortSignal.timeout(8000),
+        });
+        const result = (await verify.json()) as {
+          success?: boolean;
+          "error-codes"?: string[];
+        };
+
+        if (!result.success) {
+          return json(
+            {
+              error: "La verifica non è andata a buon fine. Riprova.",
+              detail: (result["error-codes"] ?? []).join(", "),
+            },
+            403
+          );
+        }
+
+        return json({ ok: true, configured: true }, 200);
+      } catch (error) {
+        // Cloudflare non raggiungibile o tempo scaduto. Non si blocca l'ingresso
+        // per un problema che non è dell'utente: si lascia passare e si annota.
+        console.error("Turnstile non verificabile, lascio passare:", error);
+        return json({ ok: true, configured: true, unverified: true }, 200);
+      }
     }
 
     if (request.method === "PATCH") {

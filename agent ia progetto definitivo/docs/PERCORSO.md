@@ -35,8 +35,12 @@
 > perché sta scritto in `api/documents.ts`. Una seconda memoria vorrebbe dire una seconda
 > ricerca, una seconda iniezione nel prompt e due modi di andare fuori sincrono.
 >
-> **Della Fase 1 resta solo la riga 10**, che aspetta la chiave gratuita di Cloudflare
-> Turnstile. Della Fase 2 sono chiuse le righe 11-15; restano 16, 17 e 18.
+> **Della Fase 1 resta solo la riga 10.** Il codice c'è ed è provato — widget nel
+> browser, verifica sul server contro Cloudflare, chiavi di prova controllate — manca
+> solo che Tommaso prenda le due chiavi gratuite: [SETUP-TURNSTILE.md](SETUP-TURNSTILE.md),
+> 4 minuti. Finché non ci sono si entra comunque e l'interfaccia lo dichiara.
+>
+> Della Fase 2 sono chiuse le righe 11-15; restano 16, 17 e 18.
 >
 > ⚠️ **Cambio di architettura deciso da Tommaso il 1 Agosto 2026:** il backend è
 > **Neon + funzioni su Vercel + Better Auth**, non più Supabase. Neon è solo il database,
@@ -95,7 +99,7 @@ Senza questa fase il prodotto non è vendibile: l'agente non risponde davvero.
 | 7 | Master Builder vero: Structured Output che genera l'agente in JSON | OpenRouter | ✅ genera, chiede, non mente — e i 125 preset funzionano |
 | 8 | Configurazione guidata vera: la conversazione diventa struttura dati salvata | OpenRouter | ✅ racconti di fretta, diventa memoria organizzata |
 | 9 | Salvataggio permanente di agenti, chat, documenti, configurazioni | Neon | ✅ chat, progetti e agenti — i documenti alla Fase 2 |
-| 10 | Turnstile vero al posto del segnaposto | Cloudflare (gratis) | ⬜ manca solo la chiave, gratuita |
+| 10 | Turnstile vero al posto del segnaposto | Cloudflare (gratis) | 🔧 codice scritto e provato, **manca solo la chiave** |
 
 > ✅ **Eseguite davvero il 2 Agosto 2026.** Le righe 3-6 erano rimaste per settimane
 > "scritte ma mai eseguite": codice che compila non è codice che funziona. Adesso sono

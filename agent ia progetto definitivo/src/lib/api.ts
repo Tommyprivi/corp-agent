@@ -694,6 +694,27 @@ export async function getConfig(): Promise<PublicConfig> {
   return (await response.json()) as PublicConfig;
 }
 
+/**
+ * Fa verificare al server il gettone di Cloudflare Turnstile (riga 10).
+ *
+ * `configured: false` significa che la chiave segreta non c'e ancora: si passa
+ * comunque, ed e voluto. Un cancello che nessuno puo aprire e peggio di nessun
+ * cancello, e l'interfaccia lo dichiara invece di far credere a una protezione
+ * che non esiste.
+ */
+export async function verifyHuman(
+  token: string
+): Promise<{ ok: boolean; configured: boolean; unverified?: boolean }> {
+  const response = await fetch("/api/profile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ token }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as { ok: boolean; configured: boolean; unverified?: boolean };
+}
+
 export interface Profile {
   id: string;
   email: string | null;
