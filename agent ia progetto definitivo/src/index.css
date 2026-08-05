@@ -590,3 +590,85 @@ body {
     transform: none;
   }
 }
+
+/*
+ * ─────────────────────────────────────────────────────────────────────────
+ * LE ANIMAZIONI DELL'APP
+ * ─────────────────────────────────────────────────────────────────────────
+ * La vetrina era viva e l'app ferma. Queste sono le quattro che servono
+ * davvero: un avviso che entra, delle carte che arrivano in sequenza, un
+ * numero che sale, e un pallino che chiama l'attenzione senza urlare.
+ */
+
+/* Un avviso entra da destra, dove poi vivrà. */
+@keyframes notice-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-notice {
+  animation: notice-in 0.28s var(--ease-out) both;
+}
+
+/*
+ * Le carte arrivano una dopo l'altra invece che tutte insieme.
+ *
+ * Il ritardo lo mette il componente con `animationDelay`, perché dipende da
+ * quante sono. Sessanta millisecondi di scarto è la misura in cui si percepisce
+ * la sequenza senza sembrare lento.
+ */
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-card {
+  animation: card-in 0.42s var(--ease-out) both;
+}
+
+/*
+ * Il pallino di qualcosa che aspetta una risposta.
+ *
+ * Pulsa piano e non lampeggia: un lampeggio in un'interfaccia di lavoro diventa
+ * fastidioso in trenta secondi, e allora la gente impara a ignorarlo — che è
+ * l'opposto di quello che serve.
+ */
+@keyframes waiting {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 var(--accent-ring);
+  }
+  50% {
+    opacity: 0.75;
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+.animate-waiting {
+  animation: waiting 2.4s var(--ease-out) infinite;
+}
+
+/* Un valore che cambia: si illumina un attimo invece di scattare. */
+@keyframes value-up {
+  0% {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+.animate-value {
+  animation: value-up 0.5s var(--ease-out) both;
+}

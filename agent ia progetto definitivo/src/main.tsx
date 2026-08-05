@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { NotifyProvider } from './lib/notify'
 import { applyThemeEarly } from './lib/theme'
 
 // Prima di disegnare qualunque cosa: se il tema salvato è scuro va messo
@@ -11,6 +12,8 @@ applyThemeEarly()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <NotifyProvider>
+      <App />
+    </NotifyProvider>
   </StrictMode>,
 )

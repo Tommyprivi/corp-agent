@@ -5,7 +5,6 @@ import {
   ChatSparkIcon,
   CheckIcon,
   ChevronDownIcon,
-  ClockIcon,
   CloseIcon,
   GearIcon,
   ImageIcon,
@@ -22,6 +21,7 @@ import {
 } from "./Icons";
 import BrandTile from "./BrandTile";
 import AgentProposal from "./AgentProposal";
+import Savings from "./Savings";
 import { TRADES, tradeById } from "../data/trades";
 import { KITS } from "../data/kits";
 import { planById } from "../data/plans";
@@ -34,6 +34,7 @@ import {
   generateImage,
   getModels,
   getProject,
+  listOpenQuestions,
   listProjects,
   renameProject,
   speak,
@@ -43,6 +44,7 @@ import {
   type HeavyWarning,
   type ProposedAgent,
 } from "../lib/api";
+import { useNotify } from "../lib/notify";
 import { useTheme } from "../lib/theme";
 import type { KnowledgeDoc, Project, SurveyAnswers, TradeId } from "../types";
 
@@ -225,6 +227,19 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
 
   /** Chiaro o scuro: parte scuro, la scelta resta sul dispositivo. */
   const { theme, toggle: toggleTheme } = useTheme();
+  const notify = useNotify();
+
+  /**
+   * Quanti clienti stanno aspettando una risposta da te.
+   *
+   * ⚠️ Prima questo numero esisteva solo dentro Impostazioni Avanzate ->
+   * Memoria -> Domande aperte: tre clic dentro un menu che nessuno apre. Un
+   * cliente che ha fatto una domanda a cui l'agente non ha saputo rispondere
+   * restava ad aspettare per sempre, e il titolare non lo sapeva.
+   *
+   * Ora si vede dove si lavora.
+   */
+  const [waiting, setWaiting] = useState(0);
 
   /**
    * L'elenco delle chat, sul telefono.
@@ -238,6 +253,27 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Le domande in attesa. Si ricontrollano ogni due minuti: le nuove arrivano
+   * mentre il titolare fa altro, e un numero che si aggiorna solo alla ricarica
+   * non e un avviso.
+   */
+  useEffect(() => {
+    let alive = true;
+    const check = () =>
+      listOpenQuestions()
+        .then((rows) => {
+          if (alive) setWaiting(rows.filter((q) => q.status === "open").length);
+        })
+        .catch(() => {});
+    void check();
+    const timer = window.setInterval(check, 120_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   /** Il catalogo si carica una volta: alimenta il selettore in fondo. */
   useEffect(() => {
@@ -426,7 +462,7 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
         setActiveProject(created.id);
         return;
       } catch (error) {
-        add({ kind: "master", text: explain(error) });
+        notifyError(notify, error);
         return;
       }
     }
@@ -466,7 +502,7 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
       // Non si è cancellato davvero: rimetterlo è meno peggio che far credere
       // di averlo chiuso e ritrovarlo alla prossima ricarica.
       setProjects(previous);
-      add({ kind: "master", text: explain(error) });
+      notifyError(notify, error);
     }
   }
 
@@ -628,7 +664,7 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
       }
     } catch (error) {
       setTyping(false);
-      add({ kind: "master", text: explain(error) });
+      notifyError(notify, error);
     } finally {
       setTyping(false);
       setStreaming(false);
@@ -668,7 +704,7 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
       for (const proposed of result.agents) add({ kind: "proposal", agent: proposed });
     } catch (error) {
       setTyping(false);
-      add({ kind: "master", text: explain(error) });
+      notifyError(notify, error);
     } finally {
       setTyping(false);
       setStreaming(false);
@@ -708,7 +744,7 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
         800
       );
     } catch (error) {
-      add({ kind: "master", text: explain(error) });
+      notifyError(notify, error);
     } finally {
       setCreatingAgent(null);
     }
@@ -785,7 +821,7 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
       audio.addEventListener("ended", () => setSpeakingId(null), { once: true });
     } catch (error) {
       setSpeakingId(null);
-      add({ kind: "master", text: explain(error) });
+      notifyError(notify, error);
     }
   }
 
@@ -800,7 +836,7 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
       const { dataUrl } = await generateImage(prompt);
       add({ kind: "image", url: dataUrl, prompt });
     } catch (error) {
-      add({ kind: "master", text: explain(error) });
+      notifyError(notify, error);
     } finally {
       setImageBusy(false);
     }
@@ -822,8 +858,9 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
    * l'agente ha davvero risposto in questa conversazione. Quando arriverà il
    * conteggio vero dal database (`public.usage`) questa riga leggerà da lì.
    */
+  // Quanti messaggi ha gestito l'agente in questa conversazione. Il calcolo
+  // delle ore e del valore sta dentro <Savings>, in un posto solo.
   const handledAlone = entries.filter((e) => e.kind === "master" && e.text.length > 0).length;
-  const savedHours = (handledAlone * 3) / 60;
 
   /** Conversazione appena aperta: nessuno ha ancora scritto niente. */
   const isSetup = activeProject === SETUP_ID;
@@ -953,7 +990,14 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
             className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[var(--side-text)] transition-colors duration-[var(--fast)] hover:bg-[var(--side-bg-raised)] hover:text-white"
           >
             <GearIcon size={17} />
-            <span className="t-small">Impostazioni Avanzate</span>
+            <span className="t-small flex-1">Impostazioni Avanzate</span>
+            {waiting > 0 && (
+              <span
+                className="animate-waiting h-[7px] w-[7px] rounded-full"
+                style={{ background: "var(--side-positive)" }}
+                title={`${waiting} in attesa di una risposta`}
+              />
+            )}
           </button>
         </div>
       </aside>
@@ -1003,11 +1047,7 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
           </div>
 
           <div className="flex shrink-0 items-center gap-1">
-            <StatChip
-              icon={<ClockIcon size={13} />}
-              value={savedHours < 1 ? "—" : `${savedHours.toFixed(1)} h`}
-              label="risparmiate"
-            />
+            <Savings handled={handledAlone} onClick={onOpenAdvanced} />
             <span className="mx-1 h-4 w-px bg-[var(--border)]" />
             <span className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] text-[var(--text-secondary)] lg:flex">
               <SparkleIcon size={13} />
@@ -1018,6 +1058,33 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
             <ThemeButton theme={theme} onToggle={toggleTheme} />
           </div>
         </header>
+
+        {/* ── Chi sta aspettando una tua risposta ──────────────────────
+            Sta sopra la conversazione, dentro il flusso di lavoro. Prima
+            questo numero viveva solo dentro Impostazioni Avanzate: un cliente
+            senza risposta restava ad aspettare e nessuno lo sapeva. */}
+        {waiting > 0 && (
+          <button
+            onClick={onOpenAdvanced}
+            className="animate-card flex shrink-0 items-center gap-2.5 border-b border-[var(--border)] bg-[var(--bg-card)] px-5 py-2.5 text-left transition-colors hover:bg-[var(--fill-quiet)] md:px-8"
+          >
+            <span
+              className="animate-waiting h-[7px] w-[7px] shrink-0 rounded-full"
+              style={{ background: "var(--accent)" }}
+            />
+            <span className="min-w-0 flex-1 text-[13.5px] text-[var(--text-primary)]">
+              <strong className="font-semibold">
+                {waiting === 1 ? "Un cliente aspetta" : `${waiting} clienti aspettano`}
+              </strong>{" "}
+              <span className="text-[var(--text-secondary)]">
+                una tua risposta: l'agente non ha voluto inventare.
+              </span>
+            </span>
+            <span className="shrink-0 text-[12.5px] font-medium text-[var(--text-primary)] underline-offset-2 hover:underline">
+              Rispondi
+            </span>
+          </button>
+        )}
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 md:px-8">
           <div className="mx-auto flex max-w-[760px] flex-col gap-5 py-8">
@@ -1047,7 +1114,7 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
                         add({ kind: "user", text: s.text });
                         void ask([...history(entries), { role: "user", content: s.text }]);
                       }}
-                      className="animate-rise group flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3.5 py-3 text-left transition-all duration-[var(--fast)] hover:-translate-y-px hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-2)]"
+                      className="animate-card group flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3.5 py-3 text-left transition-all duration-[var(--fast)] hover:-translate-y-px hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-2)]"
                       style={{ animationDelay: `${120 + i * 60}ms` }}
                     >
                       <span className="mt-0.5 shrink-0 text-[var(--text-tertiary)] transition-colors group-hover:text-[var(--text-primary)]">
@@ -1238,7 +1305,6 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
               }
 
               if (entry.kind === "recap") {
-                const hours = ((docs.length + agents.length) * 3) / 60;
                 return (
                   <div
                     key={entry.id}
@@ -1256,9 +1322,11 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
                         rest="è quello che sa, e non va oltre"
                       />
                     </div>
-                    <p className="mt-3.5 border-t border-[var(--border)] pt-3 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
-                      Ogni messaggio che gestisco da solo ti vale circa 3 minuti. Il contatore
-                      parte da {hours < 1 ? "zero" : `${hours.toFixed(1)} ore`}: cresce da qui.
+                    <div className="mt-4">
+                      <Savings handled={handledAlone} variant="full" />
+                    </div>
+                    <p className="mt-3 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+                      Cresce da qui: ogni messaggio che gestisco da solo è tempo che torna a te.
                       Da ora puoi chiedermi qualsiasi cosa qui sotto.
                     </p>
                   </div>
@@ -1508,28 +1576,6 @@ function ThemeButton({ theme, onToggle }: { theme: string; onToggle: () => void 
   );
 }
 
-/** Un numero in barra di stato: l'icona, il valore che conta, cosa significa. */
-function StatChip({
-  icon,
-  value,
-  label,
-}: {
-  icon: React.ReactNode;
-  value: string;
-  label: string;
-}) {
-  return (
-    <span
-      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px]"
-      title={`${value} ${label}`}
-    >
-      <span className="text-[var(--text-tertiary)]">{icon}</span>
-      <span className="font-semibold text-[var(--text-primary)]">{value}</span>
-      <span className="hidden text-[var(--text-secondary)] xl:inline">{label}</span>
-    </span>
-  );
-}
-
 /**
  * Le istruzioni definitive dell'agente, quelle che finiscono su Neon.
  *
@@ -1678,18 +1724,25 @@ function NewProjectButton({ onCreate }: { onCreate: (name: string) => void }) {
 }
 
 /**
- * Trasforma un errore in una frase leggibile.
+ * Manda un errore alle notifiche, con la frase giusta.
  *
  * Il backend risponde già in italiano e dice cosa manca — per esempio quale
- * variabile d'ambiente non è configurata. Quei messaggi si mostrano così come
- * sono: sostituirli con "qualcosa è andato storto" non aiuterebbe nessuno.
+ * variabile d'ambiente non è configurata. Quel messaggio si mostra così com'è:
+ * sostituirlo con "qualcosa è andato storto" non aiuterebbe nessuno.
+ *
+ * Il dettaglio tecnico va nel secondo campo, che nella notifica sta chiuso: a
+ * un ristoratore non serve, a chi deve capire cosa è rotto è l'unica cosa utile.
  */
-function explain(error: unknown): string {
+function notifyError(notify: ReturnType<typeof useNotify>, error: unknown): void {
   if (error instanceof ApiError) {
-    if (error.isUnauthorized) return "La sessione è scaduta. Ricarica la pagina e rientra.";
-    return error.message;
+    if (error.isUnauthorized) {
+      notify.error("La sessione è scaduta. Ricarica la pagina e rientra.");
+      return;
+    }
+    notify.error(error.message, error.detail);
+    return;
   }
-  return error instanceof Error ? error.message : String(error);
+  notify.error(error instanceof Error ? error.message : String(error));
 }
 
 function ActionCard({

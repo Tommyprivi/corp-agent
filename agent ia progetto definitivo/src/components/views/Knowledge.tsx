@@ -18,6 +18,7 @@ import {
   type StoredDocument,
 } from "../../lib/api";
 import { extract, isSupported } from "../../lib/extract";
+import { useNotify } from "../../lib/notify";
 
 /**
  * Cosa sa il tuo agente.
@@ -125,6 +126,7 @@ function Memory({
   const [problem, setProblem] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const photoRef = useRef<HTMLInputElement>(null);
+  const notify = useNotify();
 
   async function save(
     name: string,
@@ -139,6 +141,13 @@ function Memory({
       // Se è lo stesso documento di prima il server lo aggiorna invece di
       // duplicarlo: qui si sostituisce la riga corrispondente.
       setDocs((prev) => [created, ...prev.filter((d) => d.id !== created.id)]);
+      // Il numero di pezzi non è un dettaglio tecnico: è la prova che il
+      // documento è stato letto davvero e non solo caricato.
+      notify.success(
+        `${created.name} è in memoria — ${created.chunkCount} ${
+          created.chunkCount === 1 ? "pezzo" : "pezzi"
+        }.`
+      );
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error));
     } finally {
@@ -176,6 +185,7 @@ function Memory({
         <Way
           icon={<ChatSparkIcon size={17} />}
           title="Racconta"
+          delay={0}
           hint="scrivi come parli"
           onClick={() => setWriting((w) => (w === "tell" ? null : "tell"))}
           primary
@@ -183,18 +193,21 @@ function Memory({
         <Way
           icon={<SparkleIcon size={17} />}
           title="Incolla"
+          delay={60}
           hint="menù o listino"
           onClick={() => setWriting((w) => (w === "paste" ? null : "paste"))}
         />
         <Way
           icon={<ImageIcon size={17} />}
           title="Fotografa"
+          delay={120}
           hint="il menù al muro"
           onClick={() => photoRef.current?.click()}
         />
         <Way
           icon={<PaperclipIcon size={17} />}
           title="Carica"
+          delay={180}
           hint="PDF, Word, Excel"
           onClick={() => fileRef.current?.click()}
         />
@@ -287,10 +300,11 @@ function Memory({
           <>
             <h2 className="t-label text-[var(--text-tertiary)]">In memoria · {docs.length}</h2>
             <div className="mt-3 flex flex-col gap-2">
-              {docs.map((doc) => (
+              {docs.map((doc, i) => (
                 <div
                   key={doc.id}
-                  className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3.5"
+                  className="animate-card flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3.5"
+                  style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[14px] font-medium text-[var(--text-primary)]">
@@ -322,8 +336,15 @@ function Memory({
                       setDocs((prev) => prev.filter((d) => d.id !== doc.id));
                       try {
                         await deleteDocument(doc.id);
-                      } catch {
+                      } catch (error) {
+                        // La riga torna al suo posto. Senza l'avviso l'utente
+                        // vedrebbe il documento riapparire da solo e non
+                        // saprebbe se ha sbagliato lui.
                         setDocs(before);
+                        notify.error(
+                          `Non ho potuto togliere ${doc.name} dalla memoria.`,
+                          error instanceof Error ? error.message : String(error)
+                        );
                       }
                     }}
                     aria-label={`Togli ${doc.name} dalla memoria`}
@@ -392,6 +413,7 @@ function Questions({
   const [answering, setAnswering] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const notify = useNotify();
 
   const open = questions.filter((q) => q.status === "open");
   const closed = questions.filter((q) => q.status !== "open");
@@ -422,10 +444,11 @@ function Questions({
         </div>
       ) : (
         <div className="mt-6 flex flex-col gap-2">
-          {open.map((q) => (
+          {open.map((q, i) => (
             <div
               key={q.id}
-              className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4"
+              className="animate-card rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4"
+              style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}
             >
               <div className="text-[14px] font-medium text-[var(--text-primary)]">
                 {q.question}
@@ -460,6 +483,7 @@ function Questions({
                           setAnswering(null);
                           setDraft("");
                           onLearned();
+                          notify.success("Imparato. La stessa domanda non tornerà più.");
                         } finally {
                           setBusy(false);
                         }
@@ -540,17 +564,20 @@ function Way({
   hint,
   onClick,
   primary,
+  delay = 0,
 }: {
   icon: React.ReactNode;
   title: string;
   hint: string;
   onClick: () => void;
   primary?: boolean;
+  delay?: number;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-start gap-1 rounded-xl border p-3.5 text-left transition-all duration-[var(--fast)] hover:-translate-y-px hover:shadow-[var(--shadow-2)] ${
+      style={{ animationDelay: `${delay}ms` }}
+      className={`animate-card flex flex-col items-start gap-1 rounded-xl border p-3.5 text-left transition-all duration-[var(--fast)] hover:-translate-y-px hover:shadow-[var(--shadow-2)] ${
         primary
           ? "border-[var(--accent)] bg-[var(--accent-soft)]"
           : "border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--border-strong)]"

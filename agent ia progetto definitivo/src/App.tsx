@@ -15,6 +15,7 @@ import {
   type Profile,
   type StoredAgent,
 } from "./lib/api";
+import { useNotify } from "./lib/notify";
 import type { RoleAgent, SurveyAnswers } from "./types";
 
 /**
@@ -51,6 +52,7 @@ function toRoleAgent(a: StoredAgent): RoleAgent {
  */
 export default function App() {
   const { data: session, isPending } = authClient.useSession();
+  const notify = useNotify();
 
   const [wantsIn, setWantsIn] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -157,9 +159,13 @@ export default function App() {
                 // un interruttore che aspetta la rete per muoversi sembra rotto.
                 const next = !agents.find((a) => a.id === id)?.active;
                 setAgents((prev) => prev.map((a) => (a.id === id ? { ...a, active: next } : a)));
-                void updateAgent({ id, active: next }).catch(() => {
+                void updateAgent({ id, active: next }).catch((error: unknown) => {
                   setAgents((prev) =>
                     prev.map((a) => (a.id === id ? { ...a, active: !next } : a))
+                  );
+                  notify.error(
+                    "Non ho potuto cambiare l'interruttore.",
+                    error instanceof Error ? error.message : String(error)
                   );
                 });
               }}
@@ -176,8 +182,17 @@ export default function App() {
                     isCustom: false,
                   });
                   setAgents((prev) => [...prev, toRoleAgent(created)]);
-                } catch {
-                  // Non salvato: non lo mostriamo come se fosse attivo.
+                  notify.success(`${created.name} è al lavoro.`);
+                } catch (error) {
+                  // ⚠️ Prima questo `catch` era vuoto, col commento "non lo
+                  // mostriamo come se fosse attivo". Giusto a metà: non
+                  // mostrarlo attivo sì, ma non dire niente lascia l'utente a
+                  // premere un pulsante che non fa niente e non spiega perché.
+                  notify.error(
+                    `Non ho potuto attivare ${preset.name}.`,
+                    error instanceof Error ? error.message : String(error)
+                  );
+                  throw error;
                 }
               }}
               onStartChat={() => setAdvancedOpen(false)}
@@ -190,10 +205,16 @@ export default function App() {
                   modelSlug: "auto",
                   isCustom: true,
                 })
-                  .then((created) => setAgents((prev) => [...prev, toRoleAgent(created)]))
-                  .catch(() => {
-                    // Non si è salvato: non lo mostriamo come se fosse fatto.
-                  });
+                  .then((created) => {
+                    setAgents((prev) => [...prev, toRoleAgent(created)]);
+                    notify.success(`${created.name} è al lavoro.`);
+                  })
+                  .catch((error: unknown) =>
+                    notify.error(
+                      "Non ho potuto creare l'agente.",
+                      error instanceof Error ? error.message : String(error)
+                    )
+                  );
               }}
             />
           </div>

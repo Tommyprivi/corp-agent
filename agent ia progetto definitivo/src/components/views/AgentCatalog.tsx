@@ -82,6 +82,9 @@ export default function AgentCatalog({ activeNames, onActivate }: AgentCatalogPr
     try {
       await onActivate(agent, presetSystemPrompt(agent));
       setDoneIds((prev) => [...prev, agent.id]);
+    } catch {
+      // L'avviso lo manda già chi salva, in App.tsx: qui basta non segnarlo
+      // come attivo, perché non lo è.
     } finally {
       setBusyId(null);
     }
@@ -163,12 +166,15 @@ export default function AgentCatalog({ activeNames, onActivate }: AgentCatalogPr
               {group.label} · {group.agents.length}
             </h2>
             <div className="mt-3 flex flex-col gap-2">
-              {group.agents.map((agent) => {
+              {group.agents.map((agent, i) => {
                 const already = activeNames.includes(agent.name) || doneIds.includes(agent.id);
                 return (
                   <div
                     key={agent.id}
-                    className="flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3.5 transition-all duration-[var(--fast)] hover:border-[var(--border-strong)]"
+                    // Le prime dodici arrivano in sequenza; oltre no, perche
+                    // con 66 carte l'ultima comparirebbe dopo quattro secondi.
+                    className="animate-card flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3.5 transition-all duration-[var(--fast)] hover:border-[var(--border-strong)]"
+                    style={{ animationDelay: i < 12 ? `${i * 45}ms` : "0ms" }}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="text-[14.5px] font-medium text-[var(--text-primary)]">
