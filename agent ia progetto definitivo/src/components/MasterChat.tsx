@@ -36,6 +36,7 @@ import {
   getProject,
   listOpenQuestions,
   listProjects,
+  rememberConversation,
   renameProject,
   speak,
   streamChat,
@@ -224,6 +225,15 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
 
   /** L identificativo della carta che sta salvando, per non premere due volte. */
   const [creatingAgent, setCreatingAgent] = useState<string | null>(null);
+
+  /**
+   * A quale numero di messaggi risale l'ultima distillazione, per conversazione.
+   *
+   * Serve a diradare: la memoria contestuale (riga 17) costa una chiamata a un
+   * modello, e farla a ogni messaggio sarebbe uno spreco — la maggior parte
+   * degli scambi non aggiunge nessun fatto che valga domani.
+   */
+  const distilledAt = useRef<Record<string, number>>({});
 
   /** Chiaro o scuro: parte scuro, la scelta resta sul dispositivo. */
   const { theme, toggle: toggleTheme } = useTheme();
@@ -768,12 +778,36 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
     });
   }
 
+  /**
+   * La memoria contestuale (riga 17): ogni sei scambi la conversazione viene
+   * distillata nei fatti che valgono domani.
+   *
+   * Gira in sottofondo e non blocca niente: se fallisce, l'unica conseguenza e
+   * che l'agente non si ricordera di un accordo — spiacevole, non grave. Per
+   * questo non produce nemmeno un avviso: interrompere chi sta lavorando per
+   * dirgli che una cosa che non aveva chiesto non e riuscita e peggio del
+   * problema.
+   */
+  function rememberIfDue() {
+    if (!serverReady) return;
+    const exchanges = entries.filter((e) => e.kind === "user").length;
+    const last = distilledAt.current[activeProject] ?? 0;
+    if (exchanges - last < 6) return;
+
+    distilledAt.current[activeProject] = exchanges;
+    const name = isSetup
+      ? "Cosa mi hai detto finora"
+      : `Accordi — ${projects.find((p) => p.id === activeProject)?.name ?? "conversazione"}`;
+    void rememberConversation(activeProject, name).catch(() => {});
+  }
+
   function send(e: React.FormEvent) {
     e.preventDefault();
     const text = draft.trim();
     if (!text || streaming) return;
     setDraft("");
     baptize(text);
+    rememberIfDue();
     add({ kind: "user", text });
     const conversation = [...history(entries), { role: "user" as const, content: text }];
 

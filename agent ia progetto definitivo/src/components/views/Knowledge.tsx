@@ -17,7 +17,7 @@ import {
   type OpenQuestion,
   type StoredDocument,
 } from "../../lib/api";
-import { extract, isSupported } from "../../lib/extract";
+import { filesFromDrop, indexAll, type BatchProgress } from "../../lib/batch";
 import { useNotify } from "../../lib/notify";
 
 /**
@@ -124,6 +124,10 @@ function Memory({
   const [pasteName, setPasteName] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  /** L'avanzamento del caricamento in blocco (riga 16). */
+  const [batch, setBatch] = useState<BatchProgress | null>(null);
+  /** Vero mentre qualcosa e sospeso sopra la finestra. */
+  const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const photoRef = useRef<HTMLInputElement>(null);
   const notify = useNotify();
@@ -155,32 +159,93 @@ function Memory({
     }
   }
 
-  async function handleFiles(files: FileList | null, kind: "upload" | "photo") {
-    const picked = Array.from(files ?? []);
-    if (picked.length === 0) return;
+  /**
+   * Legge e indicizza una pila di file, in parallelo (riga 16).
+   *
+   * ⚠️ Prima era un ciclo in serie: leggi, salva, leggi, salva. Con 500 PDF
+   * erano 500 attese di rete una dopo l'altra, e se il numero 7 era corrotto
+   * tutto si fermava li — i 493 dopo non entravano mai.
+   */
+  async function handleFiles(files: File[]) {
+    if (files.length === 0) return;
     setProblem(null);
 
-    for (const file of picked) {
-      if (!isSupported(file)) {
-        setProblem(
-          `Non so leggere ${file.name}. Posso leggere PDF, Word, Excel, CSV, testo e foto.`
+    // Un file solo non merita una barra di avanzamento: si comporta come prima.
+    if (files.length === 1) {
+      setBusy(files[0].name);
+      const result = await indexAll(files, () => {});
+      setBusy(null);
+      const item = result.items[0];
+      if (item.status === "fatto" && item.document) {
+        setDocs((prev) => [item.document!, ...prev.filter((d) => d.id !== item.document!.id)]);
+        notify.success(
+          `${item.document.name} è in memoria — ${item.document.chunkCount} ${
+            item.document.chunkCount === 1 ? "pezzo" : "pezzi"
+          }.`
         );
-        continue;
+      } else {
+        notify.error(item.problem ?? "Non ho potuto leggere il file.");
       }
-      setBusy(file.name);
-      try {
-        const { text, source } = await extract(file);
-        await save(file.name, text, kind === "photo" ? "photo" : source);
-      } catch (error) {
-        setProblem(error instanceof Error ? error.message : String(error));
-        setBusy(null);
-      }
+      return;
+    }
+
+    const result = await indexAll(files, setBatch);
+
+    // Si rilegge l'elenco dal server invece di ricostruirlo dai pezzi: con
+    // centinaia di file, alcuni sostituiscono documenti che c'erano già e
+    // indovinare l'ordine a mano e un modo di sbagliarlo.
+    await listDocuments().then(setDocs).catch(() => {});
+
+    if (result.failed === 0) {
+      notify.success(
+        `${result.done} ${result.done === 1 ? "documento" : "documenti"} in memoria.`
+      );
+      setBatch(null);
+    } else {
+      notify.error(
+        `${result.done} su ${result.total} sono entrati. ${result.failed} no: guarda l'elenco qui sotto.`
+      );
+      // Il riepilogo resta a schermo: e l'unico posto dove si vede QUALI file
+      // non sono entrati, e senza quello l'utente non sa cosa ricaricare.
     }
   }
 
   return (
-    <>
-      {/* Le tre strade, in ordine di attrito crescente. */}
+    <div
+      // ⚠️ `onDragOver` deve chiamare preventDefault, altrimenti il browser
+      // apre il file invece di lasciarlo cadere qui — e l'utente si ritrova un
+      // PDF a tutto schermo al posto del suo lavoro.
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!dragging) setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        // Solo quando esce davvero dalla zona, non passando sopra un figlio.
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        void filesFromDrop(e.dataTransfer).then(handleFiles);
+      }}
+      className="relative"
+    >
+      {/* Il velo che compare mentre trascini: senza, non si capisce che si
+          può lasciare qui e si torna al pulsante. */}
+      {dragging && (
+        <div className="animate-rise pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-[var(--accent)] bg-[var(--bg-app)]/90">
+          <div className="text-center">
+            <p className="text-[16px] font-semibold text-[var(--text-primary)]">
+              Lascia qui
+            </p>
+            <p className="mt-1 text-[13.5px] text-[var(--text-secondary)]">
+              Anche una cartella intera. PDF, Word, Excel, foto.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Le quattro strade, in ordine di attrito crescente. */}
       <div className="mt-7 grid grid-cols-2 gap-2 lg:grid-cols-4">
         <Way
           icon={<ChatSparkIcon size={17} />}
@@ -208,7 +273,7 @@ function Memory({
           icon={<PaperclipIcon size={17} />}
           title="Carica"
           delay={180}
-          hint="PDF, Word, Excel"
+          hint="anche 500 insieme"
           onClick={() => fileRef.current?.click()}
         />
       </div>
@@ -269,6 +334,8 @@ function Memory({
           </div>
         </div>
       )}
+
+      {batch && <BatchPanel batch={batch} onClose={() => setBatch(null)} />}
 
       {busy && !writing && (
         <p className="mt-4 flex items-center gap-2 text-[13.5px] text-[var(--text-secondary)]">
@@ -363,9 +430,9 @@ function Memory({
         ref={fileRef}
         type="file"
         multiple
-        accept=".pdf,.doc,.docx,.txt,.md,.csv,.tsv,.rtf"
+        accept=".pdf,.doc,.docx,.txt,.md,.csv,.tsv,.rtf,.png,.jpg,.jpeg,.webp"
         onChange={(e) => {
-          void handleFiles(e.target.files, "upload");
+          void handleFiles(Array.from(e.target.files ?? []));
           e.target.value = "";
         }}
         className="hidden"
@@ -379,12 +446,12 @@ function Memory({
         accept="image/*"
         capture="environment"
         onChange={(e) => {
-          void handleFiles(e.target.files, "photo");
+          void handleFiles(Array.from(e.target.files ?? []));
           e.target.value = "";
         }}
         className="hidden"
       />
-    </>
+    </div>
   );
 }
 
@@ -557,6 +624,69 @@ function Questions({
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * L'avanzamento del caricamento in blocco.
+ *
+ * Con 500 file la cosa che serve non e una rotellina: e sapere **quanti** sono
+ * entrati, quanti mancano, e soprattutto QUALI non ce l'hanno fatta. Un
+ * "caricamento fallito" generico su cinquecento file e inutilizzabile: nessuno
+ * ricaricherebbe tutto per trovare i tre corrotti.
+ */
+function BatchPanel({ batch, onClose }: { batch: BatchProgress; onClose: () => void }) {
+  const failed = batch.items.filter((i) => i.status === "errore" || i.status === "saltato");
+  const percent = Math.round(((batch.done + failed.length) / batch.total) * 100);
+
+  return (
+    <div className="animate-card mt-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[14px] font-medium text-[var(--text-primary)]">
+          {batch.running
+            ? `Sto leggendo… ${batch.done + failed.length} di ${batch.total}`
+            : `${batch.done} di ${batch.total} in memoria`}
+        </span>
+        {!batch.running && (
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+            aria-label="Chiudi il riepilogo"
+          >
+            <CloseIcon size={14} />
+          </button>
+        )}
+      </div>
+
+      <div className="mt-2.5 h-[6px] w-full overflow-hidden rounded-full bg-[var(--fill-quiet)]">
+        <div
+          className="h-full rounded-full transition-[width] duration-300 ease-out"
+          style={{ width: `${percent}%`, background: "var(--grad-primary)" }}
+        />
+      </div>
+
+      {batch.running && (
+        <p className="mt-2 text-[12.5px] text-[var(--text-secondary)]">
+          Tre alla volta, per non bloccare la pagina. Puoi continuare a lavorare.
+        </p>
+      )}
+
+      {failed.length > 0 && (
+        <div className="mt-3.5 border-t border-[var(--border)] pt-3">
+          <div className="t-label text-[var(--text-tertiary)]">
+            Non sono entrati · {failed.length}
+          </div>
+          <div className="mt-2 flex max-h-[180px] flex-col gap-1.5 overflow-y-auto">
+            {failed.map((item) => (
+              <div key={item.file.name} className="text-[12.5px] leading-snug">
+                <span className="font-medium text-[var(--text-primary)]">{item.file.name}</span>
+                <span className="block text-[var(--text-secondary)]">{item.problem}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Way({
   icon,

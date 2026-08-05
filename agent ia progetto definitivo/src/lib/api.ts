@@ -522,6 +522,37 @@ export async function addDocument(input: {
   return (await response.json()) as StoredDocument;
 }
 
+/**
+ * Distilla una conversazione nei fatti che valgono domani (riga 17).
+ *
+ * Non salva l'intera conversazione: un modello legge e tiene solo prezzi,
+ * accordi, orari ed eccezioni. Se non trova niente da ricordare risponde
+ * `{ skipped }` e non scrive nulla — ed è il caso più frequente.
+ *
+ * ⚠️ Costa una chiamata a un modello, quindi non si chiama a ogni messaggio:
+ * chi la usa deve diradarla (vedi `MasterChat`, che lo fa ogni sei scambi).
+ */
+export async function rememberConversation(
+  projectId: string,
+  name: string
+): Promise<StoredDocument | { skipped: string }> {
+  const response = await fetch("/api/documents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({
+      name,
+      source: "paste",
+      fromProject: projectId,
+      // Lo stesso identificativo a ogni giro: la distillazione di questa
+      // conversazione sostituisce la precedente invece di accumularsi.
+      externalId: `conv:${projectId}`,
+    }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as StoredDocument | { skipped: string };
+}
+
 export async function deleteDocument(id: string): Promise<void> {
   const response = await fetch(`/api/documents?id=${encodeURIComponent(id)}`, {
     method: "DELETE",

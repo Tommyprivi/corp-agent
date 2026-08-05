@@ -131,6 +131,91 @@ async function organise(raw: string, apiKey: string): Promise<string> {
   }
 }
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * RIGA 17: LA MEMORIA CONTESTUALE — ricordare gli accordi passati
+ * ─────────────────────────────────────────────────────────────────────────
+ * «Memoria contestuale continua (ricorda accordi passati).»
+ *
+ * Il problema: una conversazione contiene cose che valgono per sempre — «al
+ * signor Rossi facciamo sempre il 10% di sconto», «il martedì chiudiamo alle
+ * 22» — mescolate a cose che valgono trenta secondi: «ciao», «grazie», «puoi
+ * ripetere?».
+ *
+ * ⚠️ Indicizzare tutti i messaggi sarebbe il modo sbagliato, ed è la tentazione
+ * ovvia: la memoria si riempirebbe di «va bene, grazie» e la ricerca per
+ * significato comincerebbe a pescare rumore invece di prezzi. Un RAG affogato
+ * nel piccolo cabotaggio risponde peggio di uno vuoto.
+ *
+ * Quindi un modello legge la conversazione e tira fuori **solo i fatti che
+ * valgono domani**. Se non ne trova nessuno restituisce una riga vuota, e non
+ * si salva niente — che è il caso più frequente e va bene così.
+ */
+const DISTILL = [
+  "Leggi questa conversazione tra il titolare di un'attività e il suo assistente IA.",
+  "Estrai SOLO i fatti che valgono anche domani, e che l'assistente deve ricordarsi.",
+  "",
+  "COSA TENERE",
+  "Prezzi, sconti e accordi presi. Orari, giorni di chiusura, eccezioni.",
+  "Regole di comportamento («ai clienti abituali non chiedere l'anticipo»).",
+  "Nomi e preferenze di clienti specifici, se sono stati detti.",
+  "Decisioni operative («da settembre il menù cambia»).",
+  "",
+  "COSA BUTTARE",
+  "Saluti, ringraziamenti, cortesie. Domande a cui è già stato risposto.",
+  "Prove e messaggi di test. Tutto ciò che vale solo in quel momento.",
+  "Le spiegazioni dell'assistente su come funziona: quelle non sono fatti dell'attività.",
+  "",
+  "COME SCRIVERLI",
+  "Righe brevi, una informazione per riga, sotto titoli di sezione in MAIUSCOLO.",
+  "Non aggiungere niente che non sia stato detto. Non completare, non arrotondare.",
+  "",
+  "⚠️ Se in questa conversazione non c'è NESSUN fatto che valga domani, rispondi",
+  "esattamente con la parola NIENTE e nient'altro. È il caso più frequente e va bene:",
+  "meglio non ricordare nulla che ricordare che qualcuno ha detto «grazie».",
+].join("\n");
+
+/** Sotto questa soglia non vale la pena chiamare un modello. */
+const MIN_MESSAGES_TO_DISTILL = 4;
+
+/**
+ * Tira fuori da una conversazione i fatti che valgono domani.
+ *
+ * Restituisce `null` se il modello non risponde: in quel caso non si salva
+ * niente, che e meglio di salvare una conversazione intera per errore.
+ */
+async function distill(transcript: string, apiKey: string): Promise<string | null> {
+  try {
+    const catalog = await fetchCatalog();
+    const model = chooseModel("standard", catalog);
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Title": "CorpAgent",
+      },
+      body: JSON.stringify({
+        model: model.id,
+        stream: false,
+        max_tokens: 2000,
+        messages: [
+          { role: "system", content: DISTILL },
+          { role: "user", content: transcript.slice(0, 40_000) },
+        ],
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    return body.choices?.[0]?.message?.content?.trim() ?? null;
+  } catch {
+    return null;
+  }
+}
+
 interface DocumentRow {
   id: string;
   name: string;
@@ -192,6 +277,11 @@ export default {
         externalId?: string;
         /** Vero quando il testo e parlato da mettere in ordine (riga 8). */
         organise?: boolean;
+        /**
+         * L'identificativo di una conversazione da distillare (riga 17).
+         * Quando c'e, il testo non arriva dal browser: si legge dal database.
+         */
+        fromProject?: string;
       };
       try {
         body = (await request.json()) as typeof body;
@@ -200,7 +290,42 @@ export default {
       }
 
       const name = clean(body.name, MAX_NAME) ?? "Documento senza nome";
-      const text = typeof body.text === "string" ? body.text.slice(0, MAX_TEXT).trim() : "";
+      let text = typeof body.text === "string" ? body.text.slice(0, MAX_TEXT).trim() : "";
+
+      // ── Riga 17: la memoria contestuale ───────────────────────────────
+      // Il testo non viene dal browser: si legge la conversazione dal database
+      // e un modello ne tira fuori solo i fatti che valgono domani.
+      if (body.fromProject) {
+        const key = process.env.OPENROUTER_API_KEY;
+        if (!key) return json({ error: "OPENROUTER_API_KEY non configurata." }, 503);
+
+        const conversation = await withUser(userId, async (client) => {
+          const rows = await client.query<{ role: string; content: string }>(
+            `select role, content from public.messages
+              where project_id = $1 and user_id = $2 and role in ('user', 'agent')
+              order by created_at
+              limit 200`,
+            [body.fromProject, userId]
+          );
+          return rows.rows;
+        });
+
+        if (conversation.length < MIN_MESSAGES_TO_DISTILL) {
+          return json({ skipped: "conversazione troppo breve" }, 200);
+        }
+
+        const transcript = conversation
+          .map((m) => `${m.role === "user" ? "TITOLARE" : "ASSISTENTE"}: ${m.content}`)
+          .join("\n");
+
+        const distilled = await distill(transcript, key);
+        // NIENTE e la risposta prevista quando non c'e nulla da ricordare: e il
+        // caso piu frequente, e non salvare e la cosa giusta.
+        if (!distilled || distilled.trim().toUpperCase() === "NIENTE") {
+          return json({ skipped: "nessun fatto da ricordare" }, 200);
+        }
+        text = distilled;
+      }
       const source = ["upload", "paste", "photo", "drive"].includes(body.source ?? "")
         ? (body.source as string)
         : "paste";
