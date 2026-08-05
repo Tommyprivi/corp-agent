@@ -43,12 +43,29 @@ Serve solo a te per riconoscerlo nell'elenco.
 
 ### 4. Gli hostname — il passo dove si sbaglia
 
-Aggiungi **due voci separate**, una per riga:
+⚠️ **`At least 1 hostname must be added`** — se leggi questo errore, è perché
+scrivere nella casella **non basta**: è un campo a etichette, e ogni voce va
+confermata.
+
+1. Scrivi `localhost`
+2. Premi **Invio** (o clicca la voce «Add localhost» che compare sotto)
+3. Deve diventare una **targhetta** con la ✕ accanto. Se resta testo normale nella
+   casella, per Cloudflare non l'hai aggiunta
+4. Ripeti con `corpagent.vercel.app`
+
+Alla fine devi vedere due targhette:
 
 ```
-localhost
-corpagent.vercel.app
+Hostnames
+┌──────────────┐ ┌────────────────────────┐
+│ localhost  ✕ │ │ corpagent.vercel.app ✕ │
+└──────────────┘ └────────────────────────┘
 ```
+
+**Se `localhost` viene rifiutato** — alcune versioni del pannello vogliono un
+nome con il punto — metti solo `corpagent.vercel.app`. Il sito online funziona,
+e in sviluppo si usano le chiavi di prova di Cloudflare (in fondo a questo
+documento), che valgono su qualsiasi indirizzo.
 
 | Perché | |
 |---|---|
