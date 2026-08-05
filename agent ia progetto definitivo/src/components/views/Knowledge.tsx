@@ -10,10 +10,11 @@ import {
 import {
   addDocument,
   answerQuestion,
-  deleteDocument,
+  archiveDocument,
   dismissQuestion,
   listDocuments,
   listOpenQuestions,
+  restoreDocument,
   type OpenQuestion,
   type StoredDocument,
 } from "../../lib/api";
@@ -44,7 +45,7 @@ import { useNotify } from "../../lib/notify";
  * usandolo, una domanda per volta, senza che nessuno prepari niente.
  */
 
-type Tab = "memoria" | "domande";
+type Tab = "memoria" | "domande" | "archivio";
 
 export default function Knowledge() {
   const [tab, setTab] = useState<Tab>("memoria");
@@ -89,17 +90,25 @@ export default function Knowledge() {
           active={tab === "domande"}
           onClick={() => setTab("domande")}
         />
+        <TabButton
+          label="Archivio"
+          count={0}
+          active={tab === "archivio"}
+          onClick={() => setTab("archivio")}
+        />
       </div>
 
-      {tab === "memoria" ? (
-        <Memory docs={docs} setDocs={setDocs} loaded={loaded} />
-      ) : (
+      {tab === "memoria" && <Memory docs={docs} setDocs={setDocs} loaded={loaded} />}
+      {tab === "domande" && (
         <Questions
           questions={questions}
           setQuestions={setQuestions}
           loaded={loaded}
           onLearned={() => void listDocuments().then(setDocs).catch(() => {})}
         />
+      )}
+      {tab === "archivio" && (
+        <Archive onRestored={() => void listDocuments().then(setDocs).catch(() => {})} />
       )}
     </div>
   );
@@ -402,7 +411,7 @@ function Memory({
                       const before = docs;
                       setDocs((prev) => prev.filter((d) => d.id !== doc.id));
                       try {
-                        await deleteDocument(doc.id);
+                        await archiveDocument(doc.id);
                       } catch (error) {
                         // La riga torna al suo posto. Senza l'avviso l'utente
                         // vedrebbe il documento riapparire da solo e non
@@ -415,6 +424,7 @@ function Memory({
                       }
                     }}
                     aria-label={`Togli ${doc.name} dalla memoria`}
+                    title="Togli dalla memoria — resta nell'archivio, si può ripristinare"
                     className="shrink-0 rounded-lg p-2 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
                   >
                     <CloseIcon size={15} />
@@ -461,6 +471,140 @@ const SOURCE_LABEL: Record<string, string> = {
   photo: "fotografato",
   drive: "da Google Drive",
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// L'ARCHIVIO — la time-machine (riga 18)
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Quello che è uscito dalla memoria, e che si può riportare dentro.
+ *
+ * Dal documento di Tommaso: «riavvolgere la memoria a una certa data, utile se
+ * per errore sono stati caricati documenti sbagliati».
+ *
+ * La parola che comanda è **«per errore»**: chi sbaglia lo scopre dopo. Per
+ * questo togliere un documento non lo cancella — l'agente smette di pescarlo
+ * subito, ma la riga resta qui. Se fosse una cancellazione vera, questo pannello
+ * non avrebbe niente da mostrare e la time-machine sarebbe un pulsante finto.
+ */
+function Archive({ onRestored }: { onRestored: () => void }) {
+  const [docs, setDocs] = useState<StoredDocument[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const notify = useNotify();
+
+  useEffect(() => {
+    listDocuments(true)
+      .then(setDocs)
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  if (!loaded) {
+    return <p className="mt-8 text-[13.5px] text-[var(--text-secondary)]">Un istante…</p>;
+  }
+
+  return (
+    <div className="mt-7">
+      <p className="text-[13.5px] leading-relaxed text-[var(--text-secondary)]">
+        Quello che hai tolto dalla memoria non è stato cancellato: l'agente non lo usa più, ma
+        sta qui.{" "}
+        <strong className="font-medium text-[var(--text-primary)]">
+          Se hai caricato il documento sbagliato, lo rimetti a posto da qui.
+        </strong>
+      </p>
+
+      {docs.length === 0 ? (
+        <div className="mt-6 rounded-2xl border border-dashed border-[var(--border-strong)] px-5 py-10 text-center">
+          <p className="text-[14.5px] font-medium text-[var(--text-primary)]">
+            L'archivio è vuoto
+          </p>
+          <p className="mt-1.5 text-[13.5px] text-[var(--text-secondary)]">
+            Non hai ancora tolto niente dalla memoria.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-6 flex flex-col gap-2">
+          {docs.map((doc, i) => (
+            <div
+              key={doc.id}
+              className="animate-card flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3.5"
+              style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[14px] font-medium text-[var(--text-primary)]">
+                  {doc.name}
+                </div>
+                <div className="mt-0.5 text-[12.5px] text-[var(--text-secondary)]">
+                  Tolto{" "}
+                  {doc.archivedAt
+                    ? new Date(doc.archivedAt).toLocaleDateString("it-IT", {
+                        day: "numeric",
+                        month: "long",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "—"}
+                  {doc.archivedReason === "sostituito" && " · sostituita da una versione più recente"}
+                  {" · "}
+                  {doc.chunkCount} {doc.chunkCount === 1 ? "pezzo" : "pezzi"} ancora qui
+                </div>
+              </div>
+
+              <button
+                onClick={async () => {
+                  setBusy(doc.id);
+                  try {
+                    await restoreDocument(doc.id);
+                    setDocs((prev) => prev.filter((d) => d.id !== doc.id));
+                    onRestored();
+                    notify.success(`${doc.name} è tornato in memoria.`);
+                  } catch (error) {
+                    notify.error(
+                      `Non ho potuto ripristinare ${doc.name}.`,
+                      error instanceof Error ? error.message : String(error)
+                    );
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+                disabled={busy === doc.id}
+                className="btn-grad shrink-0 rounded-lg px-3 py-2 text-[13px] font-medium disabled:opacity-40"
+              >
+                {busy === doc.id ? "…" : "Rimetti in memoria"}
+              </button>
+
+              <button
+                onClick={async () => {
+                  // La cancellazione vera esiste, ma sta qui dentro e non nella
+                  // memoria: chi arriva a svuotare il cestino sa cosa sta facendo.
+                  setBusy(doc.id);
+                  try {
+                    await archiveDocument(doc.id, true);
+                    setDocs((prev) => prev.filter((d) => d.id !== doc.id));
+                  } catch (error) {
+                    notify.error(
+                      "Non ho potuto cancellarlo.",
+                      error instanceof Error ? error.message : String(error)
+                    );
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+                disabled={busy === doc.id}
+                title="Cancella per sempre: da qui non si torna"
+                aria-label={`Cancella ${doc.name} per sempre`}
+                className="shrink-0 rounded-lg p-2 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                <CloseIcon size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // LE DOMANDE APERTE

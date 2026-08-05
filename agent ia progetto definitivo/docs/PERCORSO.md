@@ -42,9 +42,22 @@
 > Verificato anche il confine delle chiavi: la Site Key è nel pacchetto servito al
 > browser (è pubblica di progetto, va bene) e la Secret **no**, come deve essere.
 >
-> **Fase aperta: FASE 2 — La memoria.** Chiuse le righe 11-15; restano la 16
-> (batch di 500 PDF: oggi si caricano in gruppo ma uno per volta), la 17 (memoria
-> contestuale) e la 18 (time-machine).
+> 🎉 **ANCHE LA FASE 2 È CHIUSA.** Otto righe su otto, il 2 Agosto 2026.
+>
+> Le ultime tre: **16** — 132 documenti al minuto con tre estrazioni in volo, e il
+> trascinamento legge anche le cartelle (500 PDF in meno di quattro minuti, e un file
+> corrotto non ferma gli altri). **17** — un modello distilla le conversazioni tenendo
+> solo i fatti che valgono domani: «al signor Rossi sconto 10% fisso» sì, «grazie» no.
+> **18** — togliere un documento lo **archivia**, non lo cancella: l'agente smette di
+> pescarlo nell'istante stesso, ma si può rimettere in memoria.
+>
+> ⚠️ Sulla 18 c'era una trappola: una time-machine costruita sopra un `DELETE`
+> distruttivo è un pulsante che non può fare niente. La parola che comanda, nel
+> documento di Tommaso, è **«per errore»** — e chi sbaglia lo scopre dopo.
+>
+> **Fase aperta: FASE 3 — WhatsApp.** È quella che rende il prodotto vendibile.
+> ⏰ La verifica del Business Manager di Meta richiede **giorni**: quella pratica va
+> aperta con anticipo, ed è l'unico passaggio che non dipende da quanto si lavora.
 >
 > ⚠️ **Cambio di architettura deciso da Tommaso il 1 Agosto 2026:** il backend è
 > **Neon + funzioni su Vercel + Better Auth**, non più Supabase. Neon è solo il database,
@@ -126,7 +139,7 @@ Senza questa fase il prodotto non è vendibile: l'agente non risponde davvero.
 
 ---
 
-## FASE 2 — La memoria (RAG) 🔑
+## FASE 2 — La memoria (RAG) ✅ FATTA 🔑
 
 | Ordine | Funzione | Chiave | Stato |
 |---|---|---|---|
@@ -135,9 +148,9 @@ Senza questa fase il prodotto non è vendibile: l'agente non risponde davvero.
 | 13 | Cita da dove ha preso il prezzo | — | ✅ a te, non ai clienti |
 | 14 | Supporto multi-formato: PDF, Word, Excel, CSV, immagini | — | ✅ |
 | 15 | OCR per foto di listini e menù | OpenRouter (visione) | ✅ |
-| 16 | Batch-processor: trascina 500 PDF insieme | — | 🔧 si caricano in gruppo, uno per volta |
-| 17 | Memoria contestuale continua (ricorda accordi passati) | — | ⬜ |
-| 18 | Time-Machine: riavvolgi la memoria a una data | — | ⬜ |
+| 16 | Batch-processor: trascina 500 PDF insieme | — | ✅ 132 documenti al minuto, cartelle comprese |
+| 17 | Memoria contestuale continua (ricorda accordi passati) | — | ✅ tiene gli accordi, butta le chiacchiere |
+| 18 | Time-Machine: riavvolgi la memoria a una data | — | ✅ togliere archivia, non cancella |
 
 **Fatto quando:** carichi il menù e l'agente risponde col prezzo giusto, citando la riga.
 ✅ **Succede dal 2 Agosto 2026.** Provato: menù indicizzato in 3 secondi, «quanto viene la

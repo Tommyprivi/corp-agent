@@ -276,6 +276,10 @@ export async function search(
        join public.documents d on d.id = c.document_id
       where c.user_id = $1
         and c.embedding is not null
+        -- ⚠️ Riga 18: i documenti archiviati non si pescano mai. E il pezzo
+        -- che rende vera la time-machine: togliere qualcosa dalla memoria
+        -- deve avere effetto sull'istante successivo, senza cancellare niente.
+        and d.archived_at is null
         and 1 - (c.embedding <=> $2::vector) >= $3
       order by similarity desc, d.updated_at desc
       limit $4`,

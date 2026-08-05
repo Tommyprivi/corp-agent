@@ -6,7 +6,8 @@
  *
  *   GET    /api/documents          → i miei documenti, con quanti pezzi ha ognuno
  *   POST   /api/documents          → un testo nuovo: lo spezza e lo indicizza
- *   DELETE /api/documents?id=...   → lo cancella, coi suoi pezzi
+ *   DELETE /api/documents?id=...   → lo archivia (riga 18: non lo cancella)
+ *   PATCH  /api/documents          → lo ripristina dall'archivio
  *
  * ─────────────────────────────────────────────────────────────────────────
  * PERCHÉ ARRIVA TESTO E NON FILE
@@ -226,7 +227,13 @@ interface DocumentRow {
   error: string | null;
   updated_at: string;
   created_at: string;
+  archived_at: string | null;
+  archived_reason: string | null;
 }
+
+/** Le colonne che servono al frontend, in un posto solo. */
+const COLUMNS = `id, name, source, size_bytes, status, chunk_count, error,
+                 updated_at, created_at, archived_at, archived_reason`;
 
 export default {
   async fetch(request: Request): Promise<Response> {
@@ -243,13 +250,15 @@ export default {
 
     // ── I miei documenti ─────────────────────────────────────────────────
     if (request.method === "GET") {
+      // ?archived=1 mostra il cestino della time-machine invece della memoria.
+      const wantArchived = new URL(request.url).searchParams.get("archived") === "1";
       const rows = await withUser(userId, async (client) => {
         const result = await client.query<DocumentRow>(
-          `select id, name, source, size_bytes, status, chunk_count, error,
-                  updated_at, created_at
+          `select ${COLUMNS}
              from public.documents
             where user_id = $1
-            order by updated_at desc`,
+              and archived_at is ${wantArchived ? "not null" : "null"}
+            order by ${wantArchived ? "archived_at" : "updated_at"} desc`,
           [userId]
         );
         return result.rows;
@@ -379,7 +388,10 @@ export default {
           await client.query(
             `update public.documents
                 set name = $3, size_bytes = $4, status = 'indexed', chunk_count = $5,
-                    error = null, updated_at = now()
+                    error = null, updated_at = now(),
+                    -- Ricaricare un documento archiviato lo riporta in memoria:
+                    -- e chiaramente quello che uno intende facendolo.
+                    archived_at = null, archived_reason = null
               where id = $1 and user_id = $2`,
             [documentId, userId, name, content.length, pieces.length]
           );
@@ -420,9 +432,7 @@ export default {
         );
 
         const row = await client.query<DocumentRow>(
-          `select id, name, source, size_bytes, status, chunk_count, error,
-                  updated_at, created_at
-             from public.documents where id = $1 and user_id = $2`,
+          `select ${COLUMNS} from public.documents where id = $1 and user_id = $2`,
           [documentId, userId]
         );
         return row.rows[0];
@@ -434,21 +444,67 @@ export default {
     }
 
     // ── Cancellare ───────────────────────────────────────────────────────
+    // ── Riga 18: togliere dalla memoria NON cancella ─────────────────────
+    // «Utile se per errore sono stati caricati documenti sbagliati»: chi si
+    // accorge dell'errore lo scopre dopo, e una time-machine costruita sopra
+    // una cancellazione distruttiva e un pulsante che non puo fare niente.
+    //
+    // L'agente smette di pescare il documento nello stesso istante — lo fa la
+    // clausola `archived_at is null` in `search()` — ma la riga e i suoi pezzi
+    // restano, e ripristinare e togliere una data.
+    //
+    // `?forever=1` cancella davvero, per chi vuole svuotare il cestino.
     if (request.method === "DELETE") {
       if (!id) return json({ error: "Serve l'identificativo del documento." }, 400);
+      const forever = new URL(request.url).searchParams.get("forever") === "1";
 
-      // I pezzi se ne vanno da soli: `chunks.document_id` ha
-      // `on delete cascade` dalla migrazione 0001.
       const count = await withUser(userId, async (client) => {
+        if (forever) {
+          // I pezzi se ne vanno da soli: `chunks.document_id` ha
+          // `on delete cascade` dalla migrazione 0001.
+          const result = await client.query(
+            "delete from public.documents where id = $1 and user_id = $2",
+            [id, userId]
+          );
+          return result.rowCount ?? 0;
+        }
         const result = await client.query(
-          "delete from public.documents where id = $1 and user_id = $2",
+          `update public.documents
+              set archived_at = now(), archived_reason = 'utente'
+            where id = $1 and user_id = $2 and archived_at is null`,
           [id, userId]
         );
         return result.rowCount ?? 0;
       });
 
       return count > 0
-        ? json({ deleted: id }, 200)
+        ? json({ [forever ? "deleted" : "archived"]: id }, 200)
+        : json({ error: "Documento non trovato." }, 404);
+    }
+
+    // ── Ripristinare: la time-machine che riavvolge ──────────────────────
+    if (request.method === "PATCH") {
+      let patch: { id?: string; restore?: boolean };
+      try {
+        patch = (await request.json()) as { id?: string; restore?: boolean };
+      } catch {
+        return json({ error: "Richiesta non leggibile." }, 400);
+      }
+      if (!patch.id) return json({ error: "Serve l'identificativo del documento." }, 400);
+
+      const restored = await withUser(userId, async (client) => {
+        const result = await client.query<DocumentRow>(
+          `update public.documents
+              set archived_at = null, archived_reason = null, updated_at = now()
+            where id = $1 and user_id = $2
+            returning ${COLUMNS}`,
+          [patch.id, userId]
+        );
+        return result.rows[0];
+      });
+
+      return restored
+        ? json(shape(restored), 200)
         : json({ error: "Documento non trovato." }, 404);
     }
 
@@ -473,6 +529,8 @@ function shape(row: DocumentRow) {
     error: row.error,
     updatedAt: row.updated_at,
     createdAt: row.created_at,
+    archivedAt: row.archived_at,
+    archivedReason: row.archived_reason,
   };
 }
 

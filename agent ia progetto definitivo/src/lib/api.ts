@@ -480,10 +480,16 @@ export interface StoredDocument {
   error: string | null;
   updatedAt: string;
   createdAt: string;
+  /** Quando e uscito dalla memoria. `null` = attivo (riga 18). */
+  archivedAt: string | null;
+  archivedReason: string | null;
 }
 
-export async function listDocuments(): Promise<StoredDocument[]> {
-  const response = await fetch("/api/documents", { credentials: "same-origin" });
+/** I documenti in memoria. `archived: true` mostra il cestino della time-machine. */
+export async function listDocuments(archived = false): Promise<StoredDocument[]> {
+  const response = await fetch(`/api/documents${archived ? "?archived=1" : ""}`, {
+    credentials: "same-origin",
+  });
   if (!response.ok) throw await readError(response);
   return (await response.json()) as StoredDocument[];
 }
@@ -553,12 +559,33 @@ export async function rememberConversation(
   return (await response.json()) as StoredDocument | { skipped: string };
 }
 
-export async function deleteDocument(id: string): Promise<void> {
-  const response = await fetch(`/api/documents?id=${encodeURIComponent(id)}`, {
-    method: "DELETE",
+/**
+ * Toglie un documento dalla memoria — **senza cancellarlo** (riga 18).
+ *
+ * L'agente smette di pescarlo nello stesso istante, ma resta nell'archivio e si
+ * puo ripristinare. E il motivo per cui la time-machine puo esistere: se
+ * cancellassimo davvero, "riavvolgere" non avrebbe niente da cui riavvolgere.
+ *
+ * `forever: true` cancella per sempre, per chi vuole svuotare il cestino.
+ */
+export async function archiveDocument(id: string, forever = false): Promise<void> {
+  const response = await fetch(
+    `/api/documents?id=${encodeURIComponent(id)}${forever ? "&forever=1" : ""}`,
+    { method: "DELETE", credentials: "same-origin" }
+  );
+  if (!response.ok) throw await readError(response);
+}
+
+/** Riporta in memoria un documento archiviato. */
+export async function restoreDocument(id: string): Promise<StoredDocument> {
+  const response = await fetch("/api/documents", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
+    body: JSON.stringify({ id, restore: true }),
   });
   if (!response.ok) throw await readError(response);
+  return (await response.json()) as StoredDocument;
 }
 
 /**
