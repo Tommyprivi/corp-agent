@@ -9,7 +9,7 @@
 > 3. Non si aggiungono funzioni che non sono in questo elenco senza chiedere a Tommaso.
 > 4. Quando una riga è finita, si spunta qui e si aggiorna "Fase aperta" sotto.
 >
-> **Fase aperta: FASE 1 — Il cervello.** Righe **1-6 chiuse e verificate** il 2 Agosto
+> **FASE 1 — Il cervello: CHIUSA.** Righe **1-6 chiuse e verificate** il 2 Agosto
 > 2026. Quel giorno è arrivata `OPENROUTER_API_KEY` e per la prima volta il progetto ha
 > parlato con un modello vero: domanda in italiano, risposta in 1,5 secondi, salvata su
 > Neon, con l'avviso costi che è scattato da solo su una richiesta pesante.
@@ -35,12 +35,16 @@
 > perché sta scritto in `api/documents.ts`. Una seconda memoria vorrebbe dire una seconda
 > ricerca, una seconda iniezione nel prompt e due modi di andare fuori sincrono.
 >
-> **Della Fase 1 resta solo la riga 10.** Il codice c'è ed è provato — widget nel
-> browser, verifica sul server contro Cloudflare, chiavi di prova controllate — manca
-> solo che Tommaso prenda le due chiavi gratuite: [SETUP-TURNSTILE.md](SETUP-TURNSTILE.md),
-> 4 minuti. Finché non ci sono si entra comunque e l'interfaccia lo dichiara.
+> 🎉 **LA FASE 1 È CHIUSA.** Tutte e dieci le righe, il 2 Agosto 2026. Chiusa anche la
+> **10**: le chiavi di Cloudflare sono in `.env.local` e su Vercel, e la protezione è
+> attiva davvero — un gettone finto riceve un 403 da Cloudflare, non un via libera.
 >
-> Della Fase 2 sono chiuse le righe 11-15; restano 16, 17 e 18.
+> Verificato anche il confine delle chiavi: la Site Key è nel pacchetto servito al
+> browser (è pubblica di progetto, va bene) e la Secret **no**, come deve essere.
+>
+> **Fase aperta: FASE 2 — La memoria.** Chiuse le righe 11-15; restano la 16
+> (batch di 500 PDF: oggi si caricano in gruppo ma uno per volta), la 17 (memoria
+> contestuale) e la 18 (time-machine).
 >
 > ⚠️ **Cambio di architettura deciso da Tommaso il 1 Agosto 2026:** il backend è
 > **Neon + funzioni su Vercel + Better Auth**, non più Supabase. Neon è solo il database,
@@ -84,7 +88,7 @@ dell'IA dichiarate come simulate.
 
 ---
 
-## FASE 1 — Il cervello 🔑 LA PIÙ IMPORTANTE
+## FASE 1 — Il cervello ✅ FATTA 🔑 LA PIÙ IMPORTANTE
 
 Senza questa fase il prodotto non è vendibile: l'agente non risponde davvero.
 
@@ -99,7 +103,7 @@ Senza questa fase il prodotto non è vendibile: l'agente non risponde davvero.
 | 7 | Master Builder vero: Structured Output che genera l'agente in JSON | OpenRouter | ✅ genera, chiede, non mente — e i 125 preset funzionano |
 | 8 | Configurazione guidata vera: la conversazione diventa struttura dati salvata | OpenRouter | ✅ racconti di fretta, diventa memoria organizzata |
 | 9 | Salvataggio permanente di agenti, chat, documenti, configurazioni | Neon | ✅ chat, progetti e agenti — i documenti alla Fase 2 |
-| 10 | Turnstile vero al posto del segnaposto | Cloudflare (gratis) | 🔧 codice scritto e provato, **manca solo la chiave** |
+| 10 | Turnstile vero al posto del segnaposto | Cloudflare (gratis) | ✅ attivo: un gettone finto viene rifiutato |
 
 > ✅ **Eseguite davvero il 2 Agosto 2026.** Le righe 3-6 erano rimaste per settimane
 > "scritte ma mai eseguite": codice che compila non è codice che funziona. Adesso sono
