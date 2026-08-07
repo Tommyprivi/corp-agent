@@ -25,18 +25,36 @@
 | [SETUP-TURNSTILE.md](SETUP-TURNSTILE.md) | **La verifica anti-bot, passo per passo.** Gratis, 4 minuti: è l'ultima riga della Fase 1 |
 | [SETUP-WHATSAPP.md](SETUP-WHATSAPP.md) | Meta Business, numero verificato, webhook |
 
-## Chiavi già compromesse — da revocare
+## Le chiavi passate in chat — chiuso il 2 Agosto 2026
 
-Queste sono state incollate in chat durante lo sviluppo, quindi **vanno considerate
-pubbliche**. Revocarle e generarne di nuove:
+Questo documento segnava le chiavi OpenAI ed ElevenLabs come «compromesse, da revocare»,
+perché durante lo sviluppo erano state incollate in una conversazione.
 
-| Provider | Dove revocare | Stato |
+**Tommaso ha valutato e deciso di non revocarle**: conosce il contesto di quella chat e
+chi vi aveva accesso. Verificato che l'esposizione fosse solo quella — nel commit
+`22e3153`, che aveva portato `.env.local` dentro git per errore, **entrambe le righe erano
+vuote**. In git non ci sono mai finite.
+
+### La regola resta, e vale la pena capirla
+
+Una chiave vale finché puoi **elencare chi ce l'ha**. Quando esce da quella cerchia il
+problema non è che qualcuno l'abbia vista: è che non puoi più saperlo. E siccome
+rigenerarla costa due minuti mentre sbagliare costa il credito, il verso in cui conviene
+sbagliare è ovvio.
+
+Ma è prudenza, non una diagnosi. Il peso cambia moltissimo col posto:
+
+| Dove è finita | Rischio | Perché |
 |---|---|---|
-| OpenAI | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | ⚠️ da revocare |
-| ElevenLabs | elevenlabs.io → Profile → API Keys | ⚠️ da revocare |
+| Repository pubblico | **alto** | esistono robot che scandagliano GitHub in continuazione |
+| File committato, repo privato | medio | resta nella storia anche dopo averlo tolto |
+| Conversazione privata | basso | dipende da chi vi accede, e il proprietario lo sa |
 
-Su OpenAI controllare anche la sezione **Usage** nei giorni successivi: un consumo anomalo
-significa che qualcuno l'ha raccolta.
+### Quello che protegge davvero, comunque
+
+Un tetto di spesa vale più di una rotazione: limita il danno di **qualsiasi** fuga, anche
+di quelle che non si scoprono. Su OpenRouter c'è (`Credit limit` sulla chiave). Su OpenAI
+si imposta da `Settings` → `Limits`, con avviso via email.
 
 ---
 

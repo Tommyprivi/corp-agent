@@ -107,11 +107,10 @@ Serve **solo** per il RAG. OpenRouter dà i modelli di chat, ma non i modelli ch
 trasformano un documento in numeri per poterlo cercare per significato. Quelli si
 prendono da OpenAI a parte.
 
-> ⚠️ **La vecchia chiave OpenAI è compromessa** (è passata in una chat, vedi
-> [CHIAVI.md](CHIAVI.md)). Prima di tutto vai su
-> [platform.openai.com/api-keys](https://platform.openai.com/api-keys) e **revocala**.
-> Poi controlla `Usage` nei giorni seguenti: un consumo che non riconosci significa che
-> qualcuno l'ha raccolta.
+> ℹ️ Questa chiave era segnata come «da revocare» perché passata in una conversazione.
+> **Tommaso ha valutato e deciso di tenerla**: il perché sta in [CHIAVI.md](CHIAVI.md).
+> Quello che conta comunque è il **budget mensile** (`Settings` → `Limits`): limita il
+> danno di qualunque fuga, comprese quelle che non si scoprono.
 
 1. [platform.openai.com](https://platform.openai.com) → accedi.
 2. **Prima carica credito:** `Settings` → `Billing` → `Add to credit balance`. È
@@ -267,9 +266,8 @@ Quando l'avrai generata, tienine una copia in un gestore di password.
 La bibbia esclude esplicitamente la voce dalla V1. La riga esiste in `.env.local` solo
 perché tu abbia un posto dove metterla il giorno che servirà.
 
-> ⚠️ Anche la vecchia chiave ElevenLabs è compromessa: vai su elevenlabs.io → `Profile`
-> → `API Keys` e **revocala adesso**, anche se non useremo il servizio per mesi. Una
-> chiave attiva che gira è un conto che qualcun altro può far salire.
+> ℹ️ Anche questa era segnata come «da revocare». Vale la stessa decisione presa per
+> OpenAI, spiegata in [CHIAVI.md](CHIAVI.md).
 
 Quando servirà: elevenlabs.io → `Profile` → `API Keys` → `Create`.
 
