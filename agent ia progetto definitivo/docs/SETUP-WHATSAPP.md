@@ -13,6 +13,27 @@ che non dipende da te.
 
 ---
 
+## Dal telefono o dal computer?
+
+Domanda di Tommaso, e la risposta è comoda: **la parte lenta si fa dal telefono**, quella
+fastidiosa aspetta comunque il computer.
+
+| Passo | Dove | Perché |
+|---|---|---|
+| 1 · Portfolio aziendale | 📱 **telefono** | è un modulo, si compila bene ovunque |
+| 2 · **Verifica dell'azienda** | 📱 **telefono, anzi meglio** | fotografi la visura con la fotocamera invece di scansionarla |
+| Cancellare il numero da WhatsApp | 📱 **solo dal telefono** | si fa dall'app: Impostazioni → Account → Elimina account |
+| 3 · App per sviluppatori | 💻 computer | console fitta, schede, tabelle |
+| 4-5 · Numero di prova e credenziali | 💻 computer | il token è lunghissimo e si copia una volta sola: sbagliare un carattere significa non capire perché non funziona |
+| 6 · Webhook | 💻 computer | lo facciamo insieme |
+| 7 · Numero vero | 💻 computer + 📱 per l'SMS | |
+
+**Quindi stasera dal divano puoi fare i passi 1 e 2** — che sono quelli che innescano
+l'attesa di giorni. Tutto il resto viene dopo l'approvazione, quando sarai al computer
+comunque.
+
+---
+
 ## Passo 0 — Cosa ti serve prima di cominciare
 
 | Cosa | Nota |
@@ -97,7 +118,21 @@ Nella stessa pagina **Configurazione API** trovi:
 |---|---|---|
 | **Token di accesso** | in cima alla pagina | `WHATSAPP_TOKEN` |
 | **ID numero di telefono** | sotto il numero, è un numero lungo | `WHATSAPP_PHONE_ID` |
+| **ID account WhatsApp Business** | stessa pagina, sopra il precedente | `WHATSAPP_BUSINESS_ACCOUNT_ID` |
 | **Token di verifica** | ⚠️ non esiste: **te lo inventi tu** | `WHATSAPP_VERIFY_TOKEN` |
+
+E due che stanno in un'altra pagina — l'app → **Impostazioni** → **Base**:
+
+| Cosa | Va in | A cosa serve |
+|---|---|---|
+| **ID app** | `META_APP_ID` | identifica l'app; servirà anche a Messenger e Instagram |
+| **Chiave segreta** (premi `Mostra`) | `META_APP_SECRET` | ⚠️ **non è facoltativa**, vedi sotto |
+
+> ⚠️ **Perché `META_APP_SECRET` è obbligatoria.** Il webhook è un indirizzo pubblico:
+> chiunque lo indovini può mandarci finti messaggi e far rispondere il tuo agente a spese
+> tue. Meta firma ogni richiesta con questa chiave nell'intestazione
+> `X-Hub-Signature-256`, e senza quel controllo il canale è aperto al mondo. Non è una
+> precauzione teorica: è un indirizzo che chiunque può chiamare.
 
 Il **token di verifica** è una parola d'ordine che scegli tu: serve solo a far capire a
 Meta e a noi che stiamo parlando tra di noi. Va bene una frase a caso, l'importante è che
@@ -107,10 +142,13 @@ sia identica nei due posti. Generane una così:
 node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"
 ```
 
-⚠️ **Il token di accesso della pagina dura 24 ore.** Va bene per le prove. Quello
-definitivo si fa più avanti, in **Impostazioni azienda → Utenti → Utenti di sistema**:
-crei un utente di sistema, gli dai accesso all'app e generi un token **senza scadenza**.
-Lo faremo insieme quando arriveremo alla Fase 3.
+⚠️ **Il token di accesso della pagina dura 24 ore**, ed è la trappola che fa perdere un
+sabato mattina: tutto funziona, poi di colpo l'agente smette di rispondere e sembra che si
+sia rotto qualcosa. Non si è rotto niente — il token è scaduto.
+
+Va bene per le prove. Quello definitivo si fa in **Impostazioni azienda → Utenti →
+Utenti di sistema**: crei un utente di sistema, gli dai accesso all'app e generi un token
+con durata **Non scade mai**. Lo faremo insieme.
 
 Le tre righe sono già pronte e vuote in `.env.example`. Mandamele o mettile tu in
 `.env.local`.
@@ -122,12 +160,15 @@ Le tre righe sono già pronte e vuote in `.env.example`. Mandamele o mettile tu 
 Meta deve poterci **chiamare** quando arriva un messaggio. Serve un indirizzo pubblico in
 `https://` — e `localhost:5173` dal di fuori non esiste.
 
-Due strade:
+✅ **Questo pezzo è già a posto:** il sito è pubblicato dal 2 Agosto 2026, quindi
+l'indirizzo esiste già ed è
 
-**A. Pubblichiamo su Vercel** (quella giusta, e va fatta comunque). L'indirizzo diventa
-tipo `https://corpagent.vercel.app/api/whatsapp`.
+```
+https://corpagent.vercel.app/api/whatsapp
+```
 
-**B. Un tunnel, per provare dal tuo computer:**
+Serve un tunnel **solo** se vuoi provare il webhook contro il codice sul tuo computer
+prima di distribuirlo:
 
 ```bash
 npx cloudflared tunnel --url http://localhost:5173
@@ -199,9 +240,14 @@ controlla la pagina ufficiale dei prezzi invece di fidarti di quello che sai.
 - [ ] Dominio verificato (facoltativo, ma velocizza)
 - [ ] App per sviluppatori con il prodotto WhatsApp
 - [ ] Numero di prova attivo, il tuo cellulare tra i 5 destinatari
-- [ ] `WHATSAPP_TOKEN` e `WHATSAPP_PHONE_ID` presi
+- [ ] `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID` presi
+- [ ] `META_APP_ID` e `META_APP_SECRET` presi (pagina *Impostazioni → Base*)
 - [ ] `WHATSAPP_VERIFY_TOKEN` generato
 - [ ] SIM dedicata comprata (serve al Passo 7, non prima)
 
-Il webhook e il numero vero li facciamo insieme quando la Fase 1 è chiusa. Quello che
-serve da te adesso è **solo il Passo 2**: avviare la verifica e far partire l'attesa.
+**Le Fasi 1 e 2 sono chiuse dal 2 Agosto 2026**, quindi il progetto è pronto ad accogliere
+WhatsApp: il cervello risponde, la memoria funziona, il sito è online.
+
+Quello che serve da te adesso è **solo il Passo 2**: avviare la verifica e far partire
+l'attesa. Tutto il resto lo si può costruire e collaudare col numero di prova mentre Meta
+guarda i tuoi documenti.
