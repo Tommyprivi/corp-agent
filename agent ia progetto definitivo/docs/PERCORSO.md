@@ -162,20 +162,34 @@ titolare, e quando il titolare risponde quella risposta **entra in memoria per s
 
 ## FASE 3 — WhatsApp 🔑 IL CANALE
 
-| Ordine | Funzione | Chiave |
-|---|---|---|
-| 19 | WhatsApp Business API: numero verificato e webhook | Meta Business |
-| 20 | Ricezione e invio messaggi reali | Meta |
-| 21 | Human-in-the-Loop: l'agente si ferma e ti chiama | — |
-| 22 | Modalità Ghost: approvi le risposte prima dell'invio | — |
-| 23 | Agent Watchdog: blocca le risposte fuori dalle regole | — |
-| 24 | Notifiche al titolare (push, WhatsApp, email) | — |
-| 25 | Coda intelligente se la connessione salta | — |
-| 26 | Riconoscimento automatico della lingua del cliente | — |
-| 27 | Agent Pulse: riepilogo serale su WhatsApp | — |
-| 28 | Contatore Risparmio alimentato dai messaggi veri | — |
+| Ordine | Funzione | Chiave | Stato |
+|---|---|---|---|
+| 19 | WhatsApp Business API: numero verificato e webhook | Meta Business | ✅ firma verificata, ripetizioni scartate |
+| 20 | Ricezione e invio messaggi reali | Meta | ✅ il cliente scrive, l'agente risponde |
+| 21 | Human-in-the-Loop: l'agente si ferma e ti chiama | — | ✅ interruttore «rispondo io» |
+| 22 | Modalità Ghost: approvi le risposte prima dell'invio | — | |
+| 23 | Agent Watchdog: blocca le risposte fuori dalle regole | — | |
+| 24 | Notifiche al titolare (push, WhatsApp, email) | — | |
+| 25 | Coda intelligente se la connessione salta | — | |
+| 26 | Riconoscimento automatico della lingua del cliente | — | |
+| 27 | Agent Pulse: riepilogo serale su WhatsApp | — | |
+| 28 | Contatore Risparmio alimentato dai messaggi veri | — | |
 
 **Fatto quando:** un cliente scrive al tuo numero e l'agente risponde da solo, corretto.
+
+✅ **Il motore gira dall'8 Agosto 2026.** Provato in produzione con firma vera: stretta di
+mano 200, firma falsa 401, «a che ora aprite domenica?» → risposta dell'agente in 6,6
+secondi (0,000049 €), ripetizione di Meta scartata, interruttore «rispondo io» che registra
+e tace. Manca solo l'ultimo passo, che è di Tommaso: incollare l'indirizzo del webhook nel
+pannello Meta e scriverci dal telefono.
+
+⚠️ **Due difetti veri trovati provando, nessuno dei due visibile compilando.** Il webhook
+rispondeva 200 e non salvava niente:
+1. `channels` ha la sicurezza per riga, e il webhook la legge **prima** di sapere di chi è
+   il numero. Fuori da `withUser()` la query non vedeva nulla → migrazione 0007,
+   `resolve_wa_channel()`.
+2. La risposta dell'agente veniva salvata con stato `"error"`, che il vincolo della 0002
+   non ammette: eccezione, e la risposta spariva. Ora è `"failed"`.
 
 ---
 

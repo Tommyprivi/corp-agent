@@ -312,3 +312,55 @@ export function conflictingSources(passages: Passage[]): string[] {
   const names = [...new Set(strong.map((p) => p.documentName))];
   return names.length > 1 ? names : [];
 }
+
+/**
+ * Le istruzioni che si aggiungono quando l'agente ha dei documenti da cui
+ * pescare (righe 12 e 13 della Fase 2).
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LA DECISIONE PIÙ IMPORTANTE DELLA FASE
+ * ─────────────────────────────────────────────────────────────────────────
+ * Deciso da Tommaso il 2 Agosto 2026: se l'informazione non c'è, l'agente
+ * **non risponde** e avvisa il titolare. Non prova a essere utile, non
+ * approssima, non offre "qualcosa di simile" su prezzi e disponibilità.
+ *
+ * È la traduzione tecnica della promessa venduta al ristoratore: "non sbaglia
+ * mai i prezzi". Un agente che indovina fa perdere un cliente vero, e nessuno
+ * si accorge dell'errore finché non è tardi.
+ *
+ * La citazione è per il titolare, non per il cliente (altra decisione dello
+ * stesso giorno): il cliente legge una risposta pulita, il titolare vede da
+ * quale documento e da quale riga arriva il dato.
+ */
+export function knowledgePrompt(passages: Passage[]): string {
+  const sources = passages
+    .map((p, i) => {
+      const where = p.heading ? `${p.documentName} — ${p.heading}` : p.documentName;
+      return `[${i + 1}] ${where}\n${p.content}`;
+    })
+    .join("\n\n");
+
+  return [
+    "─────────────────────────────────────────────",
+    "QUELLO CHE SAI DI QUESTA ATTIVITÀ",
+    "─────────────────────────────────────────────",
+    "Questi sono estratti dai documenti che il titolare ti ha dato. Sono la tua",
+    "UNICA fonte di verità su prezzi, orari, prodotti, disponibilità e condizioni.",
+    "",
+    sources,
+    "",
+    "─────────────────────────────────────────────",
+    "COME USARLI",
+    "─────────────────────────────────────────────",
+    "Rispondi usando solo quello che c'è scritto qui sopra.",
+    "",
+    "Se la risposta NON è qui dentro, non inventarla e non dedurla: di' con",
+    "semplicità che su quel punto devi far verificare al titolare, e che gli",
+    "risponderete a breve. Non proporre alternative sui prezzi, non fare stime,",
+    "non dire 'di solito' o 'in genere'. Una risposta che manca costa un minuto,",
+    "un prezzo sbagliato costa un cliente.",
+    "",
+    "Non citare i numeri tra parentesi quadre e non nominare i documenti: al",
+    "cliente arriva una risposta pulita, come se lo sapessi.",
+  ].join("\n");
+}
