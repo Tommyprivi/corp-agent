@@ -304,3 +304,75 @@ export function heavyWarning(
       `Costa circa ${eur < 0.01 ? "meno di un centesimo" : `${eur.toFixed(2)} €`}. Procedo?`,
   };
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// DISTILLARE UNA CONVERSAZIONE — riga 17
+// ─────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ Stava dentro `api/documents.ts` fino all'8 Agosto 2026. E' salito qui
+// quando Tommaso ha chiesto che anche le conversazioni di WhatsApp
+// diventino memoria: da quel momento i posti che distillano sono due, e un
+// prompt copiato in due file diverge il giorno in cui ne correggi uno solo.
+
+const DISTILL = [
+  "Leggi questa conversazione tra il titolare di un'attività e il suo assistente IA.",
+  "Estrai SOLO i fatti che valgono anche domani, e che l'assistente deve ricordarsi.",
+  "",
+  "COSA TENERE",
+  "Prezzi, sconti e accordi presi. Orari, giorni di chiusura, eccezioni.",
+  "Regole di comportamento («ai clienti abituali non chiedere l'anticipo»).",
+  "Nomi e preferenze di clienti specifici, se sono stati detti.",
+  "Decisioni operative («da settembre il menù cambia»).",
+  "",
+  "COSA BUTTARE",
+  "Saluti, ringraziamenti, cortesie. Domande a cui è già stato risposto.",
+  "Prove e messaggi di test. Tutto ciò che vale solo in quel momento.",
+  "Le spiegazioni dell'assistente su come funziona: quelle non sono fatti dell'attività.",
+  "",
+  "COME SCRIVERLI",
+  "Righe brevi, una informazione per riga, sotto titoli di sezione in MAIUSCOLO.",
+  "Non aggiungere niente che non sia stato detto. Non completare, non arrotondare.",
+  "",
+  "⚠️ Se in questa conversazione non c'è NESSUN fatto che valga domani, rispondi",
+  "esattamente con la parola NIENTE e nient'altro. È il caso più frequente e va bene:",
+  "meglio non ricordare nulla che ricordare che qualcuno ha detto «grazie».",
+].join("\n");
+
+/**
+ * Tira fuori da una conversazione i fatti che valgono domani.
+ *
+ * Restituisce `null` se il modello non risponde: in quel caso non si salva
+ * niente, che e meglio di salvare una conversazione intera per errore.
+ */
+export async function distill(transcript: string, apiKey: string): Promise<string | null> {
+  try {
+    const catalog = await fetchCatalog();
+    const model = chooseModel("standard", catalog);
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Title": "CorpAgent",
+      },
+      body: JSON.stringify({
+        model: model.id,
+        stream: false,
+        max_tokens: 2000,
+        messages: [
+          { role: "system", content: DISTILL },
+          { role: "user", content: transcript.slice(0, 40_000) },
+        ],
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    return body.choices?.[0]?.message?.content?.trim() ?? null;
+  } catch {
+    return null;
+  }
+}

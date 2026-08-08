@@ -22,6 +22,7 @@ import {
 import BrandTile from "./BrandTile";
 import AgentProposal from "./AgentProposal";
 import Savings from "./Savings";
+import { WhatsAppInbox } from "./views/WhatsAppInbox";
 import { TRADES, tradeById } from "../data/trades";
 import { KITS } from "../data/kits";
 import { planById } from "../data/plans";
@@ -36,6 +37,7 @@ import {
   getProject,
   listOpenQuestions,
   listProjects,
+  listWhatsAppChats,
   rememberConversation,
   renameProject,
   speak,
@@ -44,6 +46,7 @@ import {
   type ChatMessage,
   type HeavyWarning,
   type ProposedAgent,
+  type WhatsAppChat,
 } from "../lib/api";
 import { useNotify } from "../lib/notify";
 import { useTheme } from "../lib/theme";
@@ -260,6 +263,34 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
    * Qui diventa un pannello che si apre da sopra il contenuto.
    */
   const [chatsOpen, setChatsOpen] = useState(false);
+
+  // ── La posta di WhatsApp ─────────────────────────────────────────────
+  // Le conversazioni coi clienti veri, quelle che arrivano dal telefono.
+  // `activeWa` non sostituisce `activeProject`: la chat del sito resta dov'e',
+  // montata e con il suo stato — si passa da una all'altra senza perdere niente.
+  const [waChats, setWaChats] = useState<WhatsAppChat[]>([]);
+  const [activeWa, setActiveWa] = useState<string | null>(null);
+
+  /** Ricarica l'elenco. Silenzioso di proposito: gira anche da solo. */
+  function refreshWa() {
+    listWhatsAppChats()
+      .then(setWaChats)
+      .catch(() => {
+        // Un errore qui non deve disturbare: la posta e' una cosa in piu',
+        // non il motivo per cui uno ha aperto il sito.
+      });
+  }
+
+  // ⚠️ Si ricontrolla ogni venti secondi. Non e' elegante quanto una connessione
+  // sempre aperta, ma una connessione sempre aperta su Vercel Hobby vuol dire
+  // una funzione che non si spegne mai — e il conto lo paga Tommaso. Venti
+  // secondi e' il compromesso: chi guarda la posta vede arrivare i messaggi,
+  // chi non la guarda non costa niente.
+  useEffect(() => {
+    refreshWa();
+    const t = setInterval(refreshWa, 20_000);
+    return () => clearInterval(t);
+  }, []);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -975,6 +1006,74 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
             );
           })}
 
+          {/* ── La posta di WhatsApp ────────────────────────────────
+              I clienti veri, quelli che scrivono al numero. Stanno accanto
+              alle chat del sito e non in una quarta voce di menu, perche'
+              sono conversazioni anche loro: cambia solo da dove arrivano. */}
+          {waChats.length > 0 && (
+            <>
+              <div className="t-label flex items-center justify-between px-2 pb-1.5 pt-7 text-[var(--side-text-dim)]">
+                <span>WhatsApp</span>
+                {waChats.some((c) => c.unread) && (
+                  <span
+                    className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-normal"
+                    style={{ background: "var(--side-positive)", color: "#04120b" }}
+                  >
+                    {waChats.filter((c) => c.unread).length}
+                  </span>
+                )}
+              </div>
+              {waChats.map((c, i) => {
+                const active = c.id === activeWa;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => {
+                      setActiveWa(c.id);
+                      setChatsOpen(false);
+                    }}
+                    className={`animate-rise flex w-full min-w-0 items-center gap-2.5 rounded-xl px-3 py-2 text-left transition-colors duration-[var(--fast)] ${
+                      active ? "bg-[var(--side-active)]" : "hover:bg-[var(--side-bg-raised)]"
+                    }`}
+                    style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
+                  >
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white/8 text-[10px] font-semibold text-white">
+                      {c.customerName.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className={`t-small block truncate ${active ? "text-white" : "text-[var(--side-text)]"}`}
+                      >
+                        {c.customerName}
+                      </span>
+                      {c.lastBody && (
+                        <span className="block truncate text-[11.5px] text-[var(--side-text-dim)]">
+                          {c.lastDirection === "out" ? "Tu: " : ""}
+                          {c.lastBody}
+                        </span>
+                      )}
+                    </span>
+                    {/* Due segnali diversi, e non vanno confusi: il pallino
+                        verde vuol dire "non l'hai ancora letto"; il pallino
+                        vuoto vuol dire "qui rispondi tu, l'agente e' fermo". */}
+                    {c.unread ? (
+                      <span
+                        className="h-[7px] w-[7px] shrink-0 rounded-full"
+                        style={{ background: "var(--side-positive)" }}
+                        title="Non ancora letto"
+                      />
+                    ) : c.mode === "human" ? (
+                      <span
+                        className="h-[7px] w-[7px] shrink-0 rounded-full border border-[var(--side-text-dim)]"
+                        title="Qui rispondi tu"
+                      />
+                    ) : null}
+                  </button>
+                );
+              })}
+            </>
+          )}
+
           {agents.length > 0 && (
             <>
               <div className="t-label flex items-center justify-between px-2 pb-1.5 pt-7 text-[var(--side-text-dim)]">
@@ -1036,8 +1135,20 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
         </div>
       </aside>
 
+      {/* ───────────────────────── LA POSTA ─────────────────────────
+          ⚠️ La chat del sito NON viene smontata: si nasconde. Smontarla
+          vorrebbe dire perdere quello che uno stava scrivendo ogni volta che
+          da' un'occhiata a un cliente — e uno l'occhiata la da' spesso. */}
+      {activeWa && (
+        <WhatsAppInbox
+          chatId={activeWa}
+          onClose={() => setActiveWa(null)}
+          onChanged={refreshWa}
+        />
+      )}
+
       {/* ───────────────────────── CHAT ───────────────────────── */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className={`min-w-0 flex-1 flex-col ${activeWa ? "hidden" : "flex"}`}>
         {/* La testata mobile: sotto md la sidebar non c'è, il minimo resta qui. */}
         <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-card)] px-5 py-3 md:hidden">
           <div className="flex min-w-0 items-center gap-2">

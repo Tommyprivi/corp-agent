@@ -809,3 +809,124 @@ export async function saveProfile(patch: {
   if (!response.ok) throw await readError(response);
   return (await response.json()) as Profile;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// LA POSTA DI WHATSAPP
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Aggiunta l'8 Agosto 2026: «nel sito devi mettere la possibilità di ricordarsi
+// le chat anche su WhatsApp, deve essere tutto collegato».
+//
+// ⚠️ Vivono tutte sotto `/api/projects` e non sotto un indirizzo loro: il piano
+// Hobby di Vercel ammette 12 funzioni per deploy e ne abbiamo esattamente 12.
+// La spiegazione lunga sta in cima ad `api/projects.ts`.
+
+export interface WhatsAppChat {
+  id: string;
+  customerWa: string;
+  /** Il nome che il cliente ha su WhatsApp; se non ce l'ha, resta il numero. */
+  customerName: string;
+  /** 'bot' = risponde l'agente · 'human' = rispondi tu · 'closed' = chiusa. */
+  mode: "bot" | "human" | "closed";
+  lastMessageAt: string | null;
+  lastBody: string | null;
+  lastDirection: "in" | "out" | null;
+  total: number;
+  unread: boolean;
+}
+
+export interface WhatsAppMessage {
+  id: string;
+  /** 'in' = l'ha scritto il cliente · 'out' = è partito da noi. */
+  direction: "in" | "out";
+  body: string;
+  /** 'agent' o 'human': è quello che il Contatore Risparmio conta davvero. */
+  answeredBy: "agent" | "human" | null;
+  modelSlug: string | null;
+  costEur: number;
+  status: string;
+  createdAt: string;
+}
+
+/** Le conversazioni coi clienti, la più recente in cima. */
+export async function listWhatsAppChats(): Promise<WhatsAppChat[]> {
+  const response = await fetch("/api/projects?whatsapp=1", { credentials: "same-origin" });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as WhatsAppChat[];
+}
+
+/**
+ * Una conversazione intera.
+ *
+ * ⚠️ Aprirla la segna come letta sul server: non serve un secondo giro, e non
+ * esiste un pulsante «segna come letto» da cliccare. Se l'hai aperta l'hai vista.
+ */
+export async function openWhatsAppChat(
+  id: string
+): Promise<WhatsAppChat & { messages: WhatsAppMessage[] }> {
+  const response = await fetch(`/api/projects?whatsapp=${encodeURIComponent(id)}`, {
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as WhatsAppChat & { messages: WhatsAppMessage[] };
+}
+
+/**
+ * Rispondi tu, di persona, al posto dell'agente.
+ *
+ * Il messaggio parte davvero su WhatsApp e resta nella stessa conversazione: il
+ * cliente non vede nessuna differenza, ed è esattamente il punto.
+ */
+export async function replyOnWhatsApp(
+  conversationId: string,
+  text: string
+): Promise<WhatsAppMessage> {
+  const response = await fetch("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ waReply: { conversationId, text } }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as WhatsAppMessage;
+}
+
+/**
+ * L'interruttore «rispondo io» / «torna l'agente», su un cliente solo.
+ *
+ * Non spegne il numero: spegne l'agente per quella persona. È come ragiona chi
+ * risponde davvero — si prende in mano una conversazione, non si stacca il
+ * centralino.
+ */
+export async function setWhatsAppMode(
+  conversationId: string,
+  mode: "bot" | "human"
+): Promise<WhatsAppChat> {
+  const response = await fetch("/api/projects", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ waMode: { conversationId, mode } }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as WhatsAppChat;
+}
+
+/**
+ * Manda subito questa conversazione in memoria, senza aspettare il turno.
+ *
+ * Succede da sé ogni sei messaggi del cliente; questo serve a chi ha appena
+ * preso un accordo importante e non vuole rischiare che vada perso.
+ */
+export async function rememberWhatsAppChat(
+  conversationId: string
+): Promise<{ saved: true; chunks: number } | { saved: false; reason: string }> {
+  const response = await fetch("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ waRemember: conversationId }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as { saved: true; chunks: number } | { saved: false; reason: string };
+}

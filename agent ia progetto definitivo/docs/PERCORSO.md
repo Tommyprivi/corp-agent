@@ -167,7 +167,7 @@ titolare, e quando il titolare risponde quella risposta **entra in memoria per s
 | 19 | WhatsApp Business API: numero verificato e webhook | Meta Business | ✅ firma verificata, ripetizioni scartate |
 | 20 | Ricezione e invio messaggi reali | Meta | ✅ il cliente scrive, l'agente risponde |
 | 21 | Human-in-the-Loop: l'agente si ferma e ti chiama | — | ✅ interruttore «rispondo io» |
-| 22 | Modalità Ghost: approvi le risposte prima dell'invio | — | |
+| 22 | Modalità Ghost: approvi le risposte prima dell'invio | — | 🔧 c'è la posta, manca l'approvazione |
 | 23 | Agent Watchdog: blocca le risposte fuori dalle regole | — | |
 | 24 | Notifiche al titolare (push, WhatsApp, email) | — | |
 | 25 | Coda intelligente se la connessione salta | — | |
@@ -183,6 +183,28 @@ secondi (0,000049 €), ripetizione di Meta scartata, interruttore «rispondo io
 e tace. Manca solo l'ultimo passo, che è di Tommaso: incollare l'indirizzo del webhook nel
 pannello Meta e scriverci dal telefono.
 
+📬 **La posta WhatsApp sul sito — 8 Agosto 2026.** Chiesta da Tommaso appena il canale
+ha risposto: *«nel sito ovviamente devi mettere la possibilità di ricordarsi le chat anche
+su WhatsApp, deve essere tutto collegato»*. Dentro la Chat, accanto alle conversazioni del
+sito — **non** una quarta voce di menu:
+
+| Cosa | Come |
+|---|---|
+| Leggi le conversazioni coi clienti | elenco con non-letto, l'ultima riga in anteprima |
+| Vedi **chi** ha risposto | sotto ogni messaggio: «l'agente» o «l'hai scritto tu» |
+| Prendi in mano un cliente | interruttore per **singola conversazione**, non per tutto il numero |
+| Rispondi tu | il messaggio parte davvero, il cliente non vede differenza |
+| Quello che si dice diventa memoria | ogni 6 messaggi, o subito col pulsante |
+
+⚠️ La memoria **era già una sola** (`search()` sugli stessi documenti da tutte e due i
+lati): mancava solo che WhatsApp ci scrivesse dentro. Ora `indexText()` in `_lib/embed.ts`
+è l'unica strada per entrarci — prima il salvataggio stava dentro `documents.ts` e sarebbe
+diventato due copie destinate a divergere.
+
+⚠️ Niente file nuovo in `api/`: la posta vive dentro `projects.ts`. Vercel Hobby ammette
+**12 funzioni** e ne abbiamo esattamente 12 — un tredicesimo file non rompe il codice,
+rompe il **deploy**.
+
 ⚠️ **Due difetti veri trovati provando, nessuno dei due visibile compilando.** Il webhook
 rispondeva 200 e non salvava niente:
 1. `channels` ha la sicurezza per riga, e il webhook la legge **prima** di sapere di chi è
@@ -190,6 +212,11 @@ rispondeva 200 e non salvava niente:
    `resolve_wa_channel()`.
 2. La risposta dell'agente veniva salvata con stato `"error"`, che il vincolo della 0002
    non ammette: eccezione, e la risposta spariva. Ora è `"failed"`.
+
+⚠️ **Un terzo, trovato nella prima conversazione vera.** Tommaso ha scritto dal suo
+telefono alle 17:52 dell'8 Agosto 2026 e ha chiesto «con chi parlo». L'agente ha risposto
+*«l'assistenza di [nome attività]»* — un segnaposto, mandato a un cliente. Ora il prompt
+di WhatsApp li vieta: senza il nome si dice «siamo qui», non si lascia il buco.
 
 ---
 
@@ -331,5 +358,4 @@ smette di essere una bella interfaccia e inizia a funzionare.
 2. Un account OpenRouter con 10-20 € di credito → [SETUP-OPENROUTER.md](SETUP-OPENROUTER.md)
 3. Un client OAuth di Google per il login → [SETUP-ACCESSI.md](SETUP-ACCESSI.md)
 
-Le chiavi si incollano nel file `.env.local` (già creato, ignorato da git) e nel pannello di
-Vercel, come spiegato in [CHIAVI.md](CHIAVI.md). **Mai in chat.**
+

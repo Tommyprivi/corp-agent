@@ -27,6 +27,11 @@
 
 import { withUser, getPool } from "./_lib/db.js";
 import {
+  DISTILL_EVERY,
+  rememberWaConversation,
+  sendWhatsApp,
+} from "./_lib/whatsapp.js";
+import {
   embeddingConfigured,
   knowledgePrompt,
   search,
@@ -35,7 +40,6 @@ import {
 import { chooseModel, classifyLoad, costEur, fetchCatalog } from "./_lib/openrouter.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-const GRAPH = "https://graph.facebook.com/v21.0";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 /** Un messaggio WhatsApp lungo non si legge: è una chat, non una mail. */
@@ -252,7 +256,7 @@ async function handleOne(input: {
   const { channel, waMessageId, from, contactName, text } = input;
   const userId = channel.userId;
 
-  const conversationId = await withUser(userId, async (client) => {
+  const conversation = await withUser(userId, async (client) => {
     // ── Difesa 3: l'idempotenza ────────────────────────────────────────
     // Meta ripete la consegna se non rispondiamo in fretta. Senza questo
     // controllo il cliente riceverebbe la stessa risposta tre volte, e noi
@@ -264,14 +268,19 @@ async function handleOne(input: {
     if (seen.rows.length > 0) return null;
 
     // Una conversazione per cliente, creata al primo messaggio.
-    const convo = await client.query<{ id: string }>(
+    //
+    // ⚠️ `read_at = null` a ogni messaggio nuovo: la conversazione torna "non
+    // letta" appena il cliente riscrive, anche se il titolare l'aveva già
+    // aperta ieri. È l'unico comportamento che non fa perdere messaggi.
+    const convo = await client.query<{ id: string; status: string }>(
       `insert into public.wa_conversations
          (user_id, channel_id, customer_wa, customer_name, last_message_at)
        values ($1, $2, $3, $4, now())
        on conflict (channel_id, customer_wa) do update
          set last_message_at = now(),
+             read_at = null,
              customer_name = coalesce(excluded.customer_name, wa_conversations.customer_name)
-       returning id`,
+       returning id, status`,
       [userId, channel.id, from, contactName]
     );
     const id = convo.rows[0].id;
@@ -283,21 +292,37 @@ async function handleOne(input: {
       [userId, id, waMessageId, text || `[${input.unsupported}]`]
     );
 
-    return id;
+    // Quanti messaggi del cliente ha questa conversazione: serve a decidere se
+    // è il momento di mandarla in memoria (uno su DISTILL_EVERY).
+    const conta = await client.query<{ n: string }>(
+      `select count(*)::text as n from public.wa_messages
+        where conversation_id = $1 and user_id = $2 and direction = 'in'`,
+      [id, userId]
+    );
+
+    return { id, status: convo.rows[0].status, inbound: Number(conta.rows[0].n) };
   });
 
   // Già visto: era una ripetizione di Meta. Niente da fare.
-  if (!conversationId) return;
+  if (!conversation) return;
+  const conversationId = conversation.id;
 
-  // ── Riga 21: l'interruttore "passa la parola all'umano" ─────────────
+  // ── Riga 21: l'interruttore "rispondo io" ───────────────────────────
   // Quando è acceso l'agente riceve e registra ma non risponde: il titolare
-  // sta gestendo di persona quel cliente e una risposta automatica in mezzo
-  // farebbe danno.
-  if (channel.handoff) return;
+  // sta gestendo di persona e una risposta automatica in mezzo farebbe danno.
+  //
+  // ⚠️ Due livelli, e servono tutti e due. `channel.handoff` spegne l'agente
+  // su **tutto il numero** — «stasera rispondo io a tutti». `status = 'human'`
+  // lo spegne su **un cliente solo** — «questo me lo prendo in mano io», che è
+  // come ragiona davvero chi risponde: non si spegne il centralino per parlare
+  // con una persona. Il secondo lo accende la casella di posta sul sito.
+  if (channel.handoff || conversation.status === "human" || conversation.status === "closed") {
+    return;
+  }
 
   if (!text) {
     // Una nota vocale o una foto: si dice la verità invece di tacere.
-    await send(
+    await sendWhatsApp(
       from,
       "Per ora leggo solo i messaggi scritti. Se mi scrive a parole le rispondo subito."
     );
@@ -307,7 +332,7 @@ async function handleOne(input: {
   const reply = await generate(userId, conversationId, text);
   if (!reply) return;
 
-  const sentId = await send(from, reply.text);
+  const sentId = await sendWhatsApp(from, reply.text);
 
   await withUser(userId, async (client) => {
     await client.query(
@@ -346,6 +371,27 @@ async function handleOne(input: {
       [userId, reply.tokensIn + reply.tokensOut, reply.cost]
     );
   });
+
+  // ── «Deve essere tutto collegato» ───────────────────────────────────
+  // Ogni DISTILL_EVERY messaggi del cliente, la conversazione viene riletta e
+  // quello che vale domani finisce nella stessa memoria della chat del sito.
+  // Da qui in poi non conta più dove una cosa è stata detta: se il signor
+  // Rossi dice su WhatsApp che ritira sempre il giovedì, l'agente lo sa anche
+  // quando gli scrivi dal computer.
+  //
+  // ⚠️ Sta DOPO l'invio, di proposito: costa qualche secondo, e quei secondi
+  // li deve aspettare il nostro server, mai il cliente. Se fallisce non
+  // succede niente di grave — si riprova fra sei messaggi.
+  if (conversation.inbound > 0 && conversation.inbound % DISTILL_EVERY === 0) {
+    try {
+      const esito = await rememberWaConversation(userId, conversationId);
+      if (esito.saved) {
+        console.log(`Conversazione ${conversationId}: ${esito.chunks} pezzi in memoria.`);
+      }
+    } catch (error) {
+      console.error("Non sono riuscito a mandare la conversazione in memoria:", error);
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -439,7 +485,17 @@ async function generate(
               "Sei l'assistente di un'attività italiana e rispondi ai clienti su WhatsApp.") +
             "\n\nSTAI SCRIVENDO SU WHATSAPP\n" +
             "Frasi brevi, niente elenchi puntati, niente formattazione. Due o tre righe al " +
-            "massimo: chi legge è su un telefono, spesso in piedi. Vai al punto subito.",
+            "massimo: chi legge è su un telefono, spesso in piedi. Vai al punto subito.\n\n" +
+            // ⚠️ Difetto vero, visto l'8 Agosto 2026 nella prima conversazione
+            // reale: alla domanda «con chi parlo» l'agente ha risposto «l'assistenza
+            // di [nome attività]». Un segnaposto tra parentesi quadre mandato a un
+            // cliente vero fa sembrare l'azienda un esperimento mal riuscito, e
+            // basta quello per non ricevere il secondo messaggio.
+            "NON SCRIVERE MAI SEGNAPOSTO\n" +
+            "Niente [nome attività], [orario], [indirizzo] o simili tra parentesi quadre. " +
+            "Se non sai come si chiama l'attività, non nominarla: di' «siamo qui» o " +
+            "«ci pensiamo noi» e vai avanti. Meglio una frase senza nome che una frase " +
+            "con un buco dentro.",
         },
         ...(passages.length > 0 ? [{ role: "system", content: knowledgePrompt(passages) }] : []),
         ...history.map((m) => ({
@@ -475,34 +531,4 @@ async function generate(
   };
 }
 
-/** Manda il messaggio al cliente. Restituisce l'identificativo di Meta. */
-async function send(to: string, body: string): Promise<string | null> {
-  const token = process.env.WHATSAPP_TOKEN;
-  const phoneId = process.env.WHATSAPP_PHONE_ID;
-  if (!token || !phoneId) {
-    console.error("WHATSAPP_TOKEN o WHATSAPP_PHONE_ID non configurati.");
-    return null;
-  }
 
-  const response = await fetch(`${GRAPH}/${phoneId}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to,
-      type: "text",
-      text: { body: body.slice(0, 4000) },
-    }),
-  });
-
-  const result = (await response.json()) as {
-    messages?: Array<{ id?: string }>;
-    error?: { message?: string; code?: number };
-  };
-
-  if (!response.ok || result.error) {
-    console.error("Invio WhatsApp fallito:", result.error?.message ?? response.status);
-    return null;
-  }
-  return result.messages?.[0]?.id ?? null;
-}

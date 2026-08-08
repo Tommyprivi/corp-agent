@@ -31,8 +31,8 @@
 
 import { currentUser } from "./_lib/auth.js";
 import { withUser } from "./_lib/db.js";
-import { chunk, embed, embeddingConfigured, toVector } from "./_lib/embed.js";
-import { chooseModel, fetchCatalog } from "./_lib/openrouter.js";
+import { embeddingConfigured, indexText } from "./_lib/embed.js";
+import { chooseModel, distill, fetchCatalog } from "./_lib/openrouter.js";
 
 /** Un menù sta in poche pagine. Oltre, è qualcuno che incolla un libro. */
 const MAX_TEXT = 400_000;
@@ -152,70 +152,8 @@ async function organise(raw: string, apiKey: string): Promise<string> {
  * valgono domani**. Se non ne trova nessuno restituisce una riga vuota, e non
  * si salva niente — che è il caso più frequente e va bene così.
  */
-const DISTILL = [
-  "Leggi questa conversazione tra il titolare di un'attività e il suo assistente IA.",
-  "Estrai SOLO i fatti che valgono anche domani, e che l'assistente deve ricordarsi.",
-  "",
-  "COSA TENERE",
-  "Prezzi, sconti e accordi presi. Orari, giorni di chiusura, eccezioni.",
-  "Regole di comportamento («ai clienti abituali non chiedere l'anticipo»).",
-  "Nomi e preferenze di clienti specifici, se sono stati detti.",
-  "Decisioni operative («da settembre il menù cambia»).",
-  "",
-  "COSA BUTTARE",
-  "Saluti, ringraziamenti, cortesie. Domande a cui è già stato risposto.",
-  "Prove e messaggi di test. Tutto ciò che vale solo in quel momento.",
-  "Le spiegazioni dell'assistente su come funziona: quelle non sono fatti dell'attività.",
-  "",
-  "COME SCRIVERLI",
-  "Righe brevi, una informazione per riga, sotto titoli di sezione in MAIUSCOLO.",
-  "Non aggiungere niente che non sia stato detto. Non completare, non arrotondare.",
-  "",
-  "⚠️ Se in questa conversazione non c'è NESSUN fatto che valga domani, rispondi",
-  "esattamente con la parola NIENTE e nient'altro. È il caso più frequente e va bene:",
-  "meglio non ricordare nulla che ricordare che qualcuno ha detto «grazie».",
-].join("\n");
-
 /** Sotto questa soglia non vale la pena chiamare un modello. */
 const MIN_MESSAGES_TO_DISTILL = 4;
-
-/**
- * Tira fuori da una conversazione i fatti che valgono domani.
- *
- * Restituisce `null` se il modello non risponde: in quel caso non si salva
- * niente, che e meglio di salvare una conversazione intera per errore.
- */
-async function distill(transcript: string, apiKey: string): Promise<string | null> {
-  try {
-    const catalog = await fetchCatalog();
-    const model = chooseModel("standard", catalog);
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "X-Title": "CorpAgent",
-      },
-      body: JSON.stringify({
-        model: model.id,
-        stream: false,
-        max_tokens: 2000,
-        messages: [
-          { role: "system", content: DISTILL },
-          { role: "user", content: transcript.slice(0, 40_000) },
-        ],
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!response.ok) return null;
-    const body = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    return body.choices?.[0]?.message?.content?.trim() ?? null;
-  } catch {
-    return null;
-  }
-}
 
 interface DocumentRow {
   id: string;
@@ -352,88 +290,33 @@ export default {
         if (key) content = await organise(text, key);
       }
 
-      const pieces = chunk(content);
-      if (pieces.length === 0) {
-        return json({ error: "Non ho trovato testo utilizzabile in questo documento." }, 400);
-      }
-
-      // ⚠️ Gli embedding si calcolano PRIMA di aprire la transazione.
-      // Una chiamata a OpenAI su 500 pezzi può durare secondi: tenere aperta
-      // una transazione per tutto quel tempo blocca una connessione del pool
-      // di Neon per niente. Se OpenAI fallisce, non abbiamo scritto nulla.
-      let vectors: number[][];
+      // ⚠️ Il salvataggio non e' scritto qui: sta in `indexText()` dentro
+      // `_lib/embed.ts`, ed e' lo stesso identico che usa WhatsApp quando
+      // distilla la conversazione con un cliente. Una memoria, una strada per
+      // entrarci — se fossero due, il giorno che si corregge il modo di
+      // spezzare il testo se ne correggerebbe una sola.
+      let indexed: { documentId: string; chunks: number } | null;
       try {
-        vectors = await embed(pieces.map((p) => p.content));
+        indexed = await indexText(userId, {
+          name,
+          text: content,
+          source,
+          externalId: clean(body.externalId, 200),
+        });
       } catch (error) {
         return json(
           { error: "Non riesco a leggere il documento.", detail: String(error) },
           502
         );
       }
+      if (!indexed) {
+        return json({ error: "Non ho trovato testo utilizzabile in questo documento." }, 400);
+      }
 
       const saved = await withUser(userId, async (client) => {
-        // Lo stesso file di Drive non entra due volte: si aggiorna quello che
-        // c'è, e i suoi pezzi vecchi vengono sostituiti da quelli nuovi.
-        const existing = body.externalId
-          ? await client.query<{ id: string }>(
-              "select id from public.documents where user_id = $1 and external_id = $2",
-              [userId, body.externalId]
-            )
-          : { rows: [] as Array<{ id: string }> };
-
-        let documentId: string;
-        if (existing.rows.length > 0) {
-          documentId = existing.rows[0].id;
-          await client.query("delete from public.chunks where document_id = $1", [documentId]);
-          await client.query(
-            `update public.documents
-                set name = $3, size_bytes = $4, status = 'indexed', chunk_count = $5,
-                    error = null, updated_at = now(),
-                    -- Ricaricare un documento archiviato lo riporta in memoria:
-                    -- e chiaramente quello che uno intende facendolo.
-                    archived_at = null, archived_reason = null
-              where id = $1 and user_id = $2`,
-            [documentId, userId, name, content.length, pieces.length]
-          );
-        } else {
-          const created = await client.query<{ id: string }>(
-            `insert into public.documents
-               (user_id, name, source, external_id, size_bytes, status, chunk_count, updated_at)
-             values ($1, $2, $3, $4, $5, 'indexed', $6, now())
-             returning id`,
-            [userId, name, source, clean(body.externalId, 200), content.length, pieces.length]
-          );
-          documentId = created.rows[0].id;
-        }
-
-        // I pezzi in un colpo solo: 500 insert separati su Neon sono 500 giri
-        // di rete, e un menù da 500 pezzi metterebbe minuti invece di secondi.
-        const values: unknown[] = [];
-        const placeholders: string[] = [];
-        pieces.forEach((piece, i) => {
-          const base = i * 6;
-          placeholders.push(
-            `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}::vector)`
-          );
-          values.push(
-            userId,
-            documentId,
-            piece.content,
-            piece.ordinal,
-            piece.heading ?? null,
-            toVector(vectors[i])
-          );
-        });
-
-        await client.query(
-          `insert into public.chunks (user_id, document_id, content, ordinal, heading, embedding)
-           values ${placeholders.join(", ")}`,
-          values
-        );
-
         const row = await client.query<DocumentRow>(
           `select ${COLUMNS} from public.documents where id = $1 and user_id = $2`,
-          [documentId, userId]
+          [indexed.documentId, userId]
         );
         return row.rows[0];
       });

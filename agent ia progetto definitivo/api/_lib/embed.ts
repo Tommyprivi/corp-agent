@@ -26,6 +26,8 @@
  * Costa 0,02 $ per un milione di token: indicizzare un menù costa zero.
  */
 
+import { withUser } from "./db.js";
+
 const EMBED_URL = "https://api.openai.com/v1/embeddings";
 
 /**
@@ -363,4 +365,101 @@ export function knowledgePrompt(passages: Passage[]): string {
     "Non citare i numeri tra parentesi quadre e non nominare i documenti: al",
     "cliente arriva una risposta pulita, come se lo sapessi.",
   ].join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SALVARE IN MEMORIA — un solo modo, per tutti
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Prende del testo e lo mette in memoria: lo spezza, lo trasforma in numeri,
+ * lo scrive.
+ *
+ * ⚠️ Questa funzione è nata l'8 Agosto 2026 da una richiesta di Tommaso —
+ * «deve essere tutto collegato» — e la ragione per cui sta qui invece che
+ * dentro `api/documents.ts` è precisa: da oggi ci sono **due** posti da cui
+ * nasce un ricordo. Il sito (uno incolla un menù, o distilla una chat) e
+ * WhatsApp (un cliente dice qualcosa che vale domani).
+ *
+ * Se il salvataggio fosse scritto due volte, prima o poi le due copie
+ * divergerebbero: una spezzerebbe il testo in un modo, l'altra in un altro, e
+ * l'agente saprebbe la stessa cosa in due modi diversi a seconda di dove gli
+ * è stata detta. Una memoria, una strada per entrarci.
+ *
+ * `externalId` è il modo di dire «questo ricordo sostituisce quello di prima
+ * invece di aggiungersi»: la distillazione di una conversazione usa sempre lo
+ * stesso identificativo, quindi resta un documento solo che si aggiorna.
+ */
+export async function indexText(
+  userId: string,
+  input: { name: string; text: string; source: string; externalId?: string | null }
+): Promise<{ documentId: string; chunks: number } | null> {
+  const pieces = chunk(input.text);
+  if (pieces.length === 0) return null;
+
+  // ⚠️ Gli embedding si calcolano PRIMA di aprire la transazione: una chiamata
+  // su 500 pezzi dura secondi, e tenere aperta una connessione di Neon per
+  // tutto quel tempo la toglie a chi sta rispondendo a un cliente.
+  const vectors = await embed(pieces.map((p) => p.content));
+
+  return withUser(userId, async (client) => {
+    const existing = input.externalId
+      ? await client.query<{ id: string }>(
+          "select id from public.documents where user_id = $1 and external_id = $2",
+          [userId, input.externalId]
+        )
+      : { rows: [] as Array<{ id: string }> };
+
+    let documentId: string;
+    if (existing.rows.length > 0) {
+      documentId = existing.rows[0].id;
+      await client.query("delete from public.chunks where document_id = $1", [documentId]);
+      await client.query(
+        `update public.documents
+            set name = $3, size_bytes = $4, status = 'indexed', chunk_count = $5,
+                error = null, updated_at = now(),
+                -- Rimettere in memoria qualcosa di archiviato lo riporta in
+                -- vita: e chiaramente quello che uno intende facendolo.
+                archived_at = null, archived_reason = null
+          where id = $1 and user_id = $2`,
+        [documentId, userId, input.name, input.text.length, pieces.length]
+      );
+    } else {
+      const created = await client.query<{ id: string }>(
+        `insert into public.documents
+           (user_id, name, source, external_id, size_bytes, status, chunk_count, updated_at)
+         values ($1, $2, $3, $4, $5, 'indexed', $6, now())
+         returning id`,
+        [userId, input.name, input.source, input.externalId ?? null, input.text.length, pieces.length]
+      );
+      documentId = created.rows[0].id;
+    }
+
+    // I pezzi in un colpo solo: 500 insert separati sono 500 giri di rete, e
+    // un menù da 500 pezzi metterebbe minuti invece di secondi.
+    const values: unknown[] = [];
+    const placeholders: string[] = [];
+    pieces.forEach((piece, i) => {
+      const base = i * 6;
+      placeholders.push(
+        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}::vector)`
+      );
+      values.push(
+        userId,
+        documentId,
+        piece.content,
+        piece.ordinal,
+        piece.heading ?? null,
+        toVector(vectors[i])
+      );
+    });
+
+    await client.query(
+      `insert into public.chunks (user_id, document_id, content, ordinal, heading, embedding)
+       values ${placeholders.join(", ")}`,
+      values
+    );
+
+    return { documentId, chunks: pieces.length };
+  });
 }
