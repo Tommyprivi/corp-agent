@@ -216,15 +216,34 @@ rispondeva 200 e non salvava niente:
 📞 **Le chiamate — 9 Agosto 2026.** Chiesto da Tommaso: *«fai anche la parte della
 chiamata»*. Le chiamate sono state **accese** sul numero (i clienti vedono la cornetta).
 
-⚠️ **Cosa si può fare oggi e cosa no, detto chiaro.** Nel documento la chiamata è: «un
-cliente chiama, risponde un agente vocale, capisce e risponde a voce in tempo reale».
-Quella cosa lì **non si può fare su questa infrastruttura**, e non per pigrizia: WhatsApp
-consegna l'audio via WebRTC, cioè un flusso continuo che va tenuto aperto per tutta la
-telefonata. Le funzioni di Vercel si svegliano, rispondono e muoiono — non esiste un posto
-dove quel flusso possa vivere. Servirebbe un server acceso 24 ore su 24 con un motore
-audio: una scelta di architettura e di costi, non una riga di codice.
+🗣️ **L'AGENTE RISPONDE AL TELEFONO.** Tommaso: *«esigo che funzioni la chiamata»*. Il
+server sempre acceso è stato costruito: [`voice-bridge/`](../voice-bridge/), istruzioni in
+[SETUP-CHIAMATE.md](SETUP-CHIAMATE.md). Circa 3-5 € al mese, l'unica spesa fissa oltre al
+database.
 
-Quello che è stato fatto risolve il problema vero — **nessuna chiamata persa**:
+✅ **Provato in locale il 9 Agosto 2026** con un telefono finto: il ponte risponde 200, la
+connessione si stabilisce, **948 pacchetti di voce vera** arrivano al telefono, e l'agente
+dice *«Speed Trasporti, buongiorno, mi dica pure in cosa posso darle una mano oggi»*.
+
+⚠️ **Manca l'ultimo passaggio, e va detto:** provato con un telefono finto, non con una
+chiamata WhatsApp vera. Quel pezzo si verifica solo dopo aver messo il ponte online.
+Finché non si fa, le chiamate funzionano col piano B qui sotto.
+
+⚠️ **La scelta che fa la differenza: l'audio non si tocca.** La strada ovvia sarebbe
+decodifica → trascrizione → modello → sintesi → ricodifica: sei passaggi, due secondi
+prima della prima sillaba. Al telefono due secondi di silenzio sono un'eternità — la gente
+dice «pronto? pronto?» e riattacca. Qui i pacchetti si girano **così come sono** da un
+lato all'altro: tutti e due parlano Opus a 48 kHz. È il trucco dei server delle
+videoconferenze — chi sta in mezzo instrada, non ascolta.
+
+⚠️ **Quattro trappole, tutte trovate provando** (per esteso in SETUP-CHIAMATE.md). La
+peggiore: `onTrack` scatta **durante** `setRemoteDescription`, non dopo. Iscriversi dopo
+significa iscriversi a un evento già passato — la connessione risulta perfetta, il modello
+risponde, e non arriva **un solo pacchetto audio**. Nessun errore da nessuna parte, solo
+silenzio.
+
+📵 **Il piano B, quando il ponte è spento** — e risolve comunque il problema vero,
+**nessuna chiamata persa**:
 la chiamata viene **rifiutata subito** (il telefono smette di squillare a vuoto invece di
 suonare per venti secondi), parte un **vocale** che invita a scrivere, la chiamata compare
 nella posta come «📞 Ti ha chiamato», e al titolare arriva l'avviso con il numero.

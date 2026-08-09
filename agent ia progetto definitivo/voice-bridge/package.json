@@ -1,0 +1,17 @@
+{
+  "name": "corpagent-voice-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Il ponte che fa parlare l'agente al telefono su WhatsApp",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "werift": "^0.24.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

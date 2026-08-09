@@ -802,3 +802,67 @@ export function rispostaAllaChiamata(nome: string | null): string {
     "Scrivimi qui cosa ti serve — anche un vocale, se hai le mani occupate — e ti rispondo subito.",
   ].join("\n");
 }
+
+/**
+ * Accetta la chiamata e la passa al ponte vocale.
+ *
+ * ⚠️ Questa funzione è l'unico punto in cui CorpAgent parla con un pezzo di sé
+ * che **non** sta su Vercel. Il perché è scritto per esteso in
+ * `voice-bridge/server.js`: una telefonata è una linea aperta, e una funzione
+ * serverless è l'opposto di una linea aperta.
+ *
+ * Se il ponte non è configurato o non risponde, si restituisce `false` e chi
+ * chiama torna al piano B — rifiutare e mandare un vocale. Meglio un vocale in
+ * tre secondi che venti squilli a vuoto.
+ */
+export async function passaAlPonte(input: {
+  callId: string;
+  sdp: string;
+  istruzioni: string;
+  saluto: string;
+}): Promise<boolean> {
+  const ponte = process.env.VOICE_BRIDGE_URL;
+  const segreto = process.env.BRIDGE_SECRET;
+  const token = process.env.WHATSAPP_TOKEN;
+  const phoneId = process.env.WHATSAPP_PHONE_ID;
+  if (!ponte || !segreto || !token || !phoneId) return false;
+
+  try {
+    const risposta = await fetch(`${ponte.replace(/\/$/, "")}/chiamata`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${segreto}` },
+      body: JSON.stringify(input),
+      // ⚠️ Otto secondi e non di più: chi ha chiamato sta sentendo squillare.
+      // Se il ponte è lento o spento, è meglio accorgersene subito e mandare
+      // il vocale, invece di lasciare il telefono a suonare nel vuoto.
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!risposta.ok) {
+      console.error("Il ponte vocale ha rifiutato:", await risposta.text().catch(() => ""));
+      return false;
+    }
+    const { sdp } = (await risposta.json()) as { sdp?: string };
+    if (!sdp) return false;
+
+    // Adesso si dice a Meta di collegare: la risposta tecnica arriva dal ponte,
+    // che da questo momento ha la linea in mano.
+    const accettata = await fetch(`${CALL_GRAPH}/${phoneId}/calls`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        call_id: input.callId,
+        action: "accept",
+        session: { sdp_type: "answer", sdp },
+      }),
+    });
+    if (!accettata.ok) {
+      console.error("Meta non ha accettato la chiamata:", await accettata.text().catch(() => ""));
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("Ponte vocale non raggiungibile:", error);
+    return false;
+  }
+}

@@ -29,6 +29,7 @@ import { spendCredits, userApiKey, withUser, getPool } from "./_lib/db.js";
 import {
   ascolta,
   guarda,
+  passaAlPonte,
   rifiutaChiamata,
   rispondiAVoce,
   rispostaAllaChiamata,
@@ -240,6 +241,8 @@ interface WebhookPayload {
           direction?: string;
           status?: string;
           duration?: number;
+          /** La proposta tecnica di connessione: serve al ponte vocale. */
+          session?: { sdp_type?: string; sdp?: string };
         }>;
       };
     }>;
@@ -370,6 +373,51 @@ async function handle(payload: WebhookPayload): Promise<void> {
 }
 
 /**
+ * Le istruzioni per l'agente al telefono: chi e', e cosa sa dell'attivita'.
+ *
+ * ⚠️ Al telefono la conoscenza va messa DENTRO le istruzioni, non cercata a
+ * ogni domanda: una ricerca nei documenti costa un secondo, e un secondo di
+ * silenzio in mezzo a una frase al telefono fa dire «pronto?». Si prende il
+ * meglio di quello che c'e' e glielo si mette in testa prima di rispondere.
+ */
+async function istruzioniTelefoniche(userId: string): Promise<string> {
+  const agente = await withUser(userId, async (client) => {
+    const row = await client.query<{ system_prompt: string | null }>(
+      `select system_prompt from public.agents
+        where user_id = $1 and active = true order by created_at limit 1`,
+      [userId]
+    );
+    return row.rows[0]?.system_prompt ?? null;
+  });
+
+  let sapere = "";
+  if (embeddingConfigured()) {
+    try {
+      // Una ricerca larga: al telefono non si sa in anticipo cosa chiederanno,
+      // quindi si portano dietro le cose piu' rappresentative dell'attivita'.
+      const passaggi = await withUser(userId, (client) =>
+        search(client, userId, "orari prezzi servizi contatti indirizzo come funziona")
+      );
+      if (passaggi.length > 0) sapere = knowledgePrompt(passaggi);
+    } catch (error) {
+      console.error("Non sono riuscito a preparare la conoscenza per la chiamata:", error);
+    }
+  }
+
+  return [
+    agente ?? "Sei l'assistente telefonico di un'attività italiana.",
+    "",
+    "STAI PARLANDO AL TELEFONO",
+    "Frasi corte, una cosa per volta. Non elencare mai più di due opzioni a voce:",
+    "chi ascolta non può rileggere. Se serve una lista, di' che la mandi per messaggio.",
+    "",
+    "Non inventare MAI prezzi, orari o disponibilità. Se non lo sai, dillo con",
+    "semplicità e proponi di far richiamare dal titolare.",
+    sapere ? "\n" + sapere : "",
+  ].join("\n");
+}
+
+/**
  * Qualcuno ha premuto la cornetta.
  *
  * ⚠️ Si risponde in tre secondi, e l'ordine conta: prima si **rifiuta** (il
@@ -380,7 +428,14 @@ async function handle(payload: WebhookPayload): Promise<void> {
  */
 async function handleCall(
   channel: Channel,
-  chiamata: { id?: string; from?: string; event?: string; status?: string; duration?: number },
+  chiamata: {
+    id?: string;
+    from?: string;
+    event?: string;
+    status?: string;
+    duration?: number;
+    session?: { sdp_type?: string; sdp?: string };
+  },
   contactName: string | null
 ): Promise<void> {
   const from = chiamata.from;
@@ -391,6 +446,45 @@ async function handleCall(
   if (chiamata.event === "terminate") return;
 
   const userId = channel.userId;
+
+  // ── Rispondere davvero ──────────────────────────────────────────────
+  // Se il ponte vocale e' acceso, la chiamata si ACCETTA e l'agente parla al
+  // telefono. Se non c'e', o non risponde in otto secondi, si torna al piano
+  // B: si rifiuta e parte un vocale. Meglio un vocale in tre secondi che venti
+  // squilli nel vuoto.
+  if (chiamata.session?.sdp) {
+    const istruzioni = await istruzioniTelefoniche(userId);
+    const collegata = await passaAlPonte({
+      callId: chiamata.id,
+      sdp: chiamata.session.sdp,
+      istruzioni,
+      saluto:
+        "Saluta come farebbe chi risponde al telefono di questa attività, e chiedi " +
+        "come puoi aiutare. Una frase sola.",
+    });
+
+    if (collegata) {
+      await withUser(userId, async (client) => {
+        const convo = await client.query<{ id: string }>(
+          `insert into public.wa_conversations
+             (user_id, channel_id, customer_wa, customer_name, last_message_at)
+           values ($1, $2, $3, $4, now())
+           on conflict (channel_id, customer_wa) do update
+             set last_message_at = now(), read_at = null
+           returning id`,
+          [userId, channel.id, from, contactName]
+        );
+        await client.query(
+          `insert into public.wa_messages
+             (user_id, conversation_id, direction, wa_message_id, body, status)
+           values ($1, $2, 'in', $3, $4, 'received')`,
+          [userId, convo.rows[0].id, chiamata.id, "📞 Chiamata: ha risposto l'agente"]
+        );
+      });
+      console.log(`Chiamata ${chiamata.id} passata al ponte vocale.`);
+      return;
+    }
+  }
 
   await rifiutaChiamata(chiamata.id);
 
