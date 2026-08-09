@@ -41,18 +41,73 @@ Maps senza limiti, se esce, la spende qualcun altro — e Maps si paga a chiamat
 
 ---
 
-## Fluida ✅ pronto
+## Fluida ✅ collegato e provato
 
-`FLUIDA_API_KEY` e `FLUIDA_COMPANY_ID` sono in `.env.local`. È il gestionale di presenze,
-ferie e permessi: sblocca gli agenti che rispondono «Marco è in ferie fino al 18» senza
-che nessuno glielo dica.
+```
+200  https://api.fluida.io/api/v1/companies/<azienda>
+     {"data":{"name":"corp agent","subscription_plan":"plus", ...}}
+```
+
+**Base:** `https://api.fluida.io/api/v1`
+**Intestazione:** `x-fluida-app-uuid: <la chiave>`
+
+⚠️ **Quel nome non lo indovina nessuno**, e ci ho perso quattordici tentativi:
+`x-api-key`, `Authorization: Bearer`, `Api-Key`, `Token`, col prefisso `key:`, come
+parametro nell'indirizzo — tutti `401 unauthorized`. Il nome vero non è scritto né nel
+pannello di Fluida né nella loro guida: sta dentro la **specifica OpenAPI**, che il
+portale carica col browser e che quindi non si vede leggendo la pagina.
+
+Si tira fuori così:
+
+```bash
+curl -s https://developer.fluida.io/docs/openapi.json | jq .components.securitySchemes
+```
+
+**La lezione, che vale per il prossimo connettore:** quando una API risponde `401` e non
+`404`, l'indirizzo è giusto e sbagli solo il modo di presentarti. Non provare a
+indovinare — cerca il file OpenAPI: quasi tutti i portali moderni ne hanno uno, ed è
+l'unico posto dove il nome dell'intestazione è scritto per esteso.
+
+**Cosa c'è dentro:** 360 indirizzi. Quelli che servono agli agenti: `teams`,
+`subsidiaries` (sedi), `time_off/counters` (ferie residue), `contracts` (i dipendenti),
+`stampings` (timbrature), `calendar/presences` (chi c'è oggi).
+
+⚠️ **Due cose da sistemare prima di usarlo davvero:**
+
+1. **L'account è vuoto.** Squadre: 0. Sedi: 0. È un'azienda appena creata — l'agente
+   può collegarsi, ma non ha niente da dire. Vanno inseriti i dipendenti in Fluida.
+2. **La chiave non ha tutti i permessi.** `time_off/counters` risponde `401` mentre
+   `teams` risponde `200`: quando la chiave è stata creata sono stati scelti permessi
+   parziali. Si correggono in **Azienda → Generali → chiave → Permessi**, mettendo
+   almeno *Read Only* su tutto.
 
 ---
 
-## Microsoft 365 ⚠️ manca un pezzo
+## Microsoft 365 ⛔ bloccato dall'organizzazione, non dalle chiavi
 
-Ci sono `MS365_CLIENT_ID` e `MS365_CLIENT_SECRET`. Manca il **Tenant ID**, e senza non si
-sa a quale organizzazione chiedere il permesso.
+⚠️ **Non è il Tenant ID che manca — o meglio, non è quello il problema.** Provando le
+credenziali contro Microsoft si ottiene:
+
+```
+AADSTS53003: Access has been blocked by Conditional Access policies.
+```
+
+Che vuol dire: **l'applicazione esiste e le credenziali sono valide**, ma
+l'organizzazione a cui appartiene l'account Microsoft di Tommaso ha una regola che vieta
+il rilascio dei permessi. Verificato anche che non è un account personale: provando col
+tenant dei privati (`9188040d-…`) risponde «applicazione non trovata in questa directory».
+
+⚠️ **È la stessa organizzazione che blocca i token personali su Fly con l'SSO.** Scuola,
+università o azienda: l'account è dentro il loro Microsoft, e le regole le fa il loro
+amministratore.
+
+**Anche col Tenant ID corretto resterebbe bloccato.** Le uniche due strade sono chiedere
+all'amministratore di quell'organizzazione, oppure creare un tenant proprio (gratuito,
+dieci minuti) dove l'amministratore è Tommaso.
+
+**Se un giorno serve il Tenant ID:** sta in `portal.azure.com` → **Microsoft Entra ID** →
+**Registrazioni app** → l'applicazione → **Panoramica**, alla voce «ID directory
+(tenant)».
 
 **Dove trovarlo:**
 
