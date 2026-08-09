@@ -26,7 +26,7 @@
  */
 
 import { spendCredits, userApiKey, withUser, getPool } from "./_lib/db.js";
-import { eseguiStrumento, strumentiPer } from "./_lib/tools.js";
+import { eseguiStrumento, istruzioniStrumenti, strumentiPer } from "./_lib/tools.js";
 import {
   ascolta,
   guarda,
@@ -1270,6 +1270,9 @@ async function generate(
             "con un buco dentro.",
         },
         ...(knowledge ? [{ role: "system", content: knowledge }] : []),
+        ...(istruzioniStrumenti(strumenti)
+          ? [{ role: "system", content: istruzioniStrumenti(strumenti) as string }]
+          : []),
         ...history.map((m) => ({
           role: m.direction === "in" ? "user" : "assistant",
           content: m.body,

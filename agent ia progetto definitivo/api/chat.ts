@@ -16,6 +16,7 @@
 
 import { currentUser } from "./_lib/auth.js";
 import { spendCredits, userApiKey, withUser } from "./_lib/db.js";
+import { eseguiStrumento, istruzioniStrumenti, strumentiPer } from "./_lib/tools.js";
 import {
   conflictingSources,
   embeddingConfigured,
@@ -152,6 +153,13 @@ export default {
       return json({ needsConfirmation: true, warning }, 200);
     }
 
+    // ⚠️ Si parte SUBITO, senza aspettare: leggere i connettori e cercare nei
+    // documenti sono due andate al database che non dipendono l'una
+    // dall'altra. Farle in fila costava due secondi buoni prima ancora di
+    // chiamare il modello — e in chat il primo secondo e' quello che si nota.
+    const strumentiInArrivo =
+      body.useKnowledge === false ? Promise.resolve([]) : strumentiPer(user.id).catch(() => []);
+
     // ── Righe 12 e 13: pescare dai documenti prima di rispondere ───────
     // Si cerca solo se ha senso: il Master Builder sta costruendo la squadra e
     // non deve rispondere come un agente operativo, quindi manda
@@ -169,6 +177,29 @@ export default {
     }
 
     const knowledge = passages.length > 0 ? knowledgePrompt(passages) : null;
+
+    // ── Riga 40: gli strumenti, anche qui ────────────────────────────
+    // ⚠️ Domanda di Tommaso il 9 Agosto 2026: «funziona su WhatsApp e anche
+    // sul sito?». Su WhatsApp funzionava, qui no — gli strumenti erano
+    // collegati solo al webhook. Un agente che sa controllare le ferie dal
+    // telefono e non dal computer non e' un agente: e' due prodotti diversi
+    // con lo stesso nome.
+    const strumenti = await strumentiInArrivo;
+
+    const comeUsarli = istruzioniStrumenti(strumenti);
+
+    const messaggiBase = [
+      ...(body.systemPrompt ? [{ role: "system", content: body.systemPrompt }] : []),
+      ...(knowledge ? [{ role: "system", content: knowledge }] : []),
+      // ⚠️ DOPO la conoscenza, di proposito: la regola «prima guarda, poi
+      // chiedi al titolare» deve essere l'ultima che il modello legge, se no
+      // vince il «non inventare» e l'agente resta zitto pur avendo lo strumento.
+      ...(comeUsarli ? [{ role: "system", content: comeUsarli }] : []),
+      ...messages.map((m) => ({
+        role: m.role === "agent" ? "assistant" : m.role,
+        content: m.content,
+      })),
+    ];
     const conflicts = conflictingSources(passages);
 
     const upstream = await fetch(OPENROUTER_URL, {
@@ -203,17 +234,8 @@ export default {
         // Chiediamo il conteggio dei token nell'ultimo pezzo dello stream:
         // è quello che alimenta il Contatore Risparmio e il pannello admin.
         usage: { include: true },
-        messages: [
-          ...(body.systemPrompt ? [{ role: "system", content: body.systemPrompt }] : []),
-          // La conoscenza va DOPO le istruzioni dell'agente e PRIMA della
-          // conversazione: così il "non inventare" è l'ultima regola che il
-          // modello legge prima di sentire la domanda del cliente.
-          ...(knowledge ? [{ role: "system", content: knowledge }] : []),
-          ...messages.map((m) => ({
-            role: m.role === "agent" ? "assistant" : m.role,
-            content: m.content,
-          })),
-        ],
+        ...(strumenti.length > 0 ? { tools: strumenti } : {}),
+        messages: messaggiBase,
       }),
     });
 
@@ -288,7 +310,20 @@ export default {
       headers.set("X-Source-Conflict", encodeURIComponent(JSON.stringify(conflicts)));
     }
 
-    return new Response(upstream.body.pipeThrough(accounting), { headers });
+    // ⚠️ Non si passa piu' `upstream.body` dritto al browser: prima bisogna
+    // sapere se il modello ha chiesto uno strumento. Vedi `flussoConStrumenti`.
+    const flusso =
+      strumenti.length > 0
+        ? flussoConStrumenti(upstream.body, {
+            userId: user.id,
+            apiKey,
+            model: model.id,
+            maxTokens: load === "heavy" ? 4000 : load === "standard" ? 2000 : 1000,
+            messaggi: messaggiBase,
+          })
+        : upstream.body;
+
+    return new Response(flusso.pipeThrough(accounting), { headers });
   },
 };
 
@@ -299,6 +334,198 @@ export default {
  * l'utente vede comunque il suo messaggio e noi perdiamo una riga di statistica.
  * L'ordine di importanza è quello, non il contrario.
  */
+/**
+ * Lascia passare la risposta, ma si accorge se il modello ha chiesto uno
+ * strumento — e in quel caso lo esegue e ricomincia.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ PERCHE' NON BASTA "AGGIUNGERE tools" COME SU WHATSAPP
+ * ─────────────────────────────────────────────────────────────────────────
+ * Il webhook di WhatsApp aspetta la risposta intera e puo' guardarla con
+ * comodo. Qui invece i byte vanno al browser mentre arrivano, e la richiesta di
+ * uno strumento arriva **nello stesso canale** delle parole: se la lasciassimo
+ * passare, l'utente vedrebbe comparire pezzi di JSON al posto della risposta.
+ *
+ * La soluzione: si tiene in mano l'inizio finche' non e' chiaro cos'e'.
+ *   · appena arriva una PAROLA → si sputa fuori quello che si era tenuto e da
+ *     li' in poi si passa tutto dritto, senza toccare niente;
+ *   · se invece arriva una RICHIESTA DI STRUMENTO → non esce niente, si
+ *     esegue, e si ricomincia con una seconda chiamata di cui il browser vede
+ *     solo il risultato.
+ *
+ * Il ritardo aggiunto e' quello del primo pezzo, cioe' niente: nel caso normale
+ * la prima parola arriva e da quel momento lo streaming e' identico a prima.
+ */
+function flussoConStrumenti(
+  sorgente: ReadableStream<Uint8Array>,
+  ctx: {
+    userId: string;
+    apiKey: string;
+    model: string;
+    maxTokens: number;
+    messaggi: Array<Record<string, unknown>>;
+  }
+): ReadableStream<Uint8Array> {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const reader = sorgente.getReader();
+      let buffer = "";
+      let trattenuto: Uint8Array[] = [];
+      let passaTutto = false;
+
+      // Le richieste di strumento arrivano a pezzi: l'indice dice a quale
+      // chiamata appartiene ogni frammento di argomenti.
+      const chiamate = new Map<number, { id: string; name: string; args: string }>();
+
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          if (passaTutto) {
+            controller.enqueue(value);
+            continue;
+          }
+
+          trattenuto.push(value);
+          buffer += decoder.decode(value, { stream: true });
+          const righe = buffer.split("\n");
+          buffer = righe.pop() ?? "";
+
+          for (const riga of righe) {
+            const t = riga.trim();
+            if (!t.startsWith("data:")) continue;
+            const dato = t.slice(5).trim();
+            if (!dato || dato === "[DONE]") continue;
+            try {
+              const p = JSON.parse(dato) as {
+                choices?: Array<{
+                  delta?: {
+                    content?: string;
+                    tool_calls?: Array<{
+                      index?: number;
+                      id?: string;
+                      function?: { name?: string; arguments?: string };
+                    }>;
+                  };
+                }>;
+              };
+              const delta = p.choices?.[0]?.delta;
+
+              if (typeof delta?.content === "string" && delta.content.length > 0) {
+                // E' una risposta normale: fuori tutto quello che si era tenuto.
+                passaTutto = true;
+                for (const pezzo of trattenuto) controller.enqueue(pezzo);
+                trattenuto = [];
+                break;
+              }
+
+              for (const tc of delta?.tool_calls ?? []) {
+                const i = tc.index ?? 0;
+                const gia = chiamate.get(i) ?? { id: "", name: "", args: "" };
+                chiamate.set(i, {
+                  id: tc.id || gia.id,
+                  name: tc.function?.name || gia.name,
+                  args: gia.args + (tc.function?.arguments ?? ""),
+                });
+              }
+            } catch {
+              // Pezzo di JSON spezzato: arrivera' intero col prossimo blocco.
+            }
+          }
+        }
+
+        if (passaTutto || chiamate.size === 0) {
+          // Niente strumenti: quello che era rimasto in mano esce comunque.
+          for (const pezzo of trattenuto) controller.enqueue(pezzo);
+          controller.close();
+          return;
+        }
+
+        // ── Ha chiesto uno strumento: si esegue e si ricomincia ────────
+        const messaggioAssistente = {
+          role: "assistant",
+          content: null,
+          tool_calls: [...chiamate.entries()].map(([i, c]) => ({
+            id: c.id || `call_${i}`,
+            type: "function",
+            function: { name: c.name, arguments: c.args || "{}" },
+          })),
+        };
+
+        const risultati = [];
+        for (const [i, c] of chiamate) {
+          let args: Record<string, unknown> = {};
+          try {
+            args = JSON.parse(c.args || "{}") as Record<string, unknown>;
+          } catch {
+            /* argomenti storti: si esegue con quello che c'e' */
+          }
+          risultati.push({
+            role: "tool",
+            tool_call_id: c.id || `call_${i}`,
+            content: await eseguiStrumento(ctx.userId, c.name, args),
+          });
+        }
+
+        const secondo = await fetch(OPENROUTER_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${ctx.apiKey}`,
+            "Content-Type": "application/json",
+            "X-Title": "CorpAgent",
+          },
+          body: JSON.stringify({
+            model: ctx.model,
+            stream: true,
+            max_tokens: ctx.maxTokens,
+            usage: { include: true },
+            messages: [...ctx.messaggi, messaggioAssistente, ...risultati],
+          }),
+        });
+
+        if (!secondo.ok || !secondo.body) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                choices: [
+                  {
+                    delta: {
+                      content:
+                        "Ho provato a controllare ma non ci sono riuscito. Riprova fra poco.",
+                    },
+                  },
+                ],
+              })}\n\n`
+            )
+          );
+          controller.close();
+          return;
+        }
+
+        const secondoReader = secondo.body.getReader();
+        for (;;) {
+          const { done, value } = await secondoReader.read();
+          if (done) break;
+          controller.enqueue(value);
+        }
+        controller.close();
+      } catch (error) {
+        console.error("Flusso con strumenti interrotto:", error);
+        try {
+          for (const pezzo of trattenuto) controller.enqueue(pezzo);
+        } catch {
+          /* il browser ha gia' chiuso */
+        }
+        controller.close();
+      }
+    },
+  });
+}
+
 function accountingStream(
   onDone: (answer: string, usage: { in: number; out: number } | null) => Promise<void>
 ): TransformStream<Uint8Array, Uint8Array> {

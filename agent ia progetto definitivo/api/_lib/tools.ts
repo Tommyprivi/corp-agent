@@ -26,7 +26,7 @@
  * modello non sa cosa non ha: bisogna non dirglielo.
  */
 
-import { credenziali, segnalaGuasto } from "./connectors.js";
+import { credenziali, collegamenti, segnalaGuasto } from "./connectors.js";
 
 /** La forma che vuole OpenRouter (la stessa di OpenAI). */
 export interface Strumento {
@@ -50,8 +50,12 @@ const FLUIDA = "https://api.fluida.io/api/v1";
 export async function strumentiPer(userId: string): Promise<Strumento[]> {
   const strumenti: Strumento[] = [];
 
-  const fluida = await credenziali(userId, "fluida").catch(() => null);
-  if (fluida?.secret) {
+  // ⚠️ Una sola lettura, non una per connettore. Ogni `credenziali()` apre una
+  // connessione a Neon: due andate valevano un secondo e mezzo di attesa prima
+  // ancora di aver chiamato il modello, e in chat quel secondo si vede.
+  const collegati = new Set((await collegamenti(userId).catch(() => [])).map((c) => c.kind));
+
+  if (collegati.has("fluida")) {
     strumenti.push(
       {
         type: "function",
@@ -88,8 +92,7 @@ export async function strumentiPer(userId: string): Promise<Strumento[]> {
     );
   }
 
-  const maps = await credenziali(userId, "maps").catch(() => null);
-  if (maps?.secret) {
+  if (collegati.has("maps")) {
     strumenti.push({
       type: "function",
       function: {
@@ -248,4 +251,41 @@ export async function eseguiStrumento(
   } catch (error) {
     return `Non sono riuscito a controllare adesso (${String(error).slice(0, 80)}).`;
   }
+}
+
+/**
+ * La riga che dice al modello che gli strumenti vengono **prima** del
+ * «devo far verificare».
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ IL DIFETTO CHE QUESTA FUNZIONE RIPARA, TROVATO PROVANDO
+ * ─────────────────────────────────────────────────────────────────────────
+ * Alla domanda «quanto dista via Etnea 100 da piazza Duomo a Messina?» l'agente
+ * rispondeva *«su questo devo far verificare al titolare»* — con Google Maps
+ * collegato e lo strumento in mano.
+ *
+ * La colpa era di una regola giusta applicata troppo alla lettera: la memoria
+ * dei documenti gli dice «se la risposta non è qui dentro, non inventarla, di'
+ * che fai verificare». Il modello ubbidiva, e restava zitto anche quando aveva
+ * il modo di scoprirlo davvero.
+ *
+ * Le due regole vanno messe in ordine, non in conflitto: **prima si guarda, e
+ * solo se nemmeno lo strumento sa rispondere si chiede al titolare.**
+ */
+export function istruzioniStrumenti(strumenti: Strumento[]): string | null {
+  if (strumenti.length === 0) return null;
+  return [
+    "─────────────────────────────────────────",
+    "PUOI CONTROLLARE DA SOLO",
+    "─────────────────────────────────────────",
+    "Hai degli strumenti collegati:",
+    ...strumenti.map((s) => `- ${s.function.name}: ${s.function.description.split(".")[0]}.`),
+    "",
+    "⚠️ USALI PRIMA di dire «devo far verificare al titolare». Quella frase serve",
+    "per le cose che nessuno ti ha detto e che non puoi scoprire — non per quelle",
+    "che uno strumento ti direbbe in un secondo.",
+    "",
+    "Se lo strumento risponde, riporta il dato con sicurezza. Se lo strumento non",
+    "sa o non risponde, allora sì: dillo e proponi di far verificare.",
+  ].join("\n");
 }
