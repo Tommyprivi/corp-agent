@@ -26,6 +26,7 @@
  */
 
 import { spendCredits, userApiKey, withUser, getPool } from "./_lib/db.js";
+import { eseguiStrumento, strumentiPer } from "./_lib/tools.js";
 import {
   ascolta,
   guarda,
@@ -1125,6 +1126,17 @@ async function handleOne(input: {
 // LA RISPOSTA
 // ─────────────────────────────────────────────────────────────────────────
 
+/** Quello che risponde OpenRouter, con o senza strumenti. */
+interface Risposta {
+  choices: Array<{
+    message: {
+      content?: string;
+      tool_calls?: Array<{ id: string; function?: { name?: string; arguments?: string } }>;
+    };
+  }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+}
+
 interface Reply {
   text: string;
   model: string;
@@ -1210,22 +1222,14 @@ async function generate(
 
   const knowledge = passages.length > 0 ? knowledgePrompt(passages) : null;
 
-  const upstream = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "X-Title": "CorpAgent",
-    },
-    body: JSON.stringify({
-      model: model.id,
-      stream: false,
-      // Corto di proposito: un messaggio WhatsApp lungo non si legge. È anche
-      // il tetto che serve a non far fallire la richiesta quando la chiave ha
-      // un limite di spesa (vedi il commento in api/chat.ts).
-      max_tokens: MAX_REPLY_TOKENS,
-      usage: { include: true },
-      messages: [
+  // ── Riga 40 e 41: gli strumenti, anche da WhatsApp ───────────────────
+  // ⚠️ Compaiono SOLO se quell'utente ha collegato qualcosa. Dire a un agente
+  // «puoi controllare le ferie» quando Fluida non c'e' produce un «controllo
+  // subito» seguito dal nulla: il modello non sa cosa non ha, e bisogna non
+  // dirglielo.
+  const strumenti = await strumentiPer(userId).catch(() => []);
+
+  const messaggi = [
         {
           role: "system",
           content:
@@ -1271,7 +1275,25 @@ async function generate(
           content: m.body,
         })),
         { role: "user", content: question },
-      ],
+      ];
+
+  const upstream = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "X-Title": "CorpAgent",
+    },
+    body: JSON.stringify({
+      model: model.id,
+      stream: false,
+      // Corto di proposito: un messaggio WhatsApp lungo non si legge. È anche
+      // il tetto che serve a non far fallire la richiesta quando la chiave ha
+      // un limite di spesa (vedi il commento in api/chat.ts).
+      max_tokens: MAX_REPLY_TOKENS,
+      usage: { include: true },
+      messages: messaggi,
+      ...(strumenti.length > 0 ? { tools: strumenti } : {}),
     }),
   });
 
@@ -1280,10 +1302,59 @@ async function generate(
     return null;
   }
 
-  const result = (await upstream.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
-  };
+  let result = (await upstream.json()) as Risposta;
+
+  // ── Riga 40: l'agente usa i connettori ───────────────────────────────
+  // Se ha chiesto uno strumento, glielo si esegue e gli si ridà la parola con
+  // il risultato in mano.
+  //
+  // ⚠️ Un solo giro, non un ciclo aperto. Un modello che può richiamare
+  // strumenti all'infinito, su un canale dove il cliente aspetta, e' un conto
+  // che cresce mentre qualcuno guarda il telefono. Un giro basta a rispondere
+  // «Mario è in ferie fino al 18»; per le catene lunghe c'è la chat del sito.
+  const chiamate = result.choices?.[0]?.message?.tool_calls ?? [];
+  if (chiamate.length > 0) {
+    const risultati: Array<{ role: "tool"; tool_call_id: string; content: string }> = [];
+    for (const c of chiamate.slice(0, 3)) {
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(c.function?.arguments ?? "{}") as Record<string, unknown>;
+      } catch {
+        /* argomenti storti: si esegue lo stesso con quello che c'e' */
+      }
+      const esito = await eseguiStrumento(userId, c.function?.name ?? "", args);
+      console.log(`Strumento ${c.function?.name}: ${esito.slice(0, 120)}`);
+      risultati.push({ role: "tool", tool_call_id: c.id, content: esito });
+    }
+
+    const secondo = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Title": "CorpAgent",
+      },
+      body: JSON.stringify({
+        model: model.id,
+        stream: false,
+        max_tokens: MAX_REPLY_TOKENS,
+        usage: { include: true },
+        messages: [...messaggi, result.choices[0].message, ...risultati],
+      }),
+    });
+    if (secondo.ok) {
+      const dopo = (await secondo.json()) as Risposta;
+      // I token del primo giro non si buttano: li ha spesi il titolare.
+      const primi = result.usage;
+      result = dopo;
+      if (result.usage && primi) {
+        result.usage.prompt_tokens = (result.usage.prompt_tokens ?? 0) + (primi.prompt_tokens ?? 0);
+        result.usage.completion_tokens =
+          (result.usage.completion_tokens ?? 0) + (primi.completion_tokens ?? 0);
+      }
+    }
+  }
+
   let text = result.choices?.[0]?.message?.content?.trim();
   if (!text) return null;
 
