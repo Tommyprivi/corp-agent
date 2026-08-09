@@ -142,6 +142,34 @@ export default {
       return new Response("Metodo non ammesso", { status: 405 });
     }
 
+    // ── Quello che vi siete detti al telefono ──────────────────────────
+    // Il ponte vocale, a chiamata finita, rimanda qui le battute. Da questo
+    // momento una telefonata non e' piu' una cosa che sparisce: e' una
+    // conversazione che si legge nella posta, e che diventa memoria come
+    // tutte le altre.
+    //
+    // ⚠️ Non passa dalla firma di Meta ma dal segreto del ponte: chi scrive
+    // qui e' un pezzo nostro, non Meta.
+    if (new URL(request.url).searchParams.get("trascrizione") !== null) {
+      const atteso = process.env.BRIDGE_SECRET;
+      if (!atteso || request.headers.get("authorization") !== `Bearer ${atteso}`) {
+        return new Response("Non autorizzato", { status: 403 });
+      }
+      try {
+        const corpo = (await request.json()) as {
+          callId?: string;
+          battute?: Array<{ chi?: string; testo?: string }>;
+          durataSecondi?: number;
+        };
+        await salvaTelefonata(corpo);
+      } catch (error) {
+        console.error("Trascrizione non salvata:", error);
+      }
+      // Sempre 200: il ponte non deve riprovare, e una trascrizione persa non
+      // vale un processo che insiste.
+      return new Response("ok", { status: 200 });
+    }
+
     // ── Difesa 1: la firma ─────────────────────────────────────────────
     const raw = await request.text();
     const secret = process.env.META_APP_SECRET;
@@ -373,6 +401,79 @@ async function handle(payload: WebhookPayload): Promise<void> {
 }
 
 /**
+ * Salva quello che ci si e' detti al telefono.
+ *
+ * ⚠️ Si riattacca alla conversazione **gia' esistente** con quel cliente, non
+ * ne apre una nuova: per il titolare «Marco» e' una persona sola, che a volte
+ * scrive e a volte chiama. Due elenchi separati sarebbero due Marco.
+ */
+async function salvaTelefonata(corpo: {
+  callId?: string;
+  battute?: Array<{ chi?: string; testo?: string }>;
+  durataSecondi?: number;
+}): Promise<void> {
+  const { callId, battute } = corpo;
+  if (!callId || !battute?.length) return;
+
+  // La chiamata era gia' stata registrata quando e' arrivata: da li' si risale
+  // a chi e' l'utente e a quale conversazione appartiene.
+  const client = await getPool().connect();
+  let userId: string | null = null;
+  let conversationId: string | null = null;
+  try {
+    const trovato = await client.query<{ user_id: string; conversation_id: string }>(
+      "select user_id, conversation_id from public.wa_messages where wa_message_id = $1 limit 1",
+      [callId]
+    );
+    userId = trovato.rows[0]?.user_id ?? null;
+    conversationId = trovato.rows[0]?.conversation_id ?? null;
+  } finally {
+    client.release();
+  }
+  if (!userId || !conversationId) {
+    console.warn(`Trascrizione della chiamata ${callId}: non so a chi appartiene.`);
+    return;
+  }
+
+  await withUser(userId, async (c) => {
+    for (const [i, b] of battute.entries()) {
+      if (!b.testo) continue;
+      await c.query(
+        `insert into public.wa_messages
+           (user_id, conversation_id, direction, wa_message_id, body, answered_by,
+            media_kind, status)
+         values ($1, $2, $3, $4, $5, $6, 'audio', 'delivered')
+         on conflict (wa_message_id) do nothing`,
+        [
+          userId,
+          conversationId,
+          b.chi === "cliente" ? "in" : "out",
+          `${callId}:${i}`,
+          b.testo,
+          b.chi === "cliente" ? null : "agent",
+        ]
+      );
+    }
+    await c.query(
+      `update public.wa_conversations set last_message_at = now(), read_at = null
+        where id = $1`,
+      [conversationId]
+    );
+  });
+
+  const durata = corpo.durataSecondi ?? 0;
+  console.log(`Chiamata ${callId}: ${battute.length} battute salvate (${durata}s).`);
+
+  // Una telefonata e' il posto dove si prendono gli accordi veri: se ci sono
+  // fatti che valgono domani, finiscono in memoria come per le chat.
+  try {
+    await rememberWaConversation(userId, conversationId);
+  } catch (error) {
+    console.error("Telefonata non mandata in memoria:", error);
+  }
+}
+
+/**
  * Le istruzioni per l'agente al telefono: chi e', e cosa sa dell'attivita'.
  *
  * ⚠️ Al telefono la conoscenza va messa DENTRO le istruzioni, non cercata a
@@ -380,41 +481,138 @@ async function handle(payload: WebhookPayload): Promise<void> {
  * silenzio in mezzo a una frase al telefono fa dire «pronto?». Si prende il
  * meglio di quello che c'e' e glielo si mette in testa prima di rispondere.
  */
-async function istruzioniTelefoniche(userId: string): Promise<string> {
-  const agente = await withUser(userId, async (client) => {
-    const row = await client.query<{ system_prompt: string | null }>(
-      `select system_prompt from public.agents
+async function istruzioniTelefoniche(
+  userId: string,
+  from: string,
+  contactName: string | null
+): Promise<string> {
+  const dati = await withUser(userId, async (client) => {
+    const agente = await client.query<{ name: string; system_prompt: string | null }>(
+      `select name, system_prompt from public.agents
         where user_id = $1 and active = true order by created_at limit 1`,
       [userId]
     );
-    return row.rows[0]?.system_prompt ?? null;
+
+    // ⚠️ Chi sta chiamando l'ha gia' fatto? Questa e' la differenza fra un
+    // centralino e «il mio agente». Un cliente che ieri ha scritto «vi ho
+    // lasciato il pacco» e oggi chiama non deve ricominciare da capo: se
+    // ricomincia da capo, non e' il tuo assistente — e' un risponditore.
+    const passato = await client.query<{ direction: string; body: string }>(
+      `select m.direction, m.body
+         from public.wa_messages m
+         join public.wa_conversations v on v.id = m.conversation_id
+        where v.user_id = $1 and v.customer_wa = $2 and m.body is not null
+        order by m.created_at desc
+        limit 12`,
+      [userId, from]
+    );
+
+    return {
+      nome: agente.rows[0]?.name ?? null,
+      prompt: agente.rows[0]?.system_prompt ?? null,
+      storia: passato.rows.reverse(),
+    };
   });
 
-  let sapere = "";
-  if (embeddingConfigured()) {
-    try {
-      // Una ricerca larga: al telefono non si sa in anticipo cosa chiederanno,
-      // quindi si portano dietro le cose piu' rappresentative dell'attivita'.
-      const passaggi = await withUser(userId, (client) =>
-        search(client, userId, "orari prezzi servizi contatti indirizzo come funziona")
-      );
-      if (passaggi.length > 0) sapere = knowledgePrompt(passaggi);
-    } catch (error) {
-      console.error("Non sono riuscito a preparare la conoscenza per la chiamata:", error);
+  // ── Tutto quello che sa, in testa prima di rispondere ────────────────
+  //
+  // ⚠️ QUI NON SI CERCA: SI CARICA TUTTO.
+  // Nella chat si fa una ricerca per significato a ogni domanda, e va bene:
+  // un secondo di attesa mentre l'utente guarda lo schermo non si nota.
+  // Al telefono quel secondo e' silenzio in mezzo a una frase, e chi ascolta
+  // dice «pronto?». Peggio ancora: la ricerca si fa sulla domanda, e al
+  // telefono la domanda arriva DOPO che la conversazione e' gia' cominciata.
+  //
+  // Quindi si prende quello che il titolare ha caricato e glielo si mette in
+  // testa prima che squilli. Per un negozio o un ristorante sono un menu', un
+  // listino e due regole: ci stanno comodamente. Il tetto serve solo a non far
+  // esplodere le istruzioni se qualcuno ha caricato un'enciclopedia.
+  const sapere = await withUser(userId, async (client) => {
+    const pezzi = await client.query<{ nome: string; contenuto: string }>(
+      `select d.name as nome, k.content as contenuto
+         from public.chunks k
+         join public.documents d on d.id = k.document_id
+        where k.user_id = $1 and d.archived_at is null
+        order by d.updated_at desc, k.ordinal
+        limit 120`,
+      [userId]
+    );
+    if (pezzi.rows.length === 0) return "";
+
+    const righe: string[] = [];
+    let quanto = 0;
+    let ultimo = "";
+    for (const p of pezzi.rows) {
+      if (quanto + p.contenuto.length > 9000) break;
+      if (p.nome !== ultimo) {
+        righe.push("", `── ${p.nome} ──`);
+        ultimo = p.nome;
+      }
+      righe.push(p.contenuto);
+      quanto += p.contenuto.length;
     }
-  }
+
+    return [
+      "",
+      "─────────────────────────────────────────",
+      "QUELLO CHE SAI DI QUESTA ATTIVITÀ",
+      "─────────────────────────────────────────",
+      "È la tua unica fonte di verità su prezzi, orari, prodotti e condizioni.",
+      "Se una cosa è scritta qui, rispondila con sicurezza, senza dire «devo",
+      "verificare»: verificare quello che già sai fa perdere tempo al cliente e",
+      "ti fa sembrare un centralino.",
+      ...righe,
+    ].join("\n");
+  }).catch((error) => {
+    console.error("Non sono riuscito a preparare la conoscenza per la chiamata:", error);
+    return "";
+  });
+
+  const chi = contactName?.split(" ")[0] ?? null;
+
+  const conversazionePassata =
+    dati.storia.length > 0
+      ? [
+          "",
+          "─────────────────────────────────────────",
+          `CI SIETE GIA' PARLATI${chi ? `, LUI SI CHIAMA ${chi.toUpperCase()}` : ""}`,
+          "─────────────────────────────────────────",
+          "Ecco le ultime cose che vi siete detti su WhatsApp. Usale: se sta",
+          "chiamando per la stessa cosa, riprendi da li' senza fargli ripetere tutto.",
+          "",
+          ...dati.storia.map(
+            (m) => `${m.direction === "in" ? (chi ?? "CLIENTE") : "TU"}: ${m.body.slice(0, 300)}`
+          ),
+        ].join("\n")
+      : "";
 
   return [
-    agente ?? "Sei l'assistente telefonico di un'attività italiana.",
+    dati.prompt ?? "Sei l'assistente di un'attività italiana.",
     "",
-    "STAI PARLANDO AL TELEFONO",
-    "Frasi corte, una cosa per volta. Non elencare mai più di due opzioni a voce:",
-    "chi ascolta non può rileggere. Se serve una lista, di' che la mandi per messaggio.",
+    "─────────────────────────────────────────",
+    "STAI RISPONDENDO AL TELEFONO",
+    "─────────────────────────────────────────",
+    dati.nome ? `Ti chiami ${dati.nome}. Se te lo chiedono, dillo.` : "",
     "",
-    "Non inventare MAI prezzi, orari o disponibilità. Se non lo sai, dillo con",
-    "semplicità e proponi di far richiamare dal titolare.",
+    "Parla come una persona al telefono, non come un messaggio letto ad alta voce.",
+    "Frasi corte. Una cosa per volta. Mai più di due opzioni a voce: chi ascolta",
+    "non può rileggere. Se serve un elenco, di' che lo mandi per messaggio.",
+    "",
+    "Puoi usare gli intercalari di chi parla davvero — «allora», «certo»,",
+    "«un attimo che controllo» — ma senza esagerare. Niente elenchi puntati,",
+    "niente formattazione, niente emoji: si sentono, non si leggono.",
+    "",
+    chi ? `Chi ti sta chiamando si chiama ${chi}: chiamalo per nome.` : "",
+    "",
+    "⚠️ Non inventare MAI prezzi, orari o disponibilità che non sai. Se non lo",
+    "sai, dillo con semplicità: «questo devo farmelo confermare, le faccio",
+    "richiamare» — e vai avanti. Un prezzo sbagliato detto al telefono è una",
+    "promessa, e le promesse si pagano.",
+    conversazionePassata,
     sapere ? "\n" + sapere : "",
-  ].join("\n");
+  ]
+    .filter((r) => r !== "")
+    .join("\n");
 }
 
 /**
@@ -453,11 +651,16 @@ async function handleCall(
   // B: si rifiuta e parte un vocale. Meglio un vocale in tre secondi che venti
   // squilli nel vuoto.
   if (chiamata.session?.sdp) {
-    const istruzioni = await istruzioniTelefoniche(userId);
+    const istruzioni = await istruzioniTelefoniche(userId, from, contactName);
     const collegata = await passaAlPonte({
       callId: chiamata.id,
       sdp: chiamata.session.sdp,
       istruzioni,
+      // Dove rimandare quello che vi siete detti, a chiamata finita.
+      ritorno: {
+        url: `${process.env.BETTER_AUTH_URL ?? "https://corpagent.vercel.app"}/api/whatsapp?trascrizione=1`,
+        segreto: process.env.BRIDGE_SECRET ?? "",
+      },
       saluto:
         "Saluta come farebbe chi risponde al telefono di questa attività, e chiedi " +
         "come puoi aiutare. Una frase sola.",

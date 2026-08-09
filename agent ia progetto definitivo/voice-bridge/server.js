@@ -134,13 +134,13 @@ const server = createServer(async (req, res) => {
     return rispondi(res, 400, { error: "Corpo non leggibile." });
   }
 
-  const { callId, sdp, istruzioni, saluto } = corpo;
+  const { callId, sdp, istruzioni, saluto, ritorno } = corpo;
   if (!callId || !sdp) {
     return rispondi(res, 400, { error: "Servono callId e sdp." });
   }
 
   try {
-    const risposta = await apriChiamata({ callId, sdp, istruzioni, saluto });
+    const risposta = await apriChiamata({ callId, sdp, istruzioni, saluto, ritorno });
     return rispondi(res, 200, { sdp: risposta });
   } catch (errore) {
     console.error(`[${callId}] non sono riuscito ad aprire la chiamata:`, errore);
@@ -174,7 +174,7 @@ server.listen(PORT, () => {
  * dichiarare cosa sanno fare, se no la trattativa si chiude su «nessun audio»
  * e la telefonata resta muta senza che nessuno dia errore.
  */
-async function apriChiamata({ callId, sdp, istruzioni, saluto }) {
+async function apriChiamata({ callId, sdp, istruzioni, saluto, ritorno }) {
   // ── I due lati, prima di parlare con chiunque ──────────────────────
   // ⚠️ Si costruisce TUTTO prima di negoziare, ed e' il difetto che mi e'
   // costato piu' tentativi: `onTrack` scatta **durante**
@@ -270,7 +270,11 @@ async function apriChiamata({ callId, sdp, istruzioni, saluto }) {
               turn_detection: { type: "server_vad", silence_duration_ms: 700 },
               transcription: { model: "whisper-1" },
             },
-            output: { voice: "alloy" },
+            // ⚠️ "marin", non "alloy": la voce predefinita e' corretta ma
+            // piatta, e al telefono si sente. Questa ha le pause e l'intonazione
+            // di chi parla davvero — che e' tutta la differenza fra «ho parlato
+            // col vostro assistente» e «ho parlato con un robot».
+            output: { voice: process.env.VOICE ?? "marin" },
           },
         },
       })
@@ -290,6 +294,13 @@ async function apriChiamata({ callId, sdp, istruzioni, saluto }) {
     );
   });
 
+  // ── Quello che vi siete detti ──────────────────────────────────────
+  // ⚠️ Non basta stamparlo nel registro: se la telefonata resta qui dentro,
+  // il titolare ha un assistente che parla coi suoi clienti e non gli racconta
+  // mai cosa si sono detti. Le battute si raccolgono e a fine chiamata tornano
+  // a CorpAgent, dove diventano una conversazione nella posta e poi memoria.
+  const battute = [];
+
   // Le trascrizioni servono a due cose: farle vedere nella posta del sito, e
   // capire dopo perche' una telefonata e' andata male.
   // ⚠️ `onMessage`, non `message`: con il nome sbagliato si prende un
@@ -299,9 +310,11 @@ async function apriChiamata({ callId, sdp, istruzioni, saluto }) {
       const evento = JSON.parse(typeof dato === "string" ? dato : dato.toString());
       if (evento.type === "conversation.item.input_audio_transcription.completed") {
         console.log(`[${callId}] cliente: ${evento.transcript}`);
+        battute.push({ chi: "cliente", testo: evento.transcript });
       }
       if (String(evento.type).includes("transcript.done")) {
         console.log(`[${callId}] agente: ${evento.transcript}`);
+        battute.push({ chi: "agente", testo: evento.transcript });
       }
       if (evento.type === "error") {
         console.error(`[${callId}] il modello ha protestato:`, evento.error?.message);
@@ -315,9 +328,27 @@ async function apriChiamata({ callId, sdp, istruzioni, saluto }) {
   const chiudi = (perche) => {
     if (!inCorso.has(callId)) return;
     inCorso.delete(callId);
-    console.log(`[${callId}] chiusa (${perche}).`);
+    console.log(`[${callId}] chiusa dopo ${battute.length} battute (${perche}).`);
     versoCliente.close().catch(() => {});
     versoModello.close().catch(() => {});
+
+    // ⚠️ Si rimanda indietro anche se la chiamata e' finita male: una
+    // telefonata caduta a meta' e' comunque una cosa che il titolare deve
+    // poter leggere. Se il ritorno fallisce non si insiste — meglio perdere
+    // una trascrizione che tenere in vita un processo per un riporto.
+    if (ritorno?.url && battute.length > 0) {
+      fetch(ritorno.url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${ritorno.segreto ?? ""}`,
+        },
+        body: JSON.stringify({ callId, battute, durataSecondi: Math.round((Date.now() - inizio) / 1000) }),
+        signal: AbortSignal.timeout(10_000),
+      })
+        .then((r) => console.log(`[${callId}] trascrizione rimandata a CorpAgent: ${r.status}`))
+        .catch((e) => console.error(`[${callId}] trascrizione persa:`, String(e)));
+    }
   };
 
   versoCliente.connectionStateChange.subscribe((s) => {
@@ -327,6 +358,7 @@ async function apriChiamata({ callId, sdp, istruzioni, saluto }) {
     if (s === "failed" || s === "closed" || s === "disconnected") chiudi(`modello ${s}`);
   });
 
+  const inizio = Date.now();
   const timer = setTimeout(() => chiudi("tempo massimo"), MAX_DURATA_MS);
   timer.unref?.();
 

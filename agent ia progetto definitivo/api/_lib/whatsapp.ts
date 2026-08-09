@@ -820,6 +820,8 @@ export async function passaAlPonte(input: {
   sdp: string;
   istruzioni: string;
   saluto: string;
+  /** Dove il ponte rimanda la trascrizione quando la chiamata finisce. */
+  ritorno?: { url: string; segreto: string };
 }): Promise<boolean> {
   const ponte = process.env.VOICE_BRIDGE_URL;
   const segreto = process.env.BRIDGE_SECRET;
