@@ -29,7 +29,9 @@ import { spendCredits, userApiKey, withUser, getPool } from "./_lib/db.js";
 import {
   ascolta,
   guarda,
+  rifiutaChiamata,
   rispondiAVoce,
+  rispostaAllaChiamata,
   DISTILL_EVERY,
   flushQueue,
   notifyOwner,
@@ -45,7 +47,13 @@ import {
   search,
   type Passage,
 } from "./_lib/embed.js";
-import { chooseModel, classifyLoad, costEur, fetchCatalog } from "./_lib/openrouter.js";
+import {
+  chooseModel,
+  classifyLoad,
+  costEur,
+  fetchCatalog,
+  searchModel,
+} from "./_lib/openrouter.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -222,6 +230,17 @@ interface WebhookPayload {
           sticker?: { id?: string };
         }>;
         statuses?: Array<{ id?: string; status?: string }>;
+        /** Le chiamate: arrivano sullo stesso indirizzo, campo `calls`. */
+        calls?: Array<{
+          id?: string;
+          from?: string;
+          to?: string;
+          /** 'connect' = sta squillando · 'terminate' = e' finita. */
+          event?: string;
+          direction?: string;
+          status?: string;
+          duration?: number;
+        }>;
       };
     }>;
   }>;
@@ -233,12 +252,24 @@ async function handle(payload: WebhookPayload): Promise<void> {
       const value = change.value;
       if (!value) continue;
 
+      const phoneNumberId = value.metadata?.phone_number_id;
+      if (!phoneNumberId) continue;
+
+      // ── Le chiamate ──────────────────────────────────────────────
+      // Arrivano sullo stesso indirizzo dei messaggi, campo `calls`.
+      if (value.calls?.length) {
+        const canale = await findChannel(phoneNumberId);
+        if (canale) {
+          for (const chiamata of value.calls) {
+            await handleCall(canale, chiamata, value.contacts?.[0]?.profile?.name ?? null);
+          }
+        }
+        continue;
+      }
+
       // Le notifiche di consegna ("letto", "consegnato") arrivano allo stesso
       // indirizzo: si ignorano, non sono messaggi di nessuno.
       if (!value.messages?.length) continue;
-
-      const phoneNumberId = value.metadata?.phone_number_id;
-      if (!phoneNumberId) continue;
 
       // ── Difesa 2: il canale ────────────────────────────────────────
       const channel = await findChannel(phoneNumberId);
@@ -336,6 +367,86 @@ async function handle(payload: WebhookPayload): Promise<void> {
       }
     }
   }
+}
+
+/**
+ * Qualcuno ha premuto la cornetta.
+ *
+ * ⚠️ Si risponde in tre secondi, e l'ordine conta: prima si **rifiuta** (il
+ * telefono del cliente smette di squillare a vuoto), poi si scrive. Chi sente
+ * venti squilli senza risposta pensa «non c'e' nessuno» e riattacca arrabbiato;
+ * chi ne sente due e riceve subito un vocale capisce che dall'altra parte
+ * qualcuno c'e'.
+ */
+async function handleCall(
+  channel: Channel,
+  chiamata: { id?: string; from?: string; event?: string; status?: string; duration?: number },
+  contactName: string | null
+): Promise<void> {
+  const from = chiamata.from;
+  if (!from || !chiamata.id) return;
+
+  // La fine di una chiamata non richiede niente: era gia' stata trattata
+  // quando e' arrivata. Serve solo a non rispondere due volte.
+  if (chiamata.event === "terminate") return;
+
+  const userId = channel.userId;
+
+  await rifiutaChiamata(chiamata.id);
+
+  const conversationId = await withUser(userId, async (client) => {
+    const gia = await client.query(
+      "select 1 from public.wa_messages where user_id = $1 and wa_message_id = $2 limit 1",
+      [userId, chiamata.id]
+    );
+    if (gia.rows.length > 0) return null;
+
+    const convo = await client.query<{ id: string }>(
+      `insert into public.wa_conversations
+         (user_id, channel_id, customer_wa, customer_name, last_message_at)
+       values ($1, $2, $3, $4, now())
+       on conflict (channel_id, customer_wa) do update
+         set last_message_at = now(), read_at = null,
+             customer_name = coalesce(excluded.customer_name, wa_conversations.customer_name)
+       returning id`,
+      [userId, channel.id, from, contactName]
+    );
+    const id = convo.rows[0].id;
+
+    // Nella posta si deve vedere che quella era una chiamata, non un messaggio:
+    // il titolare che scorre l'elenco capisce subito chi ha provato a sentirlo.
+    await client.query(
+      `insert into public.wa_messages
+         (user_id, conversation_id, direction, wa_message_id, body, status)
+       values ($1, $2, 'in', $3, $4, 'received')`,
+      [userId, id, chiamata.id, "📞 Ti ha chiamato"]
+    );
+    return id;
+  });
+
+  if (!conversationId) return; // Meta l'aveva gia' mandata.
+
+  const testo = rispostaAllaChiamata(contactName);
+
+  // Prima la voce: chi ha chiamato voleva parlare, non leggere. Se la voce
+  // non parte resta lo scritto — meglio scritto che niente.
+  const sentId = (await rispondiAVoce(from, testo)) ?? (await sendWhatsApp(from, testo));
+
+  await withUser(userId, (client) =>
+    client.query(
+      `insert into public.wa_messages
+         (user_id, conversation_id, direction, wa_message_id, body, answered_by, status)
+       values ($1, $2, 'out', $3, $4, 'agent', $5)`,
+      [userId, conversationId, sentId, testo, sentId ? "sent" : "queued"]
+    )
+  );
+
+  await notifyOwner(
+    userId,
+    `📞 ${contactName ?? from} ti ha chiamato su WhatsApp.\n\n` +
+      "Non potevo rispondere al telefono, gli ho mandato un vocale che lo invita a scrivere. " +
+      "Se vuoi richiamarlo, il numero è questo."
+  );
 }
 
 interface Channel {
@@ -755,8 +866,16 @@ async function generate(
   const apiKey = credenziali.key;
 
   const catalog = await fetchCatalog();
-  const { load, lang } = await classifyLoad(question, catalog, apiKey);
-  const model = chooseModel(load, catalog);
+  const { load, lang, fresh } = await classifyLoad(question, catalog, apiKey);
+
+  // ── Riga 42: la ricerca web ─────────────────────────────────────────
+  // ⚠️ Solo quando serve davvero. Un modello che cerca costa dieci volte uno
+  // che non cerca, e «a che ora aprite?» non ha bisogno di internet: la
+  // risposta e' nei documenti del titolare. Se il cercatore non c'e' nel
+  // catalogo si va avanti col modello normale — che dira' onestamente di non
+  // saperlo, invece di inventare.
+  const cercatore = fresh ? searchModel(catalog) : null;
+  const model = cercatore ?? chooseModel(load, catalog);
 
   // Le istruzioni dell'agente e le ultime battute della conversazione.
   const { instructions, history } = await withUser(userId, async (client) => {
@@ -823,6 +942,16 @@ async function generate(
             // di [nome attività]». Un segnaposto tra parentesi quadre mandato a un
             // cliente vero fa sembrare l'azienda un esperimento mal riuscito, e
             // basta quello per non ricevere il secondo messaggio.
+            // ── Riga 42: quando ha cercato, deve dirlo ──────────────
+            // Chi legge deve poter distinguere «questo lo so perche' me l'hai
+            // detto tu» da «questo l'ho trovato adesso su internet». Sono due
+            // gradi di affidabilita' diversi, e confonderli e' come dire un
+            // prezzo letto su un forum come se fosse il proprio listino.
+            (cercatore
+              ? "HAI CERCATO SU INTERNET\nQuesta risposta viene dal web, non dai documenti " +
+                "del titolare. Dillo in modo naturale («ho controllato adesso», «da quello " +
+                "che risulta online») e non spacciarla per un'informazione dell'attività.\n\n"
+              : "") +
             // ── Riga 26 ──────────────────────────────────────────────
             // Il modello di solito risponde nella lingua della domanda da se',
             // ma "di solito" non basta: se il cliente scrive in tedesco e i
@@ -858,8 +987,19 @@ async function generate(
     choices?: Array<{ message?: { content?: string } }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
-  const text = result.choices?.[0]?.message?.content?.trim();
+  let text = result.choices?.[0]?.message?.content?.trim();
   if (!text) return null;
+
+  // ⚠️ I modelli che cercano sul web mettono i rimandi alle fonti come [8][10].
+  // Sul sito diventerebbero link; su WhatsApp restano numerini fra parentesi
+  // che non portano da nessuna parte e fanno sembrare la risposta copiata da
+  // un compito. Si tolgono, insieme agli spazi doppi che lasciano dietro.
+  if (cercatore) {
+    text = text
+      .replace(/\s*\[\d+\]/g, "")
+      .replace(/[ \t]{2,}/g, " ")
+      .trim();
+  }
 
   const tokensIn = result.usage?.prompt_tokens ?? Math.ceil(question.length / 4);
   const tokensOut = result.usage?.completion_tokens ?? Math.ceil(text.length / 4);

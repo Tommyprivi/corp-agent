@@ -97,17 +97,40 @@ export function estimateLoad(text: string): Load {
  * "avete posto stasera?" — e mandarle a un classificatore aggiungerebbe mezzo
  * secondo di attesa a ogni messaggio per confermare l'ovvio.
  */
+/**
+ * La scorciatoia: quando si puo' rispondere senza chiedere niente a nessuno.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ RISCRITTA AL CONTRARIO IL 9 AGOSTO 2026, DOPO DUE GUASTI MUTI
+ * ─────────────────────────────────────────────────────────────────────────
+ * Prima era una **lista di eccezioni**: «e' semplice, a meno che non contenga
+ * perche', analizza, confronta...». Sembrava furba e ha nascosto due difetti,
+ * tutti e due invisibili:
+ *
+ *   · la lingua del cliente si perdeva su ogni messaggio corto — cioe' su
+ *     quasi tutti quelli che arrivano da WhatsApp;
+ *   · la ricerca web non scattava mai. «Chi ha vinto il campionato?» e'
+ *     corto e non contiene nessuna parola sospetta: passava di qui, e la
+ *     scorciatoia decideva da sola «niente internet».
+ *
+ * Il difetto della lista di eccezioni e' strutturale: per funzionare
+ * dovrebbe elencare **tutto quello a cui non hai pensato**. Ogni volta che il
+ * classificatore impara una cosa nuova, la lista diventa sbagliata in
+ * silenzio.
+ *
+ * Adesso e' una **lista di certezze**: si salta il classificatore solo per i
+ * convenevoli, dove non c'e' niente da capire. Tutto il resto lo guarda un
+ * modello. Costa una chiamata da sessanta token — meno di un millesimo di
+ * centesimo — ed e' il prezzo giusto per non rispondere alla domanda
+ * sbagliata.
+ */
 function obviouslyLight(text: string): boolean {
-  const t = text.trim();
-  if (t.length > 70) return false;
-  // Una domanda breve e diretta, senza chiedere di ragionare.
-  //
-  // ⚠️ `perch[eéè]` e non `perch[éè]`: in Italia si scrive "perche" senza
-  // accento più spesso di quanto si creda, e su WhatsApp quasi sempre. La
-  // prima versione controllava solo le forme accentate, e "Perche perdo
-  // clienti il mercoledi?" finiva sul modello leggero — una domanda di
-  // diagnosi trattata come un "che orari fate?".
-  return !/\bperch[eéè]\b|\bcome mai\b|\bconvien|\bmeglio\b|\bconsigl|\bstrateg|\banalizz|\bconfront|\bdiagnos|\bcapire perch/i.test(
+  const t = text.trim().toLowerCase();
+
+  // Oltre trenta caratteri non e' piu' un convenevole: e' una richiesta.
+  if (t.length > 30) return false;
+
+  return /^(ciao|salve|buongiorno|buonasera|buona sera|grazie|grazie mille|ok|okay|va bene|perfetto|d'accordo|ricevuto|a presto|arrivederci|si|s[iì]|no|👍|🙏)[\s.!,…]*$/i.test(
     t
   );
 }
@@ -149,7 +172,7 @@ const CLASSIFY_SCHEMA = {
   schema: {
     type: "object",
     additionalProperties: false,
-    required: ["load", "lang"],
+    required: ["load", "lang", "fresh"],
     properties: {
       // ── Riga 26: la lingua del cliente ──────────────────────────────
       // ⚠️ Sta qui dentro, e non in una chiamata sua, perche' questa chiamata
@@ -162,6 +185,21 @@ const CLASSIFY_SCHEMA = {
           "Il codice a due lettere della lingua in cui e' scritto il messaggio: " +
           "it, en, es, fr, de, pt, zh, ar, ru... Se e' un saluto o una parola sola " +
           "e non si capisce, rispondi 'it'.",
+      },
+      // ── La ricerca web (riga 42, anticipata il 9 Agosto 2026) ───────
+      // ⚠️ Anche questa viaggia nella chiamata che si fa comunque: capire se
+      // serve internet non costa ne' un centesimo ne' un secondo in piu'.
+      // Una chiamata a parte solo per deciderlo sarebbe stata il doppio del
+      // costo per la stessa risposta.
+      fresh: {
+        type: "boolean",
+        description:
+          "true SOLO se per rispondere serve un'informazione che sta fuori da questa " +
+          "azienda e che cambia nel tempo: notizie, prezzi di mercato, normative " +
+          "aggiornate, cosa fa un concorrente, meteo, orari di terzi, «cercami online». " +
+          "false per tutto il resto — prezzi e orari dell'attivita', prenotazioni, " +
+          "scrivere un messaggio, ragionare su dati che l'utente ha gia' dato. " +
+          "Nel dubbio false: cercare sul web costa dieci volte tanto.",
       },
       load: {
         type: "string",
@@ -199,7 +237,7 @@ export async function classifyLoad(
   text: string,
   catalog: CatalogModel[],
   apiKey: string
-): Promise<{ load: Load; classified: boolean; lang: string | null }> {
+): Promise<{ load: Load; classified: boolean; lang: string | null; fresh: boolean }> {
   // ⚠️ La scorciatoia salta la chiamata al modello — e con essa saltava anche
   // il riconoscimento della lingua. Trovato provando il 9 Agosto 2026: un
   // «Good evening, do you have a table for two?» e' corto, quindi passava di
@@ -209,7 +247,7 @@ export async function classifyLoad(
   // della domanda per natura), ma nella posta non si vedeva con chi si stava
   // parlando. Qui si indovina a mano: costa zero e sui messaggi corti — che
   // sono esattamente quelli che passano di qui — basta.
-  if (obviouslyLight(text)) return { load: "light", classified: false, lang: guessLang(text) };
+  if (obviouslyLight(text)) return { load: "light", classified: false, lang: guessLang(text), fresh: false };
 
   const cheap = chooseModel("light", catalog);
 
@@ -224,15 +262,25 @@ export async function classifyLoad(
       body: JSON.stringify({
         model: cheap.id,
         stream: false,
-        // Poche parole in uscita: si paga il minimo indispensabile.
-        max_tokens: 20,
+        // ⚠️ 60, non 20. Il tetto era 20 quando il classificatore rispondeva
+        // solo `{"load":"heavy"}`. Aggiungendo la lingua e la ricerca web il
+        // JSON e' cresciuto, e a 20 token arrivava **tagliato a meta'**:
+        //     {"lang":"it","fresh":true,"load":"light
+        // `JSON.parse` falliva, il `catch` ripiegava sulla stima, e la ricerca
+        // web non scattava mai. Nessun errore in nessun registro: la risposta
+        // arrivava, era solo la risposta sbagliata.
+        //
+        // La lezione: **un tetto ai token e' un accordo con la forma della
+        // risposta.** Se cambi la forma e non il tetto, il guasto e' muto.
+        max_tokens: 60,
         response_format: { type: "json_schema", json_schema: CLASSIFY_SCHEMA },
         messages: [
           {
             role: "system",
             content:
-              "Classifichi quanto è impegnativa una richiesta fatta a un assistente aziendale, " +
-              "e in che lingua è scritta. " +
+              "Classifichi una richiesta fatta a un assistente aziendale: quanto è " +
+              "impegnativa, in che lingua è scritta, e se per rispondere serve cercare " +
+              "su internet. " +
               "Guarda cosa chiede di FARE, non quanto è lunga né quali parole usa: " +
               '"Calcola 2+2" è light, "Perché perdo clienti il mercoledì?" è heavy. ' +
               "Rispondi solo con la classificazione.",
@@ -245,15 +293,15 @@ export async function classifyLoad(
       signal: AbortSignal.timeout(4000),
     });
 
-    if (!response.ok) return { load: estimateLoad(text), classified: false, lang: null };
+    if (!response.ok) return { load: estimateLoad(text), classified: false, lang: null, fresh: false };
 
     const body = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
     const raw = body.choices?.[0]?.message?.content;
-    if (!raw) return { load: estimateLoad(text), classified: false, lang: null };
+    if (!raw) return { load: estimateLoad(text), classified: false, lang: null, fresh: false };
 
-    const parsed = JSON.parse(raw) as { load?: string; lang?: string };
+    const parsed = JSON.parse(raw) as { load?: string; lang?: string; fresh?: boolean };
     // Due lettere e basta: se il modello scrive "italiano" invece di "it" non
     // lo si tiene, perche' finirebbe nel prompt e nella colonna come rumore.
     const lang =
@@ -261,13 +309,13 @@ export async function classifyLoad(
         ? parsed.lang.trim().toLowerCase()
         : null;
     if (parsed.load === "light" || parsed.load === "standard" || parsed.load === "heavy") {
-      return { load: parsed.load, classified: true, lang };
+      return { load: parsed.load, classified: true, lang, fresh: parsed.fresh === true };
     }
   } catch {
     // Tempo scaduto, rete, JSON storto: si ripiega sulla stima.
   }
 
-  return { load: estimateLoad(text), classified: false, lang: null };
+  return { load: estimateLoad(text), classified: false, lang: null, fresh: false };
 }
 
 // Il catalogo si tiene in memoria per dieci minuti: è lo stesso per tutti gli
@@ -434,4 +482,42 @@ export async function distill(transcript: string, apiKey: string): Promise<strin
   } catch {
     return null;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LA RICERCA WEB — riga 42, anticipata il 9 Agosto 2026
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * I modelli che escono davvero su internet, in ordine di preferenza.
+ *
+ * Sono i Sonar di Perplexity: non "sanno" le notizie, le **cercano** mentre
+ * rispondono e restituiscono le fonti. È la differenza fra un modello che ti
+ * racconta il mondo com'era quando è stato addestrato e uno che va a guardare.
+ */
+const CERCATORI = [
+  // ⚠️ Il piu' economico per primo, e non e' avarizia: `sonar` costa 1 $ per
+  // milione di token, `sonar-pro` ne costa 3 in entrata e **15** in uscita.
+  // Su una domanda da cliente — «siete voi quelli di via Roma?», «quanto costa
+  // il gasolio oggi» — la differenza di qualita' e' invisibile e quella di
+  // prezzo e' quindici volte. Il pro resta come riserva se il primo sparisce.
+  "perplexity/sonar",
+  "perplexity/sonar-pro",
+  "perplexity/sonar-reasoning-pro",
+];
+
+/**
+ * Il modello che cerca sul web, se ce n'è uno disponibile.
+ *
+ * ⚠️ Restituisce `null` invece di ripiegare su un modello normale, ed è
+ * voluto: un modello che non cerca ma risponde lo stesso a «quanto costa il
+ * gasolio oggi» inventa un numero con la faccia seria. Meglio dire «non lo so»
+ * che dire una cifra a caso a un cliente.
+ */
+export function searchModel(catalog: CatalogModel[]): CatalogModel | null {
+  for (const id of CERCATORI) {
+    const trovato = catalog.find((m) => m.id === id);
+    if (trovato) return trovato;
+  }
+  return null;
 }

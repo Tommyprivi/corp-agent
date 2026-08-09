@@ -723,3 +723,82 @@ export async function rispondiAVoce(to: string, testo: string): Promise<string |
     return null;
   }
 }
+
+// ═════════════════════════════════════════════════════════════════════════
+// LE CHIAMATE
+// ═════════════════════════════════════════════════════════════════════════
+//
+// Chiesto da Tommaso il 9 Agosto 2026: «fai anche la parte della chiamata».
+//
+// ─────────────────────────────────────────────────────────────────────────
+// ⚠️ COSA SI PUÒ FARE OGGI, E COSA NO. LEGGERE PRIMA DI TOCCARE.
+// ─────────────────────────────────────────────────────────────────────────
+// Nel documento di Tommaso la chiamata è descritta così: «un cliente chiama al
+// telefono, risponde un agente vocale con voce umana naturale, capisce la
+// richiesta, controlla il database e risponde a voce in tempo reale».
+//
+// Quella cosa lì, oggi, **non si può fare su questa infrastruttura**, e non
+// per pigrizia: WhatsApp consegna l'audio di una chiamata via WebRTC, che è un
+// flusso continuo di pacchetti che va tenuto aperto per tutta la durata della
+// telefonata. Le funzioni di Vercel si svegliano, rispondono e muoiono: non
+// esiste un posto dove quel flusso possa vivere. Servirebbe un server acceso
+// h24 con un motore audio — una scelta di architettura e di costi, non una
+// riga di codice.
+//
+// Quello che si può fare oggi, e che risolve il problema vero del titolare:
+// **non perdere la chiamata.** Un cliente che chiama alle 23 e trova il vuoto
+// è un cliente perso; un cliente che chiama e in tre secondi riceve un vocale
+// che gli dice «scrivimi qui, ti rispondo subito» è una conversazione aperta.
+//
+// Quindi: si rifiuta la chiamata subito (il telefono smette di squillare
+// invece di suonare a vuoto), si risponde con un vocale e un messaggio, e il
+// titolare riceve l'avviso che qualcuno l'ha cercato.
+
+const CALL_GRAPH = "https://graph.facebook.com/v21.0";
+
+/**
+ * Rifiuta la chiamata.
+ *
+ * ⚠️ Rifiutare è più gentile che lasciar squillare, ed è controintuitivo: chi
+ * sente venti squilli a vuoto pensa «non c'è nessuno» e riattacca arrabbiato.
+ * Chi sente due squilli e poi riceve subito un vocale capisce che dall'altra
+ * parte qualcosa c'è.
+ */
+export async function rifiutaChiamata(callId: string): Promise<boolean> {
+  const token = process.env.WHATSAPP_TOKEN;
+  const phoneId = process.env.WHATSAPP_PHONE_ID;
+  if (!token || !phoneId) return false;
+
+  try {
+    const r = await fetch(`${CALL_GRAPH}/${phoneId}/calls`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", call_id: callId, action: "reject" }),
+    });
+    if (!r.ok) {
+      console.error("Rifiuto chiamata fallito:", await r.text().catch(() => ""));
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("Rifiuto chiamata fallito:", error);
+    return false;
+  }
+}
+
+/**
+ * Cosa dire a chi ha chiamato.
+ *
+ * ⚠️ Non si finge di essere occupati e non si dice «richiamiamo noi» se non è
+ * vero. Si dice quello che succede davvero: qui si scrive, e la risposta
+ * arriva subito. Una promessa non mantenuta al primo contatto è peggio di una
+ * chiamata persa.
+ */
+export function rispostaAllaChiamata(nome: string | null): string {
+  return [
+    nome ? `Ciao ${nome.split(" ")[0]}!` : "Ciao!",
+    "Ho visto che hai chiamato ma al telefono non riesco a risponderti.",
+    "",
+    "Scrivimi qui cosa ti serve — anche un vocale, se hai le mani occupate — e ti rispondo subito.",
+  ].join("\n");
+}

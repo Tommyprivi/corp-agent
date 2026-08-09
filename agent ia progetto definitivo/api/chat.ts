@@ -26,6 +26,7 @@ import {
 import {
   chooseModel,
   classifyLoad,
+  searchModel,
   costEur,
   estimateLoad,
   fetchCatalog,
@@ -129,12 +130,19 @@ export default {
 
     // Se l'utente ha scelto il modello a mano non si classifica niente: sarebbe
     // una chiamata pagata per un'informazione che non useremo.
-    const { load, classified } = asked
-      ? { load: estimateLoad(lastUserText), classified: false }
+    const { load, classified, fresh } = asked
+      ? { load: estimateLoad(lastUserText), classified: false, fresh: false }
       : await classifyLoad(lastUserText, catalog, apiKey);
 
+    // ── Riga 42: la ricerca web ───────────────────────────────────────
+    // ⚠️ Scelta a mano batte tutto: se l'utente ha detto «voglio Claude», non
+    // gli si cambia il modello sotto le mani perche' la domanda «sembrava»
+    // volere internet. Il selettore serve a decidere, non a suggerire.
+    const cercatore = !asked && fresh ? searchModel(catalog) : null;
     const model =
-      (asked ? catalog.find((m) => m.id === asked) : undefined) ?? chooseModel(load, catalog);
+      (asked ? catalog.find((m) => m.id === asked) : undefined) ??
+      cercatore ??
+      chooseModel(load, catalog);
 
     // ── Riga 5: l'avviso prima di una richiesta dispendiosa ───────────
     // Si avvisa PRIMA di chiamare OpenRouter: se l'utente dice no, non ha speso

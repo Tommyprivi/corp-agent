@@ -213,6 +213,53 @@ rispondeva 200 e non salvava niente:
 2. La risposta dell'agente veniva salvata con stato `"error"`, che il vincolo della 0002
    non ammette: eccezione, e la risposta spariva. Ora è `"failed"`.
 
+📞 **Le chiamate — 9 Agosto 2026.** Chiesto da Tommaso: *«fai anche la parte della
+chiamata»*. Le chiamate sono state **accese** sul numero (i clienti vedono la cornetta).
+
+⚠️ **Cosa si può fare oggi e cosa no, detto chiaro.** Nel documento la chiamata è: «un
+cliente chiama, risponde un agente vocale, capisce e risponde a voce in tempo reale».
+Quella cosa lì **non si può fare su questa infrastruttura**, e non per pigrizia: WhatsApp
+consegna l'audio via WebRTC, cioè un flusso continuo che va tenuto aperto per tutta la
+telefonata. Le funzioni di Vercel si svegliano, rispondono e muoiono — non esiste un posto
+dove quel flusso possa vivere. Servirebbe un server acceso 24 ore su 24 con un motore
+audio: una scelta di architettura e di costi, non una riga di codice.
+
+Quello che è stato fatto risolve il problema vero — **nessuna chiamata persa**:
+la chiamata viene **rifiutata subito** (il telefono smette di squillare a vuoto invece di
+suonare per venti secondi), parte un **vocale** che invita a scrivere, la chiamata compare
+nella posta come «📞 Ti ha chiamato», e al titolare arriva l'avviso con il numero.
+
+Rifiutare è più gentile che lasciar squillare, ed è controintuitivo: chi sente venti
+squilli a vuoto pensa «non c'è nessuno» e riattacca arrabbiato.
+
+🔍 **La ricerca web — riga 42, anticipata su richiesta di Tommaso.** L'agente esce su
+internet **solo quando serve**, con `perplexity/sonar`, e lo dice invece di spacciarlo per
+roba dell'attività.
+
+| Domanda | Modello scelto | Costo |
+|---|---|---|
+| «A che ora aprite domani?» | `gpt-5.6-luna` | 0,000091 € |
+| «Nuove regole fatturazione elettronica 2026?» | **`perplexity/sonar`** | 0,000707 € |
+| «Good evening, are you open on Sunday?» | `gpt-5.6-luna`, risposta in inglese | 0,000099 € |
+
+Cercare costa **otto volte tanto**: per questo non si cerca mai «per sicurezza».
+
+⚠️ **TRE guasti muti trovati facendo questa riga, tutti nella stessa funzione.**
+1. **Il tetto ai token.** Il classificatore rispondeva con `max_tokens: 20`, giusto quando
+   diceva solo `{"load":"heavy"}`. Aggiungendo lingua e ricerca web il JSON è cresciuto e
+   arrivava **tagliato a metà** — `{"lang":"it","fresh":true,"load":"light` — quindi
+   `JSON.parse` falliva, il `catch` ripiegava sulla stima e la ricerca non scattava mai.
+   Nessun errore in nessun registro. **Un tetto ai token è un accordo con la forma della
+   risposta: se cambi la forma e non il tetto, il guasto è muto.**
+2. **La scorciatoia era una lista di eccezioni** («è semplice, a meno che non contenga
+   *perché*, *analizza*…»). Per funzionare avrebbe dovuto elencare tutto quello a cui non
+   hai pensato: «Chi ha vinto il campionato?» è corto e innocente, e passava di lì.
+   Riscritta al contrario: **lista di certezze** — si salta il modello solo per i
+   convenevoli («ciao», «grazie», «ok»), tutto il resto lo guarda il classificatore.
+3. **I numerini delle fonti** (`[8][10]`) finivano nel messaggio al cliente. Sul sito
+   diventerebbero link; su WhatsApp sono numeri fra parentesi che non portano da nessuna
+   parte. Tolti.
+
 📱 **WhatsApp completo — 9 Agosto 2026.** Deciso da Tommaso: *«fai tutto quello che devi
 per la chat WhatsApp e mettere tutte le funzioni»*. Le righe **83** (note vocali) e **90**
 (immagini) della Fase 8 sono state **anticipate qui**, perché senza di loro il canale non
