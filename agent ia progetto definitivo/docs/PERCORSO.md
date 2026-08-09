@@ -454,10 +454,29 @@ dire costruire settanta modi diversi di dire «non lo so».
 
 | Ordine | Connettore | Cosa sblocca | Chiave |
 |---|---|---|---|
-| 35 | **Fluida** | presenze, ferie, permessi, anagrafica dipendenti | ✅ in `.env.local` |
-| 36 | **Microsoft 365** | Outlook, Calendario, SharePoint, Teams | ⚠️ manca il Tenant ID |
-| 37 | **Google Maps** | indirizzi, distanze, tempi di consegna, zone | ✅ in `.env.local` |
-| 38 | **Google Workspace** | Gmail, Calendar, Drive | ⚠️ serve OAuth, non la chiave |
+| 35 | **Fluida** | presenze, ferie, permessi, anagrafica dipendenti | ✅ **risponde** |
+| 36 | **Microsoft 365** | Outlook, Calendario, SharePoint, Teams | ⛔ bloccato dall'organizzazione |
+| 37 | **Google Maps** | indirizzi, distanze, tempi di consegna, zone | ✅ **risponde** |
+| 38 | **Google Workspace** | Gmail, Calendar, Drive | ⏸️ in attesa (decisione di Tommaso) |
+
+✅ **Provati il 9 Agosto 2026, contro i servizi veri:**
+
+```
+Maps    Catania → Milano: 1.343 km · 13 ore 56 min
+        «via Etnea 100 Catania» → Via Etnea, 100, 95131 Catania CT
+Fluida  200 · azienda «corp agent», piano plus, 1 utente
+```
+
+⚠️ **L'intestazione di Fluida non ha un nome standard: `x-fluida-app-uuid`.** Quattordici
+tentativi con i nomi soliti rispondevano tutti `unauthorized`. La documentazione sembrava
+vuota perché la disegna il browser: la specifica vera sta in
+`developer.fluida.io/docs/openapi.json` — 360 indirizzi. **Quando una pagina di
+documentazione sembra vuota, cerca l'`openapi.json` invece di indovinare.**
+
+⚠️ **Microsoft 365 non è incompleto: è vietato.** Le credenziali sono valide, ma
+`AADSTS53003 — Conditional Access` dice che l'organizzazione a cui appartiene l'account
+Microsoft di Tommaso proibisce il rilascio dei gettoni. È **la stessa organizzazione** che
+gli ha bloccato il token di Fly con l'SSO. Serve un tenant suo, non un dato mancante.
 | 39 | Il pannello «Connettori»: colleghi, provi, vedi se risponde | — | — |
 | 40 | Gli strumenti in mano all'agente (function calling) | — | — |
 
