@@ -74,6 +74,38 @@ const MAX_DURATA_MS = 10 * 60 * 1000;
 /** Le chiamate in corso, per poterle chiudere. */
 const inCorso = new Map();
 
+/**
+ * Le porte da cui entra ed esce la voce, e l'indirizzo con cui farsi trovare.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ QUESTA È LA PARTE CHE NON FUNZIONA "PER MAGIA"
+ * ─────────────────────────────────────────────────────────────────────────
+ * Il traffico web passa dalla porta 443 e chiunque lo sa instradare. La voce
+ * no: viaggia su UDP, su porte scelte al momento, e chi ospita il contenitore
+ * deve saperle aprire. È il motivo per cui Railway e Render non andavano bene
+ * — aprono solo il web — e per cui questa app ha un indirizzo IP **dedicato**
+ * (2 $ al mese): senza, i pacchetti audio del cliente arriverebbero a Fly e
+ * non saprebbero a quale contenitore andare.
+ *
+ * Le porte sono fissate a mano, e non lasciate scegliere a caso, perché vanno
+ * dichiarate una per una in `fly.toml`. Venti bastano: ogni telefonata ne usa
+ * una, e venti telefonate insieme sono più di quante ne riceva un negozio in
+ * un'ora di punta.
+ *
+ * `PUBLIC_IP` serve a dire al telefono del cliente «trovami qui». Senza,
+ * il ponte annuncerebbe il suo indirizzo interno — che dall'esterno non esiste
+ * — e la chiamata si collegherebbe... a niente.
+ */
+const PORTA_MIN = Number(process.env.ICE_PORT_MIN ?? 10000);
+const PORTA_MAX = Number(process.env.ICE_PORT_MAX ?? 10020);
+const IP_PUBBLICO = process.env.PUBLIC_IP;
+
+const CONFIGURAZIONE_RETE = {
+  icePortRange: [PORTA_MIN, PORTA_MAX],
+  ...(IP_PUBBLICO ? { iceAdditionalHostAddresses: [IP_PUBBLICO] } : {}),
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+};
+
 // ─────────────────────────────────────────────────────────────────────────
 // IL SERVER
 // ─────────────────────────────────────────────────────────────────────────
@@ -118,6 +150,7 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Ponte vocale acceso sulla porta ${PORT}.`);
+  console.log(`Voce sulle porte UDP ${PORTA_MIN}-${PORTA_MAX}` + (IP_PUBBLICO ? ` · mi annuncio come ${IP_PUBBLICO}` : " · ⚠️ PUBLIC_IP non impostato: la voce non arrivera'"));
   if (!BRIDGE_SECRET) console.warn("⚠️  BRIDGE_SECRET non impostato: rifiuto tutto.");
   if (!OPENAI_KEY) console.warn("⚠️  OPENAI_API_KEY non impostata: non posso rispondere.");
 });
@@ -149,12 +182,12 @@ async function apriChiamata({ callId, sdp, istruzioni, saluto }) {
   // un evento gia' passato — la connessione risulta perfetta, il modello
   // risponde, e non arriva un solo pacchetto audio. Nessun errore da nessuna
   // parte: solo silenzio.
-  const versoModello = new RTCPeerConnection();
+  const versoModello = new RTCPeerConnection(CONFIGURAZIONE_RETE);
   const audioVersoModello = new MediaStreamTrack({ kind: "audio" });
   versoModello.addTransceiver(audioVersoModello, { direction: "sendrecv" });
   const comandi = versoModello.createDataChannel("oai-events");
 
-  const versoCliente = new RTCPeerConnection();
+  const versoCliente = new RTCPeerConnection(CONFIGURAZIONE_RETE);
   const audioVersoCliente = new MediaStreamTrack({ kind: "audio" });
   versoCliente.addTransceiver(audioVersoCliente, { direction: "sendrecv" });
 

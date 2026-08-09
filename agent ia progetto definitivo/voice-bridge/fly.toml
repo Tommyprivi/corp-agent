@@ -1,0 +1,47 @@
+app = "corpagent-voce"
+primary_region = "cdg"
+
+[build]
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+
+  # ⚠️ La macchina NON si spegne da sola, ed è una spesa voluta.
+  #
+  # Fly sa spegnere i contenitori fermi e riaccenderli alla prima richiesta:
+  # farebbe risparmiare quasi tutto. Ma qui la prima richiesta è una persona
+  # che ha appena premuto la cornetta, e l'accensione costa due o tre secondi.
+  # Tre secondi di squillo in più su ogni chiamata, per risparmiare due euro
+  # al mese, è un cattivo affare: il cliente che riattacca costa di più.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/salute"
+
+# ── Le porte della voce ──────────────────────────────────────────────────
+# ⚠️ Vanno dichiarate esplicitamente: Fly instrada solo quello che gli dici.
+# Senza queste righe la telefonata si "collega" e resta muta — il caso peggiore,
+# perché sembra funzionare.
+[[services]]
+  protocol = "udp"
+  internal_port = 10000
+
+  [[services.ports]]
+    start_port = 10000
+    end_port = 10020
+
+[[vm]]
+  # La più piccola che esista. Il ponte non elabora l'audio, lo sposta e
+  # basta: 256 MB sono abbondanti anche con dieci telefonate insieme.
+  size = "shared-cpu-1x"
+  memory = "256mb"

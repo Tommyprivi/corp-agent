@@ -225,9 +225,20 @@ database.
 connessione si stabilisce, **948 pacchetti di voce vera** arrivano al telefono, e l'agente
 dice *«Speed Trasporti, buongiorno, mi dica pure in cosa posso darle una mano oggi»*.
 
-⚠️ **Manca l'ultimo passaggio, e va detto:** provato con un telefono finto, non con una
-chiamata WhatsApp vera. Quel pezzo si verifica solo dopo aver messo il ponte online.
-Finché non si fa, le chiamate funzionano col piano B qui sotto.
+🟢 **ACCESO IN PRODUZIONE lo stesso giorno.** `corpagent-voce.fly.dev`, indirizzo
+dedicato `149.248.213.138`, porte UDP 10000-10020, collegato a Vercel. Provato
+dall'esterno: **1197 pacchetti di voce**.
+
+⚠️ **Manca solo la chiamata WhatsApp vera:** fin qui il "telefono" è sempre stato uno
+script che finge di esserlo. Se qualcosa non torna scatta il piano B da solo.
+
+⚠️ **Railway e Render non andavano bene**, e la scoperta ha deciso la piattaforma:
+aprono solo il traffico web, e la voce viaggia su UDP. Il ponte si sarebbe collegato e
+sarebbe rimasto **muto** — il guasto peggiore, perché sembra funzionare. Serve anche un
+IPv4 dedicato: senza, i pacchetti arrivano a Fly e non sanno a quale contenitore andare.
+
+⚠️ **Un account Fly in prova gratuita genera token già bloccati** (`root banned`), e
+l'errore non lo spiega. Prima la carta, poi il token.
 
 ⚠️ **La scelta che fa la differenza: l'audio non si tocca.** La strada ovvia sarebbe
 decodifica → trascrizione → modello → sintesi → ricodifica: sei passaggi, due secondi

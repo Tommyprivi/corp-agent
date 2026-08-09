@@ -32,20 +32,43 @@ pacchetti di voce arrivati al telefono: 948
 [prova-1] agente: Speed Trasporti, buongiorno, mi dica pure in cosa posso darle una mano oggi.
 ```
 
-⚠️ **Provato con un telefono finto, non con una chiamata WhatsApp vera.** L'ultimo
-passaggio — Meta che consegna l'audio del cliente vero — si può verificare solo dopo
-aver messo il ponte online. Finché non lo si fa, le chiamate continuano a funzionare col
-piano B: si rifiutano e parte un vocale che invita a scrivere.
+🟢 **ACCESO E COLLEGATO — 9 Agosto 2026.**
+
+| Cosa | Dove |
+|---|---|
+| Il ponte | `https://corpagent-voce.fly.dev` (Fly, regione Parigi) |
+| Indirizzo dedicato per la voce | `149.248.213.138` |
+| Porte della voce | UDP 10000-10020 |
+| Il sito lo sa | `VOICE_BRIDGE_URL` e `BRIDGE_SECRET` su Vercel |
+
+Provato **dall'esterno**, contro il ponte online:
+
+```
+il ponte online risponde: 200
+il telefono è: connected
+tracce audio: 1 · pacchetti di voce arrivati: 1197
+```
+
+⚠️ **Cosa resta non provato:** la chiamata WhatsApp **vera**. Fin qui il "telefono" è
+sempre stato uno script che finge di esserlo. Il pezzo che manca — Meta che consegna
+l'audio di un cliente in carne e ossa — si verifica solo chiamando il numero. Se qualcosa
+non torna, il piano B scatta da solo: la chiamata viene rifiutata e parte il vocale.
 
 ---
 
-## Accenderlo, in cinque minuti
+## Come è stato acceso (per rifarlo, o per capire cosa c'è)
 
 ### 1. Un account su Fly.io
 
-Va bene anche Railway o Render: serve un posto che tenga acceso un contenitore e dia un
-indirizzo pubblico. Fly ha il piano più adatto (paghi quello che usi, e un ponte fermo
-non usa niente).
+⚠️ **Railway e Render NON vanno bene**, ed è la scoperta che ha deciso la piattaforma:
+aprono solo il traffico web, e la voce viaggia su **UDP**. Il ponte si sarebbe collegato
+e sarebbe rimasto muto — il guasto peggiore, perché sembra funzionare.
+
+⚠️ Serve anche un **indirizzo IPv4 dedicato** (2 $ al mese): senza, i pacchetti audio
+arrivano a Fly e non sanno a quale contenitore andare.
+
+⚠️ Un account Fly in **prova gratuita** genera token già bloccati (`root banned`). Prima
+la carta, poi il token — al contrario non funziona, e l'errore non lo dice.
 
 ```bash
 curl -L https://fly.io/install.sh | sh
@@ -95,7 +118,8 @@ Poi un deploy, e la prossima chiamata viene **accettata** invece che rifiutata.
 
 ---
 
-## ⚠️ Le trappole, tutte trovate provando
+## ⚠️ 
+Le trappole, tutte trovate provando
 
 **1. `onTrack` scatta *durante* `setRemoteDescription`, non dopo.**
 Iscriversi dopo significa iscriversi a un evento già passato: la connessione risulta
