@@ -112,14 +112,57 @@ function obviouslyLight(text: string): boolean {
   );
 }
 
+/**
+ * La lingua indovinata dalle parole più comuni, senza chiamare nessuno.
+ *
+ * Non è un riconoscitore serio e non vuole esserlo: serve a mettere
+ * un'etichetta accanto al nome del cliente nella posta. Se non è sicuro
+ * restituisce `null`, che è meglio di un'etichetta sbagliata.
+ */
+function guessLang(text: string): string | null {
+  const t = ` ${text.toLowerCase().replace(/[^\p{L}\s]/gu, " ")} `;
+  const spie: Record<string, string[]> = {
+    it: ["il", "la", "che", "sono", "avete", "vorrei", "quanto", "grazie", "buongiorno", "per", "una", "quando", "aperti"],
+    en: ["the", "you", "do", "have", "would", "please", "thanks", "hello", "good", "is", "are", "can", "table"],
+    es: ["el", "la", "que", "tienen", "quiero", "gracias", "hola", "buenos", "para", "una", "cuando"],
+    fr: ["le", "la", "vous", "avez", "je", "merci", "bonjour", "pour", "une", "est", "quand"],
+    de: ["der", "die", "das", "haben", "ich", "danke", "guten", "und", "ist", "wann", "bitte"],
+    pt: ["o", "que", "voce", "tem", "obrigado", "bom", "para", "uma", "quando"],
+  };
+
+  let vincitore: string | null = null;
+  let massimo = 0;
+  for (const [codice, parole] of Object.entries(spie)) {
+    const punti = parole.filter((w) => t.includes(` ${w} `)).length;
+    if (punti > massimo) {
+      massimo = punti;
+      vincitore = codice;
+    }
+  }
+  // Una parola sola può essere un caso: «per» è italiano ma anche spagnolo.
+  return massimo >= 2 ? vincitore : null;
+}
+
 const CLASSIFY_SCHEMA = {
   name: "difficolta",
   strict: true,
   schema: {
     type: "object",
     additionalProperties: false,
-    required: ["load"],
+    required: ["load", "lang"],
     properties: {
+      // ── Riga 26: la lingua del cliente ──────────────────────────────
+      // ⚠️ Sta qui dentro, e non in una chiamata sua, perche' questa chiamata
+      // si fa comunque a ogni messaggio: riconoscere la lingua non costa un
+      // centesimo in piu' ne' un secondo in piu'. Una seconda chiamata solo
+      // per la lingua sarebbe stata il doppio del costo per la stessa cosa.
+      lang: {
+        type: "string",
+        description:
+          "Il codice a due lettere della lingua in cui e' scritto il messaggio: " +
+          "it, en, es, fr, de, pt, zh, ar, ru... Se e' un saluto o una parola sola " +
+          "e non si capisce, rispondi 'it'.",
+      },
       load: {
         type: "string",
         enum: ["light", "standard", "heavy"],
@@ -156,8 +199,17 @@ export async function classifyLoad(
   text: string,
   catalog: CatalogModel[],
   apiKey: string
-): Promise<{ load: Load; classified: boolean }> {
-  if (obviouslyLight(text)) return { load: "light", classified: false };
+): Promise<{ load: Load; classified: boolean; lang: string | null }> {
+  // ⚠️ La scorciatoia salta la chiamata al modello — e con essa saltava anche
+  // il riconoscimento della lingua. Trovato provando il 9 Agosto 2026: un
+  // «Good evening, do you have a table for two?» e' corto, quindi passava di
+  // qui, e la conversazione restava senza lingua.
+  //
+  // La risposta arrivava giusta lo stesso (i modelli rispondono nella lingua
+  // della domanda per natura), ma nella posta non si vedeva con chi si stava
+  // parlando. Qui si indovina a mano: costa zero e sui messaggi corti — che
+  // sono esattamente quelli che passano di qui — basta.
+  if (obviouslyLight(text)) return { load: "light", classified: false, lang: guessLang(text) };
 
   const cheap = chooseModel("light", catalog);
 
@@ -179,7 +231,8 @@ export async function classifyLoad(
           {
             role: "system",
             content:
-              "Classifichi quanto è impegnativa una richiesta fatta a un assistente aziendale. " +
+              "Classifichi quanto è impegnativa una richiesta fatta a un assistente aziendale, " +
+              "e in che lingua è scritta. " +
               "Guarda cosa chiede di FARE, non quanto è lunga né quali parole usa: " +
               '"Calcola 2+2" è light, "Perché perdo clienti il mercoledì?" è heavy. ' +
               "Rispondi solo con la classificazione.",
@@ -192,23 +245,29 @@ export async function classifyLoad(
       signal: AbortSignal.timeout(4000),
     });
 
-    if (!response.ok) return { load: estimateLoad(text), classified: false };
+    if (!response.ok) return { load: estimateLoad(text), classified: false, lang: null };
 
     const body = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
     const raw = body.choices?.[0]?.message?.content;
-    if (!raw) return { load: estimateLoad(text), classified: false };
+    if (!raw) return { load: estimateLoad(text), classified: false, lang: null };
 
-    const parsed = JSON.parse(raw) as { load?: string };
+    const parsed = JSON.parse(raw) as { load?: string; lang?: string };
+    // Due lettere e basta: se il modello scrive "italiano" invece di "it" non
+    // lo si tiene, perche' finirebbe nel prompt e nella colonna come rumore.
+    const lang =
+      typeof parsed.lang === "string" && /^[a-z]{2}$/.test(parsed.lang.trim().toLowerCase())
+        ? parsed.lang.trim().toLowerCase()
+        : null;
     if (parsed.load === "light" || parsed.load === "standard" || parsed.load === "heavy") {
-      return { load: parsed.load, classified: true };
+      return { load: parsed.load, classified: true, lang };
     }
   } catch {
     // Tempo scaduto, rete, JSON storto: si ripiega sulla stima.
   }
 
-  return { load: estimateLoad(text), classified: false };
+  return { load: estimateLoad(text), classified: false, lang: null };
 }
 
 // Il catalogo si tiene in memoria per dieci minuti: è lo stesso per tutti gli

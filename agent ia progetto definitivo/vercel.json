@@ -7,9 +7,26 @@
     }
   ],
   "functions": {
-    "api/chat.ts": { "maxDuration": 60 },
-    "api/media.ts": { "maxDuration": 60 },
-    "api/documents.ts": { "maxDuration": 60 },
-    "api/build-agent.ts": { "maxDuration": 60 }
-  }
+    "api/chat.ts": {
+      "maxDuration": 60
+    },
+    "api/media.ts": {
+      "maxDuration": 60
+    },
+    "api/documents.ts": {
+      "maxDuration": 60
+    },
+    "api/build-agent.ts": {
+      "maxDuration": 60
+    },
+    "api/whatsapp.ts": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/whatsapp?pulse=1",
+      "schedule": "0 18 * * *"
+    }
+  ]
 }

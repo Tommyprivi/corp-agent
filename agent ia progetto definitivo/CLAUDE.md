@@ -81,6 +81,17 @@ qui perché non si ripetano:
 3. **`vercel.json` non ammette commenti** né campi in più: un `comment` dentro una
    riscrittura fa rifiutare il deploy. Le spiegazioni stanno qui, non lì.
 
+### Il lavoro programmato delle 20:00 (Fase 3, riga 27)
+
+`vercel.json` ha un `cron` che chiama `/api/whatsapp?pulse=1` alle **18:00 UTC**, cioè le
+20:00 italiane d'estate. ⚠️ **In inverno diventano le 19:00**: Vercel programma in UTC e
+non conosce l'ora legale. Quando l'ora cambia, va cambiato anche lì.
+
+⚠️ **Il segreto non sta nell'indirizzo.** Il primo tentativo aveva il gettone dentro il
+percorso, e `vercel.json` è versionato su GitHub — un segreto in un file pubblico non è un
+segreto. Vercel firma le chiamate programmate con `Authorization: Bearer $CRON_SECRET`: la
+variabile sta su Vercel e in `.env.local`, l'indirizzo può essere pubblico quanto vuole.
+
 ## Estetica — non negoziabile
 
 **Grafite e bianco** — deciso da Tommaso il 2 Agosto 2026. Niente gradienti colorati:

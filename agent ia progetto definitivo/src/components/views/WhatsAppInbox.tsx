@@ -23,6 +23,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  approveWhatsAppReply,
   openWhatsAppChat,
   rememberWhatsAppChat,
   replyOnWhatsApp,
@@ -50,6 +51,9 @@ export function WhatsAppInbox({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [remembering, setRemembering] = useState(false);
+  /** Le bozze che il titolare sta correggendo prima di approvarle. */
+  const [corretti, setCorretti] = useState<Record<string, string>>({});
+  const [approving, setApproving] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -109,6 +113,36 @@ export function WhatsAppInbox({
       notify.error("Il messaggio non è partito al cliente.", String(error));
     } finally {
       setSending(false);
+    }
+  }
+
+  /**
+   * Righe 22 e 23: dai il via libera a una risposta ferma.
+   *
+   * Se il titolare ha corretto il testo parte il suo, e il messaggio viene
+   * contato come scritto da lui — non dall'agente. Contarlo come lavoro
+   * dell'IA gonfierebbe il Contatore Risparmio con lavoro fatto a mano.
+   */
+  async function approva(messageId: string) {
+    if (!chat || approving) return;
+    setApproving(messageId);
+    try {
+      const corretto = corretti[messageId]?.trim();
+      const aggiornato = await approveWhatsAppReply(messageId, corretto || undefined);
+      setChat({
+        ...chat,
+        messages: chat.messages.map((m) => (m.id === messageId ? aggiornato : m)),
+      });
+      setCorretti((c) => {
+        const { [messageId]: _tolto, ...resto } = c;
+        return resto;
+      });
+      onChanged();
+      notify.success("Partita.");
+    } catch (error) {
+      notify.error("Non è partita.", String(error));
+    } finally {
+      setApproving(null);
     }
   }
 
@@ -197,15 +231,50 @@ export function WhatsAppInbox({
               style={{ animationDelay: `${Math.min(i, 12) * 22}ms` }}
             >
               <div className="max-w-[80%] min-w-0">
-                <div
-                  className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed ${
-                    m.direction === "in"
-                      ? "bg-[var(--bg-card)] text-[var(--text-primary)] shadow-[var(--shadow-1)]"
-                      : "bg-[var(--grad-primary)] text-[var(--on-primary)]"
-                  }`}
-                >
-                  {m.body}
-                </div>
+                {/* ── Righe 22 e 23: una risposta che aspetta te ────────
+                    Non è una bolla normale con un'etichetta sopra: è una
+                    scheda con un bordo, il testo modificabile e un pulsante.
+                    Se sembrasse un messaggio già mandato, il titolare non
+                    capirebbe che il cliente sta ancora aspettando. */}
+                {m.holdReason && m.holdReason !== "offline" ? (
+                  <div className="rounded-2xl border border-dashed border-[var(--accent)] bg-[var(--bg-card)] p-3">
+                    <div className="mb-2 flex items-center gap-1.5 text-[11.5px] font-semibold text-[var(--accent)]">
+                      {m.holdReason === "watchdog" ? "🛑 L'ho fermata" : "✍️ Aspetta il tuo via libera"}
+                    </div>
+                    {m.holdNote && (
+                      <div className="mb-2 text-[12.5px] text-[var(--text-secondary)]">
+                        {m.holdNote}
+                      </div>
+                    )}
+                    <textarea
+                      rows={3}
+                      value={corretti[m.id] ?? m.body}
+                      onChange={(e) => setCorretti((c) => ({ ...c, [m.id]: e.target.value }))}
+                      className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13.5px] text-[var(--text-primary)] outline-none focus:border-[var(--text-secondary)]"
+                    />
+                    <button
+                      onClick={() => void approva(m.id)}
+                      disabled={approving === m.id}
+                      className="btn-grad mt-2 rounded-xl px-3.5 py-2 text-[13px] font-medium disabled:opacity-50"
+                    >
+                      {approving === m.id
+                        ? "Mando…"
+                        : (corretti[m.id] ?? m.body) !== m.body
+                          ? "Correggi e invia"
+                          : "Approva e invia"}
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed ${
+                      m.direction === "in"
+                        ? "bg-[var(--bg-card)] text-[var(--text-primary)] shadow-[var(--shadow-1)]"
+                        : "bg-[var(--grad-primary)] text-[var(--on-primary)]"
+                    }`}
+                  >
+                    {m.body}
+                  </div>
+                )}
 
                 {/* Sotto ogni risposta: chi l'ha scritta. È la cosa che il
                     titolare guarda per primo nelle prime settimane. */}
@@ -219,7 +288,15 @@ export function WhatsAppInbox({
                     <>
                       <span aria-hidden>·</span>
                       <span>{m.answeredBy === "human" ? "l'hai scritto tu" : "l'agente"}</span>
-                      {m.status === "failed" && (
+                      {m.holdReason === "offline" && (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span className="font-medium text-[var(--accent)]">
+                            in coda, riparte da sola
+                          </span>
+                        </>
+                      )}
+                      {m.status === "failed" && !m.holdReason && (
                         <>
                           <span aria-hidden>·</span>
                           <span className="font-medium text-[var(--accent)]">non consegnato</span>

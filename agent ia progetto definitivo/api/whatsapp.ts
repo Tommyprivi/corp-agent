@@ -28,8 +28,12 @@
 import { withUser, getPool } from "./_lib/db.js";
 import {
   DISTILL_EVERY,
+  flushQueue,
+  notifyOwner,
   rememberWaConversation,
+  sendDailyPulse,
   sendWhatsApp,
+  watchdog,
 } from "./_lib/whatsapp.js";
 import {
   embeddingConfigured,
@@ -52,6 +56,44 @@ export default {
     // l'indirizzo sia davvero nostro. Si risponde con la sfida in chiaro.
     if (request.method === "GET") {
       const url = new URL(request.url);
+
+      // ── Riga 27: il riepilogo serale ─────────────────────────────────
+      // ⚠️ Sta attaccato a questo indirizzo e non a un file suo, e la ragione
+      // e' la stessa di sempre: Vercel Hobby ammette 12 funzioni e ne abbiamo
+      // 12. Il lavoro programmato in `vercel.json` chiama questo indirizzo
+      // ogni sera alle 20:00.
+      //
+      // ⚠️ IL SEGRETO NON STA NELL'INDIRIZZO, e questo e' un errore che ho
+      // fatto e corretto nello stesso minuto: avevo scritto il gettone dentro
+      // il percorso in `vercel.json`, che e' un file **versionato su GitHub**.
+      // Un segreto in un file pubblico non e' un segreto.
+      //
+      // Vercel firma le chiamate programmate con `Authorization: Bearer
+      // $CRON_SECRET`, che vive tra le variabili d'ambiente come tutte le
+      // altre chiavi. L'indirizzo puo' essere pubblico quanto vuole: senza
+      // quella riga si prende 403.
+      const pulse = url.searchParams.get("pulse");
+      if (pulse !== null) {
+        const atteso = process.env.CRON_SECRET;
+        const dato = request.headers.get("authorization");
+        if (!atteso || dato !== `Bearer ${atteso}`) {
+          return new Response("Non autorizzato", { status: 403 });
+        }
+        // Il giorno lo decide chi chiama, o e' oggi. Poterlo passare serve a
+        // rimandare il riepilogo di ieri se il lavoro non e' partito.
+        const giorno = url.searchParams.get("giorno") ?? new Date().toISOString().slice(0, 10);
+        try {
+          const esito = await sendDailyPulse(giorno);
+          return new Response(JSON.stringify({ giorno, ...esito }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (error) {
+          console.error("Riepilogo serale fallito:", error);
+          return new Response("Riepilogo non riuscito", { status: 500 });
+        }
+      }
+
       const mode = url.searchParams.get("hub.mode");
       const token = url.searchParams.get("hub.verify_token");
       const challenge = url.searchParams.get("hub.challenge");
@@ -180,6 +222,17 @@ async function handle(payload: WebhookPayload): Promise<void> {
         continue;
       }
 
+      // ── Riga 25: la coda intelligente ────────────────────────────
+      // Se prima la rete era giu', qualche risposta e' rimasta ferma. Riparte
+      // adesso, prima di trattare il messaggio nuovo: i clienti devono
+      // ricevere le cose nell'ordine in cui sono state scritte.
+      try {
+        const ripartiti = await flushQueue(channel.userId);
+        if (ripartiti > 0) console.log(`Coda: ${ripartiti} messaggi ripartiti.`);
+      } catch (error) {
+        console.error("La coda non e' ripartita:", error);
+      }
+
       const contactName = value.contacts?.[0]?.profile?.name ?? null;
 
       for (const message of value.messages) {
@@ -207,6 +260,8 @@ interface Channel {
   userId: string;
   agentId: string | null;
   handoff: boolean;
+  /** Riga 22: l'agente prepara la risposta ma non la manda finche' non approvi. */
+  ghost: boolean;
 }
 
 /**
@@ -235,10 +290,17 @@ async function findChannel(phoneNumberId: string): Promise<Channel | null> {
       user_id: string;
       agent_id: string | null;
       handoff: boolean;
+      ghost: boolean;
     }>("select * from public.resolve_wa_channel($1)", [phoneNumberId]);
     const row = result.rows[0];
     return row
-      ? { id: row.id, userId: row.user_id, agentId: row.agent_id, handoff: row.handoff }
+      ? {
+          id: row.id,
+          userId: row.user_id,
+          agentId: row.agent_id,
+          handoff: row.handoff,
+          ghost: row.ghost,
+        }
       : null;
   } finally {
     client.release();
@@ -330,16 +392,59 @@ async function handleOne(input: {
   }
 
   const reply = await generate(userId, conversationId, text);
-  if (!reply) return;
 
-  const sentId = await sendWhatsApp(from, reply.text);
+  // ── Riga 25: il modello non risponde ────────────────────────────────
+  // Non e' un guasto nostro, ma per il cliente lo e' lo stesso. Si dice la
+  // verita' in una riga e non si finge niente: il messaggio e' arrivato, la
+  // risposta arriva appena si puo'.
+  if (!reply) {
+    await sendWhatsApp(
+      from,
+      "Ho ricevuto il suo messaggio ma in questo momento non riesco a rispondere. " +
+        "Le rispondiamo appena possibile."
+    );
+    await notifyOwner(
+      userId,
+      `⚠️ CorpAgent non e' riuscito a rispondere a ${contactName ?? from}. ` +
+        "Il messaggio e' salvato, ma il modello non ha risposto."
+    );
+    return;
+  }
+
+  // ── Riga 26: la lingua del cliente ──────────────────────────────────
+  if (reply.lang) {
+    await withUser(userId, (client) =>
+      client.query(
+        "update public.wa_conversations set locale = $2 where id = $1 and locale is distinct from $2",
+        [conversationId, reply.lang]
+      )
+    );
+  }
+
+  // ── Riga 23: il guardiano ───────────────────────────────────────────
+  const verdetto = await watchdog(reply.text, reply.knowledge, process.env.OPENROUTER_API_KEY ?? null);
+
+  // ── Riga 22: la modalita' Ghost ─────────────────────────────────────
+  // Sono due cose diverse e vanno tenute separate: Ghost e' una scelta del
+  // titolare («voglio leggere tutto»), il guardiano e' un allarme («questa
+  // stava per costarti dei soldi»). Il messaggio si ferma in tutti e due i
+  // casi, ma quello che il titolare legge nella posta e' diverso.
+  const fermato = !verdetto.ok ? "watchdog" : channel.ghost ? "ghost" : null;
+
+  const sentId = fermato ? null : await sendWhatsApp(from, reply.text);
+
+  // ⚠️ Se non e' partito e non l'abbiamo fermato noi, e' colpa della rete: va
+  // in coda e riparte da solo (riga 25). Non e' la stessa cosa di un messaggio
+  // che aspetta una persona.
+  const motivo = fermato ?? (sentId ? null : "offline");
 
   await withUser(userId, async (client) => {
     await client.query(
       `insert into public.wa_messages
          (user_id, conversation_id, direction, wa_message_id, body, answered_by,
           model_slug, tokens_in, tokens_out, cost_eur, status)
-       values ($1, $2, 'out', $3, $4, 'agent', $5, $6, $7, $8, $9)`,
+       values ($1, $2, 'out', $3, $4, 'agent', $5, $6, $7, $8, $9)
+       returning id`,
       [
         userId,
         conversationId,
@@ -349,18 +454,32 @@ async function handleOne(input: {
         reply.tokensIn,
         reply.tokensOut,
         reply.cost,
-        // ⚠️ "failed", non "error": la tabella accetta solo i sei stati
-        // elencati nella migrazione 0002. Una parola fuori elenco fa saltare il
-        // vincolo, l'eccezione risale fino al `catch` del webhook, e la
-        // risposta dell'agente **sparisce senza lasciare traccia**. È il
+        // ⚠️ "failed"/"queued", mai "error": la tabella accetta solo i sei
+        // stati elencati nella migrazione 0002. Una parola fuori elenco fa
+        // saltare il vincolo, l'eccezione risale fino al `catch` del webhook, e
+        // la risposta dell'agente **sparisce senza lasciare traccia**. È il
         // secondo difetto trovato provando l'8 Agosto 2026, nascosto dietro il
         // primo: finché il canale non si trovava, questa riga non girava mai.
-        sentId ? "sent" : "failed",
+        sentId ? "sent" : "queued",
       ]
     );
 
+    if (motivo) {
+      await client.query(
+        `update public.wa_messages
+            set hold_reason = $2, hold_note = $3
+          where conversation_id = $1 and wa_message_id is null
+            and hold_reason is null and direction = 'out'`,
+        [conversationId, motivo, verdetto.nota ?? null]
+      );
+    }
+
     // Il Contatore Risparmio, con dati veri invece che con una stima: questo
     // messaggio il titolare non l'ha scritto lui.
+    //
+    // ⚠️ Si conta anche quando il messaggio e' fermo, ed e' voluto: il modello
+    // e' stato chiamato e quei soldi sono stati spesi davvero. Il contatore
+    // dice quanto e' costato lavorare, non quanto e' partito.
     await client.query(
       `insert into public.usage (user_id, day, messages_handled, tokens_total, cost_eur)
        values ($1, current_date, 1, $2, $3)
@@ -371,6 +490,24 @@ async function handleOne(input: {
       [userId, reply.tokensIn + reply.tokensOut, reply.cost]
     );
   });
+
+  // ── Riga 24: avvisare il titolare ───────────────────────────────────
+  // Solo quando c'e' davvero qualcosa da fare per lui. Un avviso a ogni
+  // messaggio diventa rumore, e il rumore si silenzia — che e' il modo piu'
+  // sicuro di non far arrivare quello importante.
+  if (motivo === "watchdog") {
+    await notifyOwner(
+      userId,
+      `🛑 Ho fermato una risposta a ${contactName ?? from}.\n` +
+        `${verdetto.nota ?? ""}\n\n` +
+        "L'ho lasciata nella posta di CorpAgent: leggila e decidi tu."
+    );
+  } else if (motivo === "ghost") {
+    await notifyOwner(
+      userId,
+      `✍️ Risposta pronta per ${contactName ?? from}, aspetta il tuo via libera su CorpAgent.`
+    );
+  }
 
   // ── «Deve essere tutto collegato» ───────────────────────────────────
   // Ogni DISTILL_EVERY messaggi del cliente, la conversazione viene riletta e
@@ -404,6 +541,10 @@ interface Reply {
   tokensIn: number;
   tokensOut: number;
   cost: number;
+  /** Cosa aveva in mano l'agente: serve al guardiano per capire se ha inventato. */
+  knowledge: string | null;
+  /** Riga 26: la lingua in cui scrive il cliente, riconosciuta dal classificatore. */
+  lang: string | null;
 }
 
 /**
@@ -425,7 +566,7 @@ async function generate(
   }
 
   const catalog = await fetchCatalog();
-  const { load } = await classifyLoad(question, catalog, apiKey);
+  const { load, lang } = await classifyLoad(question, catalog, apiKey);
   const model = chooseModel(load, catalog);
 
   // Le istruzioni dell'agente e le ultime battute della conversazione.
@@ -462,6 +603,8 @@ async function generate(
     }
   }
 
+  const knowledge = passages.length > 0 ? knowledgePrompt(passages) : null;
+
   const upstream = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: {
@@ -491,13 +634,23 @@ async function generate(
             // di [nome attività]». Un segnaposto tra parentesi quadre mandato a un
             // cliente vero fa sembrare l'azienda un esperimento mal riuscito, e
             // basta quello per non ricevere il secondo messaggio.
+            // ── Riga 26 ──────────────────────────────────────────────
+            // Il modello di solito risponde nella lingua della domanda da se',
+            // ma "di solito" non basta: se il cliente scrive in tedesco e i
+            // documenti del titolare sono in italiano, senza questa riga
+            // l'agente scivola in italiano a meta' conversazione.
+            (lang && lang !== "it"
+              ? `RISPONDI IN LINGUA "${lang}"\nIl cliente ti ha scritto in questa lingua: rispondigli nella sua, ` +
+                "anche se i documenti dell'attività sono in italiano. Traduci i contenuti, " +
+                "non i nomi propri e non i prezzi.\n\n"
+              : "") +
             "NON SCRIVERE MAI SEGNAPOSTO\n" +
             "Niente [nome attività], [orario], [indirizzo] o simili tra parentesi quadre. " +
             "Se non sai come si chiama l'attività, non nominarla: di' «siamo qui» o " +
             "«ci pensiamo noi» e vai avanti. Meglio una frase senza nome che una frase " +
             "con un buco dentro.",
         },
-        ...(passages.length > 0 ? [{ role: "system", content: knowledgePrompt(passages) }] : []),
+        ...(knowledge ? [{ role: "system", content: knowledge }] : []),
         ...history.map((m) => ({
           role: m.direction === "in" ? "user" : "assistant",
           content: m.body,
@@ -528,6 +681,8 @@ async function generate(
     tokensIn,
     tokensOut,
     cost: costEur(model, tokensIn, tokensOut),
+    knowledge,
+    lang,
   };
 }
 

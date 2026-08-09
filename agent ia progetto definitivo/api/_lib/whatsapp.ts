@@ -154,3 +154,295 @@ export async function rememberWaConversation(
     ? { saved: true, chunks: indexed.chunks }
     : { saved: false, reason: "niente da indicizzare" };
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// RIGA 23 — IL GUARDIANO
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Le frasi che un agente non deve mandare a un cliente senza che il titolare
+ * le abbia lette.
+ *
+ * ⚠️ Il controllo è **deterministico e gratuito**, e questa è la scelta che
+ * conta. Far leggere ogni risposta a un secondo modello raddoppierebbe costo e
+ * attesa su **tutte** le risposte, per fermarne una su mille. Qui invece le
+ * espressioni pericolose si riconoscono con delle regole; il modello viene
+ * chiamato **solo** quando una regola scatta, per evitare il falso allarme.
+ *
+ * Sono tutte cose che costano soldi veri se dette per sbaglio: uno sconto
+ * promesso è uno sconto dovuto, un rimborso promesso è un rimborso dovuto.
+ */
+const RISCHI: Array<{ prova: RegExp; cosa: string }> = [
+  { prova: /\b\d{1,3}\s?%\s*(di\s*)?sconto|sconto\s*(del\s*)?\d{1,3}\s?%/i, cosa: "promette uno sconto in percentuale" },
+  { prova: /\bgratis\b|\bgratuit[ao]\b|\bomaggio\b|\bin regalo\b/i, cosa: "promette qualcosa in omaggio" },
+  { prova: /\brimborso (totale|completo|integrale)\b|\bti rimbors|\ble rimbors/i, cosa: "promette un rimborso" },
+  { prova: /\bgarantisco\b|\ble garantisco\b|\bti garantisco\b|\bal 100%\b/i, cosa: "dà una garanzia" },
+  { prova: /\bentro (oggi|domani|un'?ora|due ore|stasera)\b/i, cosa: "promette una consegna a tempo" },
+  { prova: /\bannull(o|iamo) (l'ordine|la prenotazione)\b|\bcancell(o|iamo) tutto\b/i, cosa: "annulla un ordine" },
+];
+
+export interface Verdetto {
+  /** `true` = la risposta può partire. */
+  ok: boolean;
+  /** Cosa non andava, in italiano, da mostrare al titolare. */
+  nota?: string;
+}
+
+/**
+ * Controlla la risposta prima che parta (riga 23).
+ *
+ * Due passaggi. Il primo è una lettura di regole: costa zero e nel caso normale
+ * finisce qui con un via libera. Il secondo scatta solo se una regola ha
+ * suonato, e serve a **non** bloccare una risposta legittima: «ai clienti
+ * abituali facciamo il 10%» è una regola che il titolare ha scritto lui nei
+ * suoi documenti, e ripeterla non è una fesseria — è il lavoro dell'agente.
+ *
+ * Il modello vede quindi anche quello che l'agente aveva in mano: se la
+ * promessa sta nei documenti, passa. Se se l'è inventata, si ferma.
+ */
+export async function watchdog(
+  reply: string,
+  knowledge: string | null,
+  apiKey: string | null
+): Promise<Verdetto> {
+  const scattate = RISCHI.filter((r) => r.prova.test(reply));
+  if (scattate.length === 0) return { ok: true };
+
+  const cosa = scattate.map((r) => r.cosa).join(", ");
+
+  // Senza chiave non si può chiedere conferma: si sceglie la strada prudente e
+  // si ferma. Un messaggio in attesa è un fastidio, una promessa sbagliata è
+  // un danno.
+  if (!apiKey) return { ok: false, nota: `La risposta ${cosa}.` };
+
+  try {
+    const { chooseModel, fetchCatalog } = await import("./openrouter.js");
+    const catalog = await fetchCatalog();
+    const cheap = chooseModel("light", catalog);
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Title": "CorpAgent",
+      },
+      body: JSON.stringify({
+        model: cheap.id,
+        stream: false,
+        max_tokens: 30,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "verdetto",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              required: ["autorizzata"],
+              properties: {
+                autorizzata: {
+                  type: "boolean",
+                  description:
+                    "true se quello che la risposta promette risulta dalle regole dell'attività qui sotto; " +
+                    "false se l'assistente se l'è inventato o l'ha dedotto.",
+                },
+              },
+            },
+          },
+        },
+        messages: [
+          {
+            role: "system",
+            content:
+              "Un assistente sta per mandare questa risposta a un cliente, e contiene una promessa " +
+              "(sconto, omaggio, rimborso, garanzia o scadenza). Devi dire se quella promessa è " +
+              "AUTORIZZATA, cioè se risulta dalle regole dell'attività.\n\n" +
+              "REGOLE DELL'ATTIVITÀ:\n" +
+              (knowledge ?? "(nessuna regola caricata: quindi nessuna promessa è autorizzata)"),
+          },
+          { role: "user", content: reply.slice(0, 2000) },
+        ],
+      }),
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (!response.ok) return { ok: false, nota: `La risposta ${cosa}.` };
+    const body = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = body.choices?.[0]?.message?.content;
+    if (!raw) return { ok: false, nota: `La risposta ${cosa}.` };
+
+    const parsed = JSON.parse(raw) as { autorizzata?: boolean };
+    return parsed.autorizzata === true
+      ? { ok: true }
+      : { ok: false, nota: `La risposta ${cosa}, e non risulta dai tuoi documenti.` };
+  } catch {
+    // Tempo scaduto o risposta storta: si sceglie la strada prudente.
+    return { ok: false, nota: `La risposta ${cosa}.` };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RIGA 24 — AVVISARE IL TITOLARE
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Manda un avviso al numero personale del titolare.
+ *
+ * ⚠️ Non è un canale nuovo: è lo stesso numero dell'attività che scrive al
+ * telefono del capo. Il documento chiedeva push del browser, WhatsApp ed email;
+ * WhatsApp è l'unico dei tre che raggiunge un ristoratore mentre è in sala, ed
+ * è quello che è stato fatto per primo. La notifica del browser vive già dentro
+ * il sito (il pallino e l'avviso in cima alla chat). L'email aspetta un
+ * fornitore di posta, che oggi non c'è in `.env.local`: prometterla senza
+ * sarebbe un pulsante che non manda niente.
+ *
+ * Non solleva mai: un avviso che fallisce non deve rompere la risposta al
+ * cliente, che è la cosa importante.
+ */
+export async function notifyOwner(userId: string, testo: string): Promise<boolean> {
+  try {
+    const numero = await withUser(userId, async (client) => {
+      const row = await client.query<{ owner_wa: string | null }>(
+        `select owner_wa from public.channels
+          where user_id = $1 and kind = 'whatsapp' and owner_wa is not null
+          limit 1`,
+        [userId]
+      );
+      return row.rows[0]?.owner_wa ?? null;
+    });
+    if (!numero) return false;
+
+    const id = await sendWhatsApp(numero, testo);
+    return id !== null;
+  } catch (error) {
+    console.error("Avviso al titolare non riuscito:", error);
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RIGA 25 — LA CODA
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Riprova a mandare i messaggi rimasti indietro per colpa della rete.
+ *
+ * ⚠️ Solo quelli con `hold_reason = 'offline'`. Quelli fermi per Ghost o per il
+ * guardiano aspettano una persona, non la rete: farli partire da soli sarebbe
+ * esattamente il contrario di quello che il titolare ha chiesto accendendoli.
+ *
+ * Gira all'inizio di ogni webhook: non serve un lavoro programmato, perché
+ * quando i clienti scrivono c'è già qualcuno che passa di qui. Se non scrive
+ * nessuno, non c'è fretta.
+ */
+export async function flushQueue(userId: string): Promise<number> {
+  const fermi = await withUser(userId, async (client) => {
+    const rows = await client.query<{ id: string; body: string; customer_wa: string }>(
+      `select m.id, m.body, v.customer_wa
+         from public.wa_messages m
+         join public.wa_conversations v on v.id = m.conversation_id
+        where m.user_id = $1 and m.hold_reason = 'offline' and m.body is not null
+        order by m.created_at
+        limit 20`,
+      [userId]
+    );
+    return rows.rows;
+  });
+  if (fermi.length === 0) return 0;
+
+  let partiti = 0;
+  for (const m of fermi) {
+    const sentId = await sendWhatsApp(m.customer_wa, m.body);
+    if (!sentId) break; // Se la rete è ancora giù, inutile insistere sugli altri.
+    partiti++;
+    await withUser(userId, (client) =>
+      client.query(
+        `update public.wa_messages
+            set status = 'sent', wa_message_id = $2, hold_reason = null, hold_note = null
+          where id = $1`,
+        [m.id, sentId]
+      )
+    );
+  }
+  return partiti;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RIGA 27 — IL RIEPILOGO SERALE
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Manda al titolare, su WhatsApp, com'è andata la giornata.
+ *
+ * «Oggi ho gestito 42 clienti, chiuso 3 prenotazioni e bloccato una richiesta
+ * anomala.» È la funzione che fa capire il valore senza aprire niente: chi ha
+ * un negozio non entra in una dashboard, ma il telefono ce l'ha in mano.
+ *
+ * ⚠️ Gira **senza un utente**: parte da un orario, non da qualcuno che ha fatto
+ * l'accesso. Per questo passa da `pulse_due()`, la porta stretta della
+ * migrazione 0010 — la stessa medicina di `resolve_wa_channel`.
+ *
+ * ⚠️ Non manda niente a chi oggi non ha ricevuto messaggi. Un riepilogo che
+ * dice «zero» ogni sera insegna al titolare a ignorare questi messaggi, e il
+ * giorno che ce n'è uno importante non lo legge.
+ */
+export async function sendDailyPulse(giorno: string): Promise<{ inviati: number }> {
+  const { getPool } = await import("./db.js");
+  const client = await getPool().connect();
+
+  let inviati = 0;
+  try {
+    const due = await client.query<{
+      channel_id: string;
+      owner_wa: string;
+      ricevuti: string;
+      risposti: string;
+      fermati: string;
+      a_mano: string;
+      costo: string;
+    }>("select * from public.pulse_due($1)", [giorno]);
+
+    for (const r of due.rows) {
+      const ricevuti = Number(r.ricevuti);
+      const risposti = Number(r.risposti);
+      const fermati = Number(r.fermati);
+      const aMano = Number(r.a_mano);
+
+      // ⚠️ Il tempo risparmiato si dichiara come stima, non come fatto:
+      // quattro minuti a messaggio è il numero che usa anche il Contatore
+      // Risparmio sul sito. Dire «hai risparmiato 3 ore» come se fosse
+      // misurato sarebbe una bugia, e la prima che il titolare smaschera.
+      const minuti = risposti * 4;
+      const tempo =
+        minuti >= 60
+          ? `circa ${(minuti / 60).toFixed(1).replace(".", ",")} ore`
+          : `circa ${minuti} minuti`;
+
+      const righe = [
+        "🌙 *Com'è andata oggi*",
+        "",
+        `${ricevuti} ${ricevuti === 1 ? "messaggio ricevuto" : "messaggi ricevuti"} dai clienti.`,
+        `${risposti} ${risposti === 1 ? "risposta data" : "risposte date"} da sola: ${tempo} che non ci hai messo tu.`,
+      ];
+      if (aMano > 0) righe.push(`${aMano} ${aMano === 1 ? "risposta scritta" : "risposte scritte"} da te.`);
+      if (fermati > 0) {
+        righe.push(
+          "",
+          `⚠️ ${fermati} ${fermati === 1 ? "risposta è ferma" : "risposte sono ferme"} e ${fermati === 1 ? "aspetta" : "aspettano"} te.`
+        );
+      }
+      righe.push("", `Costo dell'IA oggi: ${Number(r.costo).toFixed(4).replace(".", ",")} €.`);
+
+      const id = await sendWhatsApp(r.owner_wa, righe.join("\n"));
+      if (id) {
+        inviati++;
+        await client.query("select public.pulse_done($1, $2)", [r.channel_id, giorno]);
+      }
+    }
+  } finally {
+    client.release();
+  }
+
+  return { inviati };
+}

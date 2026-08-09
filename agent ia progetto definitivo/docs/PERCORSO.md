@@ -167,13 +167,13 @@ titolare, e quando il titolare risponde quella risposta **entra in memoria per s
 | 19 | WhatsApp Business API: numero verificato e webhook | Meta Business | ✅ firma verificata, ripetizioni scartate |
 | 20 | Ricezione e invio messaggi reali | Meta | ✅ il cliente scrive, l'agente risponde |
 | 21 | Human-in-the-Loop: l'agente si ferma e ti chiama | — | ✅ interruttore «rispondo io» |
-| 22 | Modalità Ghost: approvi le risposte prima dell'invio | — | 🔧 c'è la posta, manca l'approvazione |
-| 23 | Agent Watchdog: blocca le risposte fuori dalle regole | — | |
-| 24 | Notifiche al titolare (push, WhatsApp, email) | — | |
-| 25 | Coda intelligente se la connessione salta | — | |
-| 26 | Riconoscimento automatico della lingua del cliente | — | |
-| 27 | Agent Pulse: riepilogo serale su WhatsApp | — | |
-| 28 | Contatore Risparmio alimentato dai messaggi veri | — | |
+| 22 | Modalità Ghost: approvi le risposte prima dell'invio | — | ✅ scrive, non manda, tu correggi e invii |
+| 23 | Agent Watchdog: blocca le risposte fuori dalle regole | — | ✅ ha fermato uno sconto del 30% inventato |
+| 24 | Notifiche al titolare (push, WhatsApp, email) | — | ✅ WhatsApp + avviso nel sito · email in backlog |
+| 25 | Coda intelligente se la connessione salta | — | ✅ il messaggio riparte da solo |
+| 26 | Riconoscimento automatico della lingua del cliente | — | ✅ «Good evening…» → `en`, risposta in inglese |
+| 27 | Agent Pulse: riepilogo serale su WhatsApp | — | ✅ ogni sera alle 20:00 |
+| 28 | Contatore Risparmio alimentato dai messaggi veri | — | ✅ dal database, non dal browser |
 
 **Fatto quando:** un cliente scrive al tuo numero e l'agente risponde da solo, corretto.
 
@@ -213,7 +213,55 @@ rispondeva 200 e non salvava niente:
 2. La risposta dell'agente veniva salvata con stato `"error"`, che il vincolo della 0002
    non ammette: eccezione, e la risposta spariva. Ora è `"failed"`.
 
-⚠️ **Un terzo, trovato nella prima conversazione vera.** Tommaso ha scritto dal suo
+🎉 **LA FASE 3 È CHIUSA — 9 Agosto 2026.** Righe 22-28, provate una per una in
+produzione con firma vera:
+
+| Riga | Prova | Esito |
+|---|---|---|
+| 22 | Ghost acceso, «siete aperti stasera?» | risposta pronta **ferma**, in attesa del via libera |
+| 22 | «Correggi e invia» | testo cambiato → contata come scritta **da te**, non dall'agente |
+| 23 | «se prendo 10 pezzi mi fai il 30%?» | **fermata**: «promette uno sconto in percentuale» |
+| 25 | invio non riuscito | messo in coda, riparte al primo messaggio utile |
+| 26 | «Good evening, do you have a table…» | lingua `en`, risposta in inglese |
+| 27 | riepilogo senza chiave / con chiave | `403` / `200` |
+| 28 | contatore | 16 risposte da solo (8 WhatsApp + 8 sito), 0,000643 € |
+
+**Come sono fatte le righe 22 e 23, e perché.** Hanno la stessa radice: la paura del
+titolare. Nessuno lascia i propri clienti a un'IA il primo giorno, e ha ragione. Quindi il
+prodotto non chiede fiducia, la costruisce a scalini: *Ghost acceso* (leggi tutto) →
+*Ghost spento col guardiano* (risponde da solo, ma si ferma se sta per promettere qualcosa
+che non risulta dai tuoi documenti) → *pilota automatico col riepilogo della sera*.
+
+⚠️ **Il guardiano non chiama un modello a ogni risposta.** Sarebbe stato l'errore ovvio:
+raddoppiare costo e attesa su **tutte** le risposte per fermarne una su mille. Prima
+leggono delle regole — gratis, immediate — e il modello interviene **solo** quando una
+regola suona, per non bloccare una promessa che il titolare ha davvero autorizzato nei
+suoi documenti («ai clienti abituali il 10%» è il suo lavoro, non una fesseria).
+
+⚠️ **L'email delle notifiche è in backlog, non fatta.** Il documento chiedeva push del
+browser, WhatsApp ed email. WhatsApp c'è (è l'unico dei tre che raggiunge un ristoratore in
+sala), la notifica nel sito c'era già. L'email richiede un fornitore di posta che oggi non
+è in `.env.local`: metterci un pulsante che non manda niente sarebbe peggio che non averlo.
+
+⚠️ **Due difetti trovati eseguendo, il 9 Agosto 2026 — nessuno dei due visibile compilando.**
+1. **Ghost non faceva niente.** L'interruttore si accendeva, il database lo salvava, e
+   l'agente rispondeva lo stesso. Il webhook non legge `channels` con una query ma con
+   `resolve_wa_channel()` (0007), che elenca le colonne a mano: `ghost` era la quinta e
+   quella funzione ne conosceva quattro. In TypeScript diventava `undefined` → falso →
+   il messaggio partiva. **Una porta stretta va allargata quando la stanza cresce**
+   (migrazione 0011).
+2. **La lingua si perdeva sui messaggi corti.** Il riconoscimento viaggiava dentro la
+   chiamata del classificatore, ma quella chiamata ha una scorciatoia che salta il modello
+   per le domande brevi — cioè proprio i «Good evening, do you have a table?». Ora sulla
+   scorciatoia la lingua si indovina dalle parole comuni: costa zero e sui messaggi corti
+   basta.
+
+⚠️ **Il gettone del riepilogo stava per finire su GitHub.** L'avevo scritto nel percorso
+del lavoro programmato dentro `vercel.json`, che è **versionato**. Corretto nello stesso
+minuto: Vercel firma le chiamate programmate con `Authorization: Bearer $CRON_SECRET`, e
+quello vive tra le variabili d'ambiente come tutte le altre chiavi.
+
+⚠️ **Un terzo difetto, dalla prima conversazione vera.** Tommaso ha scritto dal suo
 telefono alle 17:52 dell'8 Agosto 2026 e ha chiesto «con chi parlo». L'agente ha risposto
 *«l'assistenza di [nome attività]»* — un segnaposto, mandato a un cliente. Ora il prompt
 di WhatsApp li vieta: senza il nome si dice «siamo qui», non si lascia il buco.
@@ -343,7 +391,70 @@ di WhatsApp li vieta: senza il nome si dice «siamo qui», non si lascia il buco
 | 108 | Play Store con Capacitor |
 
 ---
+Fase Extra A — Dispositivi CorpAgent (hardware a marchio proprio)
 
+Logica:
+
+	•	Il cliente, dalla sezione “Richieste extra” del sito, può ordinare un dispositivo (es. scanner) direttamente da CorpAgent
+	•	Flusso: cliente ordina → tu ricevi la notifica dell’ordine → tu acquisti il dispositivo dal fornitore → tu lo spedisci/consegni al cliente → il dispositivo arriva già pronto per integrarsi con l’agente (pre-configurato o con istruzioni di collegamento)
+	•	Prezzo: deve includere il costo del dispositivo + il tuo margine + eventualmente un costo di configurazione
+	•	Stato ordine: il cliente deve poter vedere lo stato (ordinato → in spedizione → consegnato) nella stessa sezione richieste
+
+Cosa serve prima di attivarlo:
+
+	•	Un fornitore identificato per gli scanner (con prezzo all’ingrosso noto)
+	•	Un margine deciso (es. compri a 30€, vendi a 50€)
+	•	Un modo per gestire pagamento anticipato del cliente prima che tu acquisti (per non rischiare capitale tuo)
+
+Fase Extra B — Dispositivi esterni (integrazione di hardware che il cliente ha già)
+
+Logica:
+
+	•	Il cliente scrive nella sezione “Richieste extra” che vuole integrare un dispositivo che possiede già (es. “ho già uno scanner Zebra modello X, voglio collegarlo”)
+	•	Questo è un servizio di integrazione, non una vendita di prodotto: il cliente paga per il lavoro di far parlare quel dispositivo con l’agente
+	•	Flusso: richiesta → tu valuti la fattibilità (dipende dal modello/marca) → dai un preventivo al cliente → cliente paga → tu fai l’integrazione
+	•	Prezzo: a preventivo caso per caso, non fisso, perché ogni dispositivo è diverso
+
+Cosa serve prima di attivarlo:
+
+	•	Una lista di dispositivi/marche che sai già di poter integrare (per non promettere lavoro su cose che non sai se sono fattibili)
+	•	Un modo per il cliente di descrivere il dispositivo (marca, modello, come si connette) nel form di richiesta
+
+Fase Extra C — Personalizzazione per settore (multi-tenant), funzioni estese
+
+C1. Template di settore
+
+	•	Al momento dell’iscrizione, il cliente scegli un settore di partenza (trasporti, ristorazione, retail, logistica, ecc.) che carica un template pre-impostato con tono, domande frequenti e workflow tipici di quel settore
+	•	Ogni template è un punto di partenza, non una gabbia: tutto resta modificabile dopo
+
+C2. Pannello di personalizzazione self-service
+
+	•	Il cliente accede a un pannello (senza scrivere codice) dove modifica: tono di voce dell’agente (formale/informale), le domande frequenti specifiche della sua azienda, le regole particolari (es. sconti clienti abituali, orari di risposta)
+	•	Ogni modifica si applica subito alla conversazione, senza bisogno del tuo intervento
+
+C3. Campi e workflow su misura
+
+	•	Il cliente può definire quali informazioni l’agente deve raccogliere per il suo caso specifico (es. un trasportatore vuole “numero targa” e “orario di consegna”, un ristorante vuole “numero di persone” e “allergie”)
+	•	Il cliente costruisce il proprio flusso di domande passo-passo, in ordine, per la sua richiesta tipica (es. prenotazione, preventivo, reclamo)
+
+C4. Isolamento dati tra clienti
+
+	•	I dati e le conversazioni di un’azienda non devono mai mescolarsi con quelle di un’altra azienda cliente
+	•	Ogni cliente ha la propria memoria, i propri clienti finali, le proprie regole — completamente separati
+
+C5. Ruoli e permessi interni
+
+	•	Dentro la stessa azienda cliente, possono esserci più persone che accedono al pannello (es. il titolare e un dipendente)
+	•	Non tutti devono poter modificare tutto: es. il dipendente vede le conversazioni ma solo il titolare modifica le regole di sconto
+
+C6. Libreria di moduli aggiuntivi
+
+	•	Oltre al template base, il cliente può attivare moduli extra a richiesta (es. modulo “prenotazioni con calendario”, modulo “catalogo prodotti”, modulo “raccolta recensioni”)
+	•	Ogni modulo è pensato per un bisogno specifico e si attiva/disattiva senza toccare il resto della configurazione
+
+C7. Anteprima prima di pubblicare
+
+	•	Ogni modifica che il cliente fa (tono, domande, regole) si può provare in una chat di test privata prima che diventi visibile ai clienti finali veri — per evitare che un errore di configurazione arrivi in produzione
 ## Cosa dice questo elenco, onestamente
 
 Le funzioni sono **108**. Le Fasi 0-3 (le prime 28) sono quelle che rendono il prodotto

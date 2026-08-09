@@ -845,6 +845,14 @@ export interface WhatsAppMessage {
   modelSlug: string | null;
   costEur: number;
   status: string;
+  /**
+   * Perché questa risposta non è partita:
+   * 'ghost' aspetta il tuo via libera · 'watchdog' stava per sgarrare ·
+   * 'offline' la rete non rispondeva e riparte da sola.
+   */
+  holdReason: "ghost" | "watchdog" | "offline" | null;
+  /** Cosa aveva visto il guardiano, in italiano. */
+  holdNote: string | null;
   createdAt: string;
 }
 
@@ -929,4 +937,78 @@ export async function rememberWhatsAppChat(
   });
   if (!response.ok) throw await readError(response);
   return (await response.json()) as { saved: true; chunks: number } | { saved: false; reason: string };
+}
+
+// ── Righe 22-28: approvare, impostare, contare ──────────────────────────
+
+/** Dai il via libera a una risposta ferma. Se passi `text`, parte il tuo. */
+export async function approveWhatsAppReply(
+  messageId: string,
+  text?: string
+): Promise<WhatsAppMessage> {
+  const response = await fetch("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ waApprove: { messageId, text } }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as WhatsAppMessage;
+}
+
+export interface WhatsAppSettings {
+  connected: boolean;
+  /** Riga 22: l'agente prepara ma non manda finché non approvi. */
+  ghost: boolean;
+  /** Riga 24: il tuo numero personale, dove arrivano gli avvisi. */
+  ownerWa: string | null;
+  /** L'interruttore «rispondo io» su TUTTO il numero, non su un cliente solo. */
+  handoffAll: boolean;
+}
+
+export async function getWhatsAppSettings(): Promise<WhatsAppSettings> {
+  const response = await fetch("/api/projects?channel=1", { credentials: "same-origin" });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as WhatsAppSettings;
+}
+
+export async function setWhatsAppSettings(patch: {
+  ghost?: boolean;
+  ownerWa?: string | null;
+}): Promise<{ ghost: boolean; ownerWa: string | null }> {
+  const response = await fetch("/api/projects", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ waChannel: patch }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as { ghost: boolean; ownerWa: string | null };
+}
+
+export interface Savings {
+  /** Risposte date dall'agente da solo, chat del sito + WhatsApp. */
+  handled: number;
+  onWhatsApp: number;
+  inChat: number;
+  /** Quelle che hai scritto tu: non tutto è dell'IA, e dirlo conta. */
+  byYou: number;
+  /** Ferme in attesa di te. */
+  waiting: number;
+  costEur: number;
+  /** ⚠️ STIMA dichiarata, non misura. */
+  minutesPerMessage: number;
+}
+
+/**
+ * I numeri veri del Contatore Risparmio (riga 28).
+ *
+ * ⚠️ Prima il contatore leggeva le risposte della chat aperta nel browser: un
+ * numero che spariva ricaricando la pagina e che ignorava i clienti veri su
+ * WhatsApp — cioè proprio il lavoro che il prodotto promette di togliere.
+ */
+export async function getSavings(): Promise<Savings> {
+  const response = await fetch("/api/projects?savings=1", { credentials: "same-origin" });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as Savings;
 }

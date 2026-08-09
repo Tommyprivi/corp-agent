@@ -37,6 +37,7 @@ import {
   getProject,
   listOpenQuestions,
   listProjects,
+  getSavings,
   listWhatsAppChats,
   rememberConversation,
   renameProject,
@@ -46,6 +47,7 @@ import {
   type ChatMessage,
   type HeavyWarning,
   type ProposedAgent,
+  type Savings as SavingsData,
   type WhatsAppChat,
 } from "../lib/api";
 import { useNotify } from "../lib/notify";
@@ -269,10 +271,24 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
   // `activeWa` non sostituisce `activeProject`: la chat del sito resta dov'e',
   // montata e con il suo stato — si passa da una all'altra senza perdere niente.
   const [waChats, setWaChats] = useState<WhatsAppChat[]>([]);
+  /**
+   * Riga 28: il Contatore Risparmio coi messaggi veri.
+   *
+   * ⚠️ Prima questo numero veniva contato **nel browser**, sulle risposte della
+   * chat aperta: spariva ricaricando la pagina e ignorava del tutto i clienti
+   * su WhatsApp — cioe' proprio il lavoro che il prodotto promette di togliere.
+   * Adesso arriva dal database e comprende tutti e due i canali.
+   */
+  const [savings, setSavings] = useState<SavingsData | null>(null);
   const [activeWa, setActiveWa] = useState<string | null>(null);
 
   /** Ricarica l'elenco. Silenzioso di proposito: gira anche da solo. */
   function refreshWa() {
+    getSavings()
+      .then(setSavings)
+      .catch(() => {
+        // Il contatore e' una cosa in piu': se non arriva, non si dice niente.
+      });
     listWhatsAppChats()
       .then(setWaChats)
       .catch(() => {
@@ -925,7 +941,11 @@ export default function MasterChat({ surveyAnswers, onOpenAdvanced }: MasterChat
    */
   // Quanti messaggi ha gestito l'agente in questa conversazione. Il calcolo
   // delle ore e del valore sta dentro <Savings>, in un posto solo.
-  const handledAlone = entries.filter((e) => e.kind === "master" && e.text.length > 0).length;
+  // ⚠️ Il numero del server vince su quello contato qui: quello locale resta
+  // solo come ripiego finche' la prima chiamata non torna, se no all'apertura
+  // della pagina il contatore lampeggerebbe a zero.
+  const handledAlone =
+    savings?.handled ?? entries.filter((e) => e.kind === "master" && e.text.length > 0).length;
 
   /** Conversazione appena aperta: nessuno ha ancora scritto niente. */
   const isSetup = activeProject === SETUP_ID;

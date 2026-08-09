@@ -73,6 +73,8 @@ interface WaMessageRow {
   model_slug: string | null;
   cost_eur: string;
   status: string;
+  hold_reason: string | null;
+  hold_note: string | null;
   created_at: string;
 }
 
@@ -94,6 +96,89 @@ export default {
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     const wa = url.searchParams.get("whatsapp");
+
+    // ── Riga 28: il Contatore Risparmio coi messaggi veri ──────────────
+    // ⚠️ Fino a oggi il contatore mostrava le risposte **della chat aperta**,
+    // contate nel browser: un numero che spariva ricaricando la pagina e che
+    // non sapeva niente dei clienti veri su WhatsApp. Cioe' proprio il lavoro
+    // che il prodotto promette di togliere non veniva contato.
+    //
+    // Adesso i numeri arrivano dal database e comprendono tutti e due i canali.
+    // Le ore restano una **stima dichiarata** (quattro minuti a messaggio): non
+    // si spaccia per misura quello che non lo e'.
+    if (request.method === "GET" && url.searchParams.get("savings") !== null) {
+      const numeri = await withUser(userId, async (client) => {
+        const wa = await client.query<{
+          agente: string;
+          umano: string;
+          fermi: string;
+          costo: string;
+        }>(
+          `select
+             count(*) filter (where direction = 'out' and answered_by = 'agent'
+                                and hold_reason is null)::text as agente,
+             count(*) filter (where answered_by = 'human')::text as umano,
+             count(*) filter (where hold_reason is not null)::text as fermi,
+             coalesce(sum(cost_eur), 0)::text as costo
+           from public.wa_messages where user_id = $1`,
+          [userId]
+        );
+        const sito = await client.query<{ n: string }>(
+          `select count(*)::text as n from public.messages
+            where user_id = $1 and role = 'agent'`,
+          [userId]
+        );
+        return { ...wa.rows[0], sito: sito.rows[0].n };
+      });
+
+      const suWhatsApp = Number(numeri.agente);
+      const nelSito = Number(numeri.sito);
+      return json(
+        {
+          /** Risposte che l'agente ha dato da solo, ovunque. È il numero grosso. */
+          handled: suWhatsApp + nelSito,
+          onWhatsApp: suWhatsApp,
+          inChat: nelSito,
+          /** Quelle che hai scritto tu di persona: onestà, non tutto è dell'IA. */
+          byYou: Number(numeri.umano),
+          /** Ferme in attesa di te (Ghost o guardiano). */
+          waiting: Number(numeri.fermi),
+          /** Quanto è costato davvero, in euro. */
+          costEur: Number(numeri.costo),
+          /** ⚠️ STIMA dichiarata, non misura: 4 minuti a messaggio. */
+          minutesPerMessage: 4,
+        },
+        200
+      );
+    }
+
+    // Le impostazioni del canale: servono alla schermata che le mostra.
+    if (request.method === "GET" && url.searchParams.get("channel") !== null) {
+      const canale = await withUser(userId, async (client) => {
+        const row = await client.query<{
+          ghost: boolean;
+          owner_wa: string | null;
+          handoff: boolean;
+          status: string;
+        }>(
+          `select ghost, owner_wa, handoff, status from public.channels
+            where user_id = $1 and kind = 'whatsapp' limit 1`,
+          [userId]
+        );
+        return row.rows[0] ?? null;
+      });
+      return json(
+        canale
+          ? {
+              connected: canale.status !== "disabled",
+              ghost: canale.ghost,
+              ownerWa: canale.owner_wa,
+              handoffAll: canale.handoff,
+            }
+          : { connected: false, ghost: false, ownerWa: null, handoffAll: false },
+        200
+      );
+    }
 
     // ── La posta di WhatsApp ───────────────────────────────────────────
     if (request.method === "GET" && wa) {
@@ -134,7 +219,8 @@ export default {
         if (convo.rows.length === 0) return null;
 
         const messages = await client.query<WaMessageRow>(
-          `select id, direction, body, answered_by, model_slug, cost_eur, status, created_at
+          `select id, direction, body, answered_by, model_slug, cost_eur, status,
+                  hold_reason, hold_note, created_at
              from public.wa_messages
             where conversation_id = $1 and user_id = $2
             order by created_at`,
@@ -206,6 +292,8 @@ export default {
         waReply?: { conversationId?: string; text?: string };
         /** Mandare subito una conversazione in memoria, senza aspettare il turno. */
         waRemember?: string;
+        /** Righe 22 e 23: dai il via libera a una risposta ferma (e puoi correggerla). */
+        waApprove?: { messageId?: string; text?: string };
       };
       try {
         body = await request.json();
@@ -242,7 +330,7 @@ export default {
                 answered_by, status)
              values ($1, $2, 'out', $3, $4, 'human', $5)
              returning id, direction, body, answered_by, model_slug, cost_eur,
-                       status, created_at`,
+                       status, hold_reason, hold_note, created_at`,
             [userId, conversationId, sentId, text, sentId ? "sent" : "failed"]
           );
           // Chi risponde di persona la sta leggendo: non ha senso lasciarla
@@ -263,6 +351,62 @@ export default {
                 error:
                   "Il messaggio non è partito. Di solito è il token di WhatsApp scaduto, oppure il numero del cliente non è tra quelli autorizzati.",
                 message: shapeWaMessage(salvato),
+              },
+              502
+            );
+      }
+
+      // ── Approva e invia ───────────────────────────────────────────
+      // È il pulsante che chiude la modalità Ghost (riga 22) e sblocca quello
+      // che il guardiano ha fermato (riga 23). Se il titolare cambia il testo,
+      // parte il suo: correggere l'agente deve costare un secondo, se no non
+      // lo corregge nessuno e la modalità Ghost diventa un fastidio da spegnere.
+      if (body.waApprove) {
+        const messageId = clean(body.waApprove.messageId, 60);
+        if (!messageId) return json({ error: "Serve il messaggio da approvare." }, 400);
+        const corretto = clean(body.waApprove.text, MAX_REPLY);
+
+        const fermo = await withUser(userId, async (client) => {
+          const row = await client.query<{ body: string; customer_wa: string }>(
+            `select m.body, v.customer_wa
+               from public.wa_messages m
+               join public.wa_conversations v on v.id = m.conversation_id
+              where m.id = $1 and m.user_id = $2 and m.hold_reason is not null`,
+            [messageId, userId]
+          );
+          return row.rows[0] ?? null;
+        });
+        if (!fermo) return json({ error: "Nessuna risposta ferma con questo identificativo." }, 404);
+
+        const testo = corretto ?? fermo.body;
+        const sentId = await sendWhatsApp(fermo.customer_wa, testo);
+
+        const aggiornato = await withUser(userId, async (client) => {
+          const row = await client.query<WaMessageRow>(
+            `update public.wa_messages
+                set body = $3,
+                    wa_message_id = coalesce($4, wa_message_id),
+                    status = $5,
+                    hold_reason = case when $4 is null then hold_reason else null end,
+                    hold_note = case when $4 is null then hold_note else null end,
+                    -- Se l'ha corretto lui, la risposta e' sua: il Contatore
+                    -- Risparmio non deve contarla come lavoro dell'agente.
+                    answered_by = case when $6 then 'human' else answered_by end
+              where id = $1 and user_id = $2
+              returning id, direction, body, answered_by, model_slug, cost_eur,
+                        status, hold_reason, hold_note, created_at`,
+            [messageId, userId, testo, sentId, sentId ? "sent" : "queued", corretto !== null]
+          );
+          return row.rows[0];
+        });
+
+        return sentId
+          ? json(shapeWaMessage(aggiornato), 200)
+          : json(
+              {
+                error:
+                  "Il messaggio non è partito. Di solito è il token di WhatsApp scaduto, oppure il numero del cliente non è tra quelli autorizzati.",
+                message: shapeWaMessage(aggiornato),
               },
               502
             );
@@ -303,6 +447,8 @@ export default {
         name?: string;
         /** L'interruttore «rispondo io» su un singolo cliente WhatsApp. */
         waMode?: { conversationId?: string; mode?: "bot" | "human" };
+        /** Le impostazioni del canale: Ghost (riga 22) e dove avvisarti (riga 24). */
+        waChannel?: { ghost?: boolean; ownerWa?: string | null };
       };
       try {
         patch = (await request.json()) as typeof patch;
@@ -334,6 +480,43 @@ export default {
         return aggiornata
           ? json(shapeWaChat(aggiornata), 200)
           : json({ error: "Conversazione non trovata." }, 404);
+      }
+
+      // ── Le impostazioni del canale ────────────────────────────────
+      const waChannel = patch.waChannel;
+      if (waChannel) {
+        // Il numero si normalizza qui: la gente lo scrive col +, con gli spazi,
+        // col prefisso 0039. Meta lo vuole in cifre e basta, e chiederlo
+        // all'utente in un formato preciso e' attrito che non serve.
+        const grezzo = waChannel.ownerWa;
+        const numero =
+          grezzo === null || grezzo === ""
+            ? null
+            : typeof grezzo === "string"
+              ? grezzo.replace(/[^0-9]/g, "").replace(/^00/, "") || null
+              : undefined;
+
+        const canale = await withUser(userId, async (client) => {
+          const row = await client.query<{ ghost: boolean; owner_wa: string | null }>(
+            `update public.channels
+                set ghost = coalesce($2, ghost),
+                    owner_wa = case when $4 then $3 else owner_wa end,
+                    updated_at = now()
+              where user_id = $1 and kind = 'whatsapp'
+              returning ghost, owner_wa`,
+            [
+              userId,
+              waChannel.ghost ?? null,
+              numero ?? null,
+              numero !== undefined,
+            ]
+          );
+          return row.rows[0];
+        });
+
+        return canale
+          ? json({ ghost: canale.ghost, ownerWa: canale.owner_wa }, 200)
+          : json({ error: "Nessun canale WhatsApp collegato." }, 404);
       }
 
       if (!patch.id) return json({ error: "Serve l'identificativo del progetto." }, 400);
@@ -447,6 +630,10 @@ function shapeWaMessage(row: WaMessageRow) {
     modelSlug: row.model_slug,
     costEur: Number(row.cost_eur),
     status: row.status,
+    /** 'ghost' aspetta il tuo via libera · 'watchdog' stava per sgarrare · 'offline' riparte da solo. */
+    holdReason: row.hold_reason,
+    /** Cosa aveva visto il guardiano, in italiano. */
+    holdNote: row.hold_note,
     createdAt: row.created_at,
   };
 }
