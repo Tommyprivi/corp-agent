@@ -23,8 +23,10 @@
 
 import { currentUser } from "./_lib/auth.js";
 import {
+  avviaAccesso,
   collega,
   collegamenti,
+  concludiAccesso,
   prova,
   stacca,
   type ConnectorKind,
@@ -74,6 +76,45 @@ export default {
     //   POST  { collega }    → collega il MIO account, dopo averlo provato
     //   DELETE ?connettore=  → stacca
     const url = new URL(request.url);
+
+    // ── L'accesso col proprio account ─────────────────────────────────
+    // «io li voglio tutti che si fa l'accesso» — Tommaso, 9 Agosto 2026.
+    //
+    //   GET ?accedi=microsoft   → dove mandare l'utente
+    //   GET ?ritorno=microsoft  → dove torna, con il codice in mano
+    //
+    // ⚠️ L'indirizzo di ritorno deve combaciare **carattere per carattere** con
+    // quello registrato presso Google/Microsoft: e' la loro difesa contro chi
+    // dirotta i codici, e il primo motivo per cui questi collegamenti falliscono.
+    const ritorno = `${origine(request)}/api/profile?ritorno=`;
+
+    const accedi = url.searchParams.get("accedi") as ConnectorKind | null;
+    if (request.method === "GET" && accedi) {
+      const esito = avviaAccesso(accedi, user.id, ritorno + accedi);
+      return "url" in esito ? json(esito, 200) : json({ error: esito.errore }, 400);
+    }
+
+    const tornato = url.searchParams.get("ritorno") as ConnectorKind | null;
+    if (request.method === "GET" && tornato) {
+      const codice = url.searchParams.get("code");
+      const stato = url.searchParams.get("state") ?? "";
+      const rifiuto = url.searchParams.get("error");
+
+      // ⚠️ Si risponde con una REDIREZIONE, non con JSON: qui ci arriva il
+      // browser dell'utente dopo aver cliccato «autorizzo», e vedersi comparire
+      // una pagina di codice al posto del sito e' l'esperienza peggiore
+      // possibile subito dopo aver dato fiducia.
+      const torna = (esito: string) =>
+        new Response(null, {
+          status: 302,
+          headers: { Location: `${origine(request)}/?connettore=${tornato}&esito=${encodeURIComponent(esito)}` },
+        });
+
+      if (rifiuto || !codice) return torna(rifiuto === "access_denied" ? "annullato" : "errore");
+
+      const esito = await concludiAccesso(tornato, user.id, codice, stato, ritorno + tornato);
+      return torna(esito.ok === true ? "ok" : esito.perche);
+    }
 
     if (request.method === "GET" && url.searchParams.get("connettori") !== null) {
       return json({ connections: await collegamenti(user.id) }, 200);
@@ -253,6 +294,21 @@ function shape(row: ProfileRow) {
     survey: row.survey ?? {},
     createdAt: row.created_at,
   };
+}
+
+/**
+ * L'indirizzo pubblico del sito.
+ *
+ * ⚠️ Si preferisce quello configurato a quello della richiesta: su Vercel ogni
+ * pubblicazione ha anche un indirizzo suo (`corpagent-xyz123.vercel.app`), e se
+ * l'utente ci arrivasse da li' il ritorno non combacerebbe con quello
+ * registrato presso Google — e l'accesso fallirebbe solo qualche volta, che e'
+ * il modo peggiore di fallire.
+ */
+function origine(request: Request): string {
+  const configurato = process.env.BETTER_AUTH_URL;
+  if (configurato?.startsWith("http")) return configurato.replace(/\/$/, "");
+  return new URL(request.url).origin;
 }
 
 function json(body: unknown, status: number): Response {

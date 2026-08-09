@@ -333,3 +333,290 @@ export async function prova(
     return { ok: false, perche: `Non risponde: ${String(error).slice(0, 120)}` };
   }
 }
+
+// ═════════════════════════════════════════════════════════════════════════
+// L'ACCESSO — «io li voglio tutti che si fa l'accesso»
+// ═════════════════════════════════════════════════════════════════════════
+//
+// Deciso da Tommaso il 9 Agosto 2026. È la strada giusta e va detto perché:
+// incollare una chiave funziona ma abbassa il livello di tutto il resto — un
+// prodotto dove colleghi WhatsApp con un tocco e poi vai a pescare una chiave
+// in un pannello non è coerente con sé stesso.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// ⚠️ LA DIFFERENZA FRA I TRE
+// ─────────────────────────────────────────────────────────────────────────
+// **Microsoft e Google** dipendono solo da noi: si registra CorpAgent una
+// volta come applicazione, e da lì in poi ogni cliente entra col **suo**
+// account. Nessuno deve darci il permesso.
+//
+// **Fluida** no: il loro accesso richiede che CorpAgent sia registrata presso
+// di loro, e quel `client_id` lo danno loro. Fino ad allora resta la chiave —
+// ma sotto, come seconda strada, non come vetrina.
+
+interface Fornitore {
+  autorizza: string;
+  gettone: string;
+  permessi: string;
+  clientId?: string;
+  clientSecret?: string;
+}
+
+/**
+ * ⚠️ I permessi si chiedono **al minimo indispensabile**, e non è pignoleria:
+ * una schermata che chiede «leggere e cancellare tutta la tua posta» fa
+ * chiudere la finestra a metà delle persone. Meglio tornare a chiederne un
+ * altro quando serve davvero che spaventare al primo incontro.
+ */
+function fornitore(kind: ConnectorKind): Fornitore | null {
+  if (kind === "microsoft") {
+    // `common` e non il nostro tenant: così entra chiunque, con l'account della
+    // sua azienda o con un Microsoft personale. Se mettessimo il nostro,
+    // potrebbe entrare solo chi sta nella nostra directory — cioè nessuno.
+    return {
+      autorizza: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      gettone: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      permessi: [
+        "offline_access", // il gettone di rinnovo: senza, si scollega ogni ora
+        "User.Read",
+        "Mail.Read",
+        "Calendars.ReadWrite",
+      ].join(" "),
+      clientId: process.env.MS365_CLIENT_ID,
+      clientSecret: process.env.MS365_CLIENT_SECRET,
+    };
+  }
+
+  if (kind === "google") {
+    return {
+      autorizza: "https://accounts.google.com/o/oauth2/v2/auth",
+      gettone: "https://oauth2.googleapis.com/token",
+      permessi: [
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/calendar.events",
+        "openid",
+        "email",
+      ].join(" "),
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Il biglietto che l'utente si porta dietro fino al ritorno.
+ *
+ * ⚠️ Senza, chiunque potrebbe far tornare il browser di un'altra persona sul
+ * nostro indirizzo di ritorno con un codice suo, e collegherebbe **il proprio**
+ * account al profilo di quella persona. È un attacco vecchio e reale, e si
+ * ferma firmando chi ha cominciato e quando.
+ */
+function biglietto(userId: string, kind: ConnectorKind): string {
+  const corpo = `${userId}|${kind}|${Date.now()}`;
+  return `${Buffer.from(corpo).toString("base64url")}.${cifra(corpo).slice(0, 44)}`;
+}
+
+function bigliettoValido(stato: string, userId: string, kind: ConnectorKind): boolean {
+  try {
+    const [parte] = stato.split(".");
+    const [chi, quale, quando] = Buffer.from(parte, "base64url").toString("utf8").split("|");
+    // Dieci minuti: il tempo di fare un accesso, non di conservare un biglietto.
+    return chi === userId && quale === kind && Date.now() - Number(quando) < 10 * 60 * 1000;
+  } catch {
+    return false;
+  }
+}
+
+/** L'indirizzo dove mandare l'utente per fare l'accesso. */
+export function avviaAccesso(
+  kind: ConnectorKind,
+  userId: string,
+  ritorno: string
+): { url: string } | { errore: string } {
+  const f = fornitore(kind);
+  if (!f) return { errore: "Questo connettore non ha ancora l'accesso: si collega con una chiave." };
+  if (!f.clientId) {
+    return {
+      errore:
+        "CorpAgent non è ancora registrata presso questo servizio: manca l'identificativo dell'applicazione.",
+    };
+  }
+
+  const p = new URLSearchParams({
+    client_id: f.clientId,
+    response_type: "code",
+    redirect_uri: ritorno,
+    scope: f.permessi,
+    state: biglietto(userId, kind),
+    // ⚠️ Google dà il gettone di rinnovo **solo** la prima volta, a meno che
+    // non si chieda `prompt=consent`. Senza, il secondo collegamento sembra
+    // riuscito e poi si scollega dopo un'ora, senza che nessuno capisca.
+    ...(kind === "google" ? { access_type: "offline", prompt: "consent" } : {}),
+  });
+
+  return { url: `${f.autorizza}?${p.toString()}` };
+}
+
+/**
+ * L'utente è tornato: si scambia il codice con i gettoni e si salva.
+ *
+ * ⚠️ Il codice vale **una volta sola e per pochi secondi**. Se questo passaggio
+ * fallisce non si può riprovare con lo stesso: si ricomincia dall'accesso.
+ */
+/**
+ * ⚠️ I campi opzionali su **entrambi** i rami non sono pignoleria: senza,
+ * TypeScript restringe l'unione solo con le impostazioni giuste, e Vercel
+ * compila la cartella `api/` con le sue — dando «Property 'perche' does not
+ * exist» **solo in produzione**. Stesso errore già visto con `prova()`.
+ */
+export type EsitoAccesso =
+  | { ok: true; nome: string; perche?: undefined }
+  | { ok: false; perche: string; nome?: undefined };
+
+export async function concludiAccesso(
+  kind: ConnectorKind,
+  userId: string,
+  codice: string,
+  stato: string,
+  ritorno: string
+): Promise<EsitoAccesso> {
+  if (!bigliettoValido(stato, userId, kind)) {
+    return { ok: false, perche: "La richiesta è scaduta o non è tua. Riprova a collegare." };
+  }
+
+  const f = fornitore(kind);
+  if (!f?.clientId || !f.clientSecret) {
+    return { ok: false, perche: "Connettore non configurato." };
+  }
+
+  try {
+    const r = await fetch(f.gettone, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: f.clientId,
+        client_secret: f.clientSecret,
+        code: codice,
+        grant_type: "authorization_code",
+        redirect_uri: ritorno,
+      }).toString(),
+    });
+    const corpo = (await r.json()) as {
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+      error_description?: string;
+      error?: string;
+    };
+    if (!r.ok || !corpo.access_token) {
+      return {
+        ok: false,
+        perche: (corpo.error_description ?? corpo.error ?? `errore ${r.status}`).split("\n")[0],
+      };
+    }
+
+    // Chi è la persona che ha appena autorizzato: serve a scrivere «collegato
+    // come mario@azienda.it» invece di un generico «collegato».
+    const chi = await chiSei(kind, corpo.access_token);
+
+    await collega(userId, {
+      kind,
+      label: chi,
+      secret: corpo.access_token,
+      refresh: corpo.refresh_token ?? null,
+      expiresAt: corpo.expires_in ? new Date(Date.now() + corpo.expires_in * 1000) : null,
+      meta: { account: chi, via: "accesso" },
+    });
+
+    return { ok: true, nome: chi };
+  } catch (error) {
+    return { ok: false, perche: String(error).slice(0, 140) };
+  }
+}
+
+/** Il nome o l'indirizzo di chi ha autorizzato. Se non si sa, non si inventa. */
+async function chiSei(kind: ConnectorKind, gettone: string): Promise<string> {
+  try {
+    if (kind === "microsoft") {
+      const r = await fetch("https://graph.microsoft.com/v1.0/me", {
+        headers: { Authorization: `Bearer ${gettone}` },
+        signal: AbortSignal.timeout(8000),
+      });
+      const j = (await r.json()) as { mail?: string; userPrincipalName?: string; displayName?: string };
+      return j.mail ?? j.userPrincipalName ?? j.displayName ?? "Account Microsoft";
+    }
+    if (kind === "google") {
+      const r = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${gettone}` },
+        signal: AbortSignal.timeout(8000),
+      });
+      const j = (await r.json()) as { email?: string; name?: string };
+      return j.email ?? j.name ?? "Account Google";
+    }
+  } catch {
+    /* si va avanti col nome generico */
+  }
+  return "Account collegato";
+}
+
+/**
+ * Rinnova il gettone quando è scaduto.
+ *
+ * ⚠️ Va chiamata **prima** di usare le credenziali, non dopo il primo errore:
+ * un gettone di Microsoft dura un'ora, e un agente che risponde ai clienti alle
+ * tre di notte non ha nessuno che lo riavvii.
+ */
+export async function rinnovaSeServe(
+  userId: string,
+  kind: ConnectorKind
+): Promise<string | null> {
+  const c = await credenziali(userId, kind);
+  if (!c) return null;
+
+  const scadenza = c.meta.expiresAt ? new Date(String(c.meta.expiresAt)).getTime() : 0;
+  // Due minuti di margine: un gettone che scade mentre la richiesta è in volo
+  // è un errore che si vede solo in produzione e solo a volte.
+  if (c.secret && (!scadenza || scadenza - Date.now() > 120_000)) return c.secret;
+  if (!c.refresh) return c.secret;
+
+  const f = fornitore(kind);
+  if (!f?.clientId || !f.clientSecret) return c.secret;
+
+  try {
+    const r = await fetch(f.gettone, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: f.clientId,
+        client_secret: f.clientSecret,
+        refresh_token: c.refresh,
+        grant_type: "refresh_token",
+      }).toString(),
+    });
+    const corpo = (await r.json()) as {
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+    };
+    if (!corpo.access_token) {
+      await segnalaGuasto(userId, kind, "il rinnovo è stato rifiutato: va ricollegato");
+      return null;
+    }
+
+    await collega(userId, {
+      kind,
+      // ⚠️ Google non rimanda il gettone di rinnovo a ogni giro: se non c'è, si
+      // tiene quello vecchio. Sovrascriverlo con `null` scollegherebbe l'utente
+      // al rinnovo successivo.
+      refresh: corpo.refresh_token ?? null,
+      secret: corpo.access_token,
+      expiresAt: corpo.expires_in ? new Date(Date.now() + corpo.expires_in * 1000) : null,
+      meta: {},
+    });
+    return corpo.access_token;
+  } catch {
+    return c.secret;
+  }
+}
