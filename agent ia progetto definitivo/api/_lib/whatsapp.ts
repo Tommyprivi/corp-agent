@@ -446,3 +446,280 @@ export async function sendDailyPulse(giorno: string): Promise<{ inviati: number 
 
   return { inviati };
 }
+
+// ═════════════════════════════════════════════════════════════════════════
+// FASE 8 ANTICIPATA — «METTI TUTTE LE FUNZIONI»
+// ═════════════════════════════════════════════════════════════════════════
+//
+// Deciso da Tommaso il 9 Agosto 2026: «fai tutto quello che devi per la chat
+// WhatsApp e mettere tutte le funzioni».
+//
+// Fino a qui il canale leggeva solo testo. Ma il documento di Tommaso è pieno
+// di cose che succedono **con le mani occupate**, ed è il suo target esatto:
+//
+//   «l'imprenditore registra un vocale mentre guida»
+//   «punta la fotocamera su una pila di scontrini e scatta»
+//   «un cliente manda un vocale alle 3 di notte e l'agente gli risponde a voce»
+//
+// Un idraulico non apre un sito per caricare un PDF. Fotografa. Un ristoratore
+// non scrive il menù: lo fotografa, o lo racconta a voce mentre chiude.
+
+const GRAPH_MEDIA = "https://graph.facebook.com/v21.0";
+
+/** I modelli che sanno guardare una foto, in ordine di preferenza. */
+const OCCHI = ["google/gemini-3.6-flash", "openai/gpt-5.6-terra", "anthropic/claude-sonnet-5"];
+
+/** La voce di ElevenLabs, la stessa che legge le risposte sul sito. */
+const VOCE = "21m00Tcm4TlvDq8ikWAM";
+const VOCE_MODELLO = "eleven_multilingual_v2";
+
+/** Oltre questa lunghezza un vocale non si ascolta: si legge. */
+const MAX_VOCALE = 700;
+
+/**
+ * Scarica un allegato da WhatsApp.
+ *
+ * ⚠️ Due chiamate, non una, ed è una trappola della prima volta: Meta dà un
+ * indirizzo temporaneo che **va scaricato con lo stesso token**. Un `fetch`
+ * senza intestazione su quell'indirizzo torna 401, e sembra che il file non
+ * esista.
+ */
+async function scaricaAllegato(
+  mediaId: string
+): Promise<{ base64: string; mime: string } | null> {
+  const token = process.env.WHATSAPP_TOKEN;
+  if (!token) return null;
+
+  try {
+    const info = await fetch(`${GRAPH_MEDIA}/${mediaId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!info.ok) return null;
+    const { url, mime_type } = (await info.json()) as { url?: string; mime_type?: string };
+    if (!url) return null;
+
+    const file = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!file.ok) return null;
+
+    const bytes = Buffer.from(await file.arrayBuffer());
+    // ⚠️ Un tetto serve: WhatsApp accetta file fino a 100 MB, e un video da
+    // 100 MB in memoria su una funzione serverless la fa morire senza dire
+    // perché. Meglio rifiutare con una frase gentile.
+    if (bytes.length > 12 * 1024 * 1024) return null;
+
+    return { base64: bytes.toString("base64"), mime: mime_type ?? "application/octet-stream" };
+  } catch (error) {
+    console.error("Allegato non scaricato:", error);
+    return null;
+  }
+}
+
+/**
+ * Ascolta un vocale e ne restituisce il testo.
+ *
+ * ⚠️ WhatsApp manda i vocali in **OGG/Opus**, non in mp3. Whisper lo accetta,
+ * ma il nome del file conta: la sua API guarda l'estensione per capire il
+ * formato, e un `file.mp3` che dentro è ogg viene rifiutato.
+ */
+export async function ascolta(mediaId: string): Promise<string | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+
+  const file = await scaricaAllegato(mediaId);
+  if (!file) return null;
+
+  try {
+    const form = new FormData();
+    const estensione = file.mime.includes("ogg")
+      ? "ogg"
+      : file.mime.includes("mp4") || file.mime.includes("m4a")
+        ? "m4a"
+        : file.mime.includes("wav")
+          ? "wav"
+          : "mp3";
+    form.append(
+      "file",
+      new Blob([Buffer.from(file.base64, "base64")], { type: file.mime }),
+      `vocale.${estensione}`
+    );
+    form.append("model", "whisper-1");
+
+    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+    });
+    if (!response.ok) {
+      console.error("Trascrizione fallita:", response.status, await response.text().catch(() => ""));
+      return null;
+    }
+    const { text } = (await response.json()) as { text?: string };
+    return text?.trim() || null;
+  } catch (error) {
+    console.error("Trascrizione fallita:", error);
+    return null;
+  }
+}
+
+/**
+ * Guarda una foto e la racconta a parole.
+ *
+ * Due modi di guardare, e la differenza conta:
+ *   `come = 'cliente'`  un cliente ha mandato una foto — «è questo il pezzo
+ *                       che vi ho ordinato?». Serve capire cosa c'è.
+ *   `come = 'scanner'`  il titolare ha fotografato uno scontrino, un listino,
+ *                       un menù. Serve **estrarre i dati**, riga per riga,
+ *                       perché quel testo finisce in memoria.
+ */
+export async function guarda(
+  mediaId: string,
+  come: "cliente" | "scanner"
+): Promise<string | null> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return null;
+
+  const file = await scaricaAllegato(mediaId);
+  if (!file || !file.mime.startsWith("image/")) return null;
+
+  const istruzioni =
+    come === "scanner"
+      ? [
+          "Questa è la foto di un documento di lavoro: uno scontrino, una fattura, un",
+          "listino, un menù, un orario. Trascrivi TUTTO quello che c'è scritto.",
+          "",
+          "Righe brevi, una informazione per riga. I prezzi restano attaccati alla cosa",
+          "a cui si riferiscono, sulla stessa riga: «Margherita 7,50 €», mai la voce su",
+          "una riga e il prezzo su un'altra.",
+          "",
+          "Non riassumere e non commentare. Non aggiungere niente che non sia scritto.",
+          "Se una cifra non si legge bene, scrivi [illeggibile] invece di indovinarla:",
+          "un prezzo indovinato diventa un prezzo detto a un cliente.",
+        ].join("\n")
+      : [
+          "Un cliente ha mandato questa foto a un'attività su WhatsApp.",
+          "Descrivi in due o tre righe cosa si vede, e riporta il testo eventualmente",
+          "presente (etichette, codici, numeri d'ordine, targhe).",
+          "Non salutare e non commentare: serve solo a capire di cosa sta parlando.",
+        ].join("\n");
+
+  try {
+    const { fetchCatalog } = await import("./openrouter.js");
+    const ids = new Set((await fetchCatalog()).map((m) => m.id));
+    const modello = OCCHI.find((m) => ids.has(m));
+    if (!modello) return null;
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Title": "CorpAgent",
+      },
+      body: JSON.stringify({
+        model: modello,
+        stream: false,
+        max_tokens: 3000,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: istruzioni },
+              {
+                type: "image_url",
+                image_url: { url: `data:${file.mime};base64,${file.base64}` },
+              },
+            ],
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!response.ok) return null;
+
+    const body = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    return body.choices?.[0]?.message?.content?.trim() ?? null;
+  } catch (error) {
+    console.error("Foto non letta:", error);
+    return null;
+  }
+}
+
+/**
+ * Risponde con un messaggio vocale invece che scritto.
+ *
+ * «Invece di mandarti un papiro di testo da leggere, l'agente ti risponde con
+ * un altro messaggio vocale, con una voce naturale.» Chi scrive un vocale
+ * quasi sempre non ha le mani libere: rispondergli con tre righe da leggere
+ * è dargli il problema che stava evitando.
+ *
+ * ⚠️ Tre passaggi, e il secondo è quello che si dimentica: bisogna **caricare**
+ * l'audio su WhatsApp e ottenere un identificativo. Non si può mandare un
+ * indirizzo esterno, e nemmeno i byte direttamente.
+ */
+export async function rispondiAVoce(to: string, testo: string): Promise<string | null> {
+  const eleven = process.env.ELEVENLABS_API_KEY;
+  const token = process.env.WHATSAPP_TOKEN;
+  const phoneId = process.env.WHATSAPP_PHONE_ID;
+  if (!eleven || !token || !phoneId) return null;
+
+  try {
+    // 1. Il testo diventa voce.
+    const audio = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${VOCE}?output_format=mp3_44100_64`,
+      {
+        method: "POST",
+        headers: { "xi-api-key": eleven, "Content-Type": "application/json" },
+        body: JSON.stringify({ text: testo.slice(0, MAX_VOCALE), model_id: VOCE_MODELLO }),
+      }
+    );
+    if (!audio.ok) {
+      console.error("ElevenLabs ha risposto", audio.status);
+      return null;
+    }
+    const bytes = Buffer.from(await audio.arrayBuffer());
+
+    // 2. La voce sale su WhatsApp e diventa un identificativo.
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", "audio/mpeg");
+    form.append("file", new Blob([bytes], { type: "audio/mpeg" }), "risposta.mp3");
+
+    const caricato = await fetch(`${GRAPH_MEDIA}/${phoneId}/media`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    if (!caricato.ok) {
+      console.error("Caricamento audio fallito:", await caricato.text().catch(() => ""));
+      return null;
+    }
+    const { id } = (await caricato.json()) as { id?: string };
+    if (!id) return null;
+
+    // 3. L'identificativo diventa un messaggio.
+    const inviato = await fetch(`${GRAPH_MEDIA}/${phoneId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "audio",
+        audio: { id },
+      }),
+    });
+    const esito = (await inviato.json()) as {
+      messages?: Array<{ id?: string }>;
+      error?: { message?: string };
+    };
+    if (!inviato.ok || esito.error) {
+      console.error("Invio vocale fallito:", esito.error?.message ?? inviato.status);
+      return null;
+    }
+    return esito.messages?.[0]?.id ?? null;
+  } catch (error) {
+    console.error("Risposta a voce fallita:", error);
+    return null;
+  }
+}

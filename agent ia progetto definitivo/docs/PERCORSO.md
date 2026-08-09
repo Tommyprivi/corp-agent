@@ -213,6 +213,39 @@ rispondeva 200 e non salvava niente:
 2. La risposta dell'agente veniva salvata con stato `"error"`, che il vincolo della 0002
    non ammette: eccezione, e la risposta spariva. Ora è `"failed"`.
 
+📱 **WhatsApp completo — 9 Agosto 2026.** Deciso da Tommaso: *«fai tutto quello che devi
+per la chat WhatsApp e mettere tutte le funzioni»*. Le righe **83** (note vocali) e **90**
+(immagini) della Fase 8 sono state **anticipate qui**, perché senza di loro il canale non
+serviva al target: un idraulico non apre un sito per caricare un PDF, fotografa.
+
+| Cosa arriva | Cosa succede |
+|---|---|
+| Vocale di un cliente | trascritto, e **l'agente risponde a voce** (ElevenLabs) |
+| Foto di un cliente | l'agente la guarda e risponde a tono |
+| Foto del titolare | **scanner**: letta riga per riga e messa in memoria |
+| «Segnati che…» dal titolare | dettatura: finisce in memoria |
+| Qualsiasi altra cosa dal titolare | risposta normale, per poter provare |
+| Documento / video | si dice la verità: non lo so ancora aprire |
+
+✅ **Il giro completo, provato in produzione:** «Segnati che la consegna a Milano costa 12
+euro» → poi «Quanto costa la consegna a Milano?» → **«La consegna a Milano costa 12 euro.»**
+Dettato su WhatsApp, ricordato, e usato per rispondere. Senza aprire il sito.
+
+⚠️ **Difetto d'uso trovato subito.** Appena registrato il numero del titolare, **ogni** sua
+parola finiva in memoria — e con un numero di prova che accetta 5 destinatari, il suo è
+l'unico da cui si può provare: aveva perso il modo di parlare col proprio agente come farebbe
+un cliente. Adesso la regola è esplicita: **foto o «segnati che…» = memoria, tutto il resto =
+conversazione.** Indovinare sarebbe stato peggio — un sistema che a volte ti risponde e a
+volte si annota quello che dici, senza che tu sappia quando, è un sistema di cui non ti fidi.
+
+⚠️ **Il confronto fra numeri non è `===`.** Il titolare scrive «+39 331 4039051» nelle
+impostazioni, Meta manda «393314039051»: un confronto diretto direbbe che sono due persone
+diverse, e il capo verrebbe trattato come un cliente qualunque.
+
+⚠️ **Scaricare un allegato da Meta sono DUE chiamate.** La prima dà un indirizzo temporaneo,
+e quell'indirizzo **va scaricato con lo stesso token**: un `fetch` senza intestazione torna
+401 e sembra che il file non esista.
+
 🎉 **LA FASE 3 È CHIUSA — 9 Agosto 2026.** Righe 22-28, provate una per una in
 produzione con firma vera:
 
@@ -428,7 +461,7 @@ letture pubbliche e senza stato che rispondono «cos'è disponibile».
 | 108 | Play Store con Capacitor |
 
 ---
-Fase Extra A — Dispositivi CorpAgent (hardware a marchio proprio)
+Fase 10 — Dispositivi CorpAgent (hardware a marchio proprio)
 
 Logica:
 

@@ -27,6 +27,9 @@
 
 import { spendCredits, userApiKey, withUser, getPool } from "./_lib/db.js";
 import {
+  ascolta,
+  guarda,
+  rispondiAVoce,
   DISTILL_EVERY,
   flushQueue,
   notifyOwner,
@@ -37,6 +40,7 @@ import {
 } from "./_lib/whatsapp.js";
 import {
   embeddingConfigured,
+  indexText,
   knowledgePrompt,
   search,
   type Passage,
@@ -45,6 +49,18 @@ import { chooseModel, classifyLoad, costEur, fetchCatalog } from "./_lib/openrou
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+/**
+ * Due numeri sono lo stesso numero?
+ *
+ * ⚠️ Serve perché nessuno scrive il proprio numero come lo scrive Meta. Il
+ * titolare mette «+39 331 4039051» nelle impostazioni, Meta manda
+ * «393314039051», e un confronto diretto direbbe che sono due persone diverse
+ * — quindi il capo verrebbe trattato come un cliente qualunque.
+ */
+function soloCifre(n: string): string {
+  return n.replace(/[^0-9]/g, "").replace(/^00/, "");
+}
 
 /** Un messaggio WhatsApp lungo non si legge: è una chat, non una mail. */
 const MAX_REPLY_TOKENS = 700;
@@ -195,6 +211,15 @@ interface WebhookPayload {
           from?: string;
           type?: string;
           text?: { body?: string };
+          // Gli allegati. `voice` e `audio` sono due cose diverse per Meta: il
+          // primo e' il vocale registrato col microfono, il secondo un file
+          // audio allegato. Per noi si ascoltano allo stesso modo.
+          image?: { id?: string; caption?: string };
+          voice?: { id?: string };
+          audio?: { id?: string };
+          document?: { id?: string; filename?: string; caption?: string };
+          video?: { id?: string; caption?: string };
+          sticker?: { id?: string };
         }>;
         statuses?: Array<{ id?: string; status?: string }>;
       };
@@ -238,9 +263,65 @@ async function handle(payload: WebhookPayload): Promise<void> {
       for (const message of value.messages) {
         if (!message.id || !message.from) continue;
 
-        // Per ora solo testo. Le note vocali sono la Fase 8 (riga 83), le
-        // immagini la 90: quando arriveranno passeranno da qui.
-        const text = message.type === "text" ? (message.text?.body ?? "").trim() : "";
+        // ── Chi sta scrivendo ──────────────────────────────────────
+        // ⚠️ Il titolare e un cliente vogliono due comportamenti opposti. Se
+        // il capo fotografa il listino nuovo, quella foto va LETTA e messa in
+        // memoria; rispondergli «Buongiorno, come possiamo aiutarla?» mentre
+        // sta lavorando e' il modo piu' veloce di fargli chiudere l'app.
+        const daltitolare =
+          channel.ownerWa !== null && soloCifre(message.from) === soloCifre(channel.ownerWa);
+
+        // ── Righe 83 e 90 anticipate: vocali e foto ────────────────
+        // «L'imprenditore registra un vocale mentre guida», «punta la
+        // fotocamera su una pila di scontrini». Un idraulico non apre un sito
+        // per caricare un PDF: fotografa.
+        let text = message.type === "text" ? (message.text?.body ?? "").trim() : "";
+        let unsupported: string | null = null;
+        let allegato: "voce" | "foto" | null = null;
+
+        if (message.type === "voice" || message.type === "audio") {
+          const id = message.voice?.id ?? message.audio?.id;
+          const trascritto = id ? await ascolta(id) : null;
+          if (trascritto) {
+            text = trascritto;
+            allegato = "voce";
+          } else {
+            unsupported = "vocale illeggibile";
+          }
+        } else if (message.type === "image") {
+          const id = message.image?.id;
+          const letto = id ? await guarda(id, daltitolare ? "scanner" : "cliente") : null;
+          if (letto) {
+            const didascalia = (message.image?.caption ?? "").trim();
+            text = daltitolare
+              ? letto
+              : [didascalia, `[foto mandata dal cliente] ${letto}`].filter(Boolean).join("\n\n");
+            allegato = "foto";
+          } else {
+            unsupported = "foto illeggibile";
+          }
+        } else if (message.type && message.type !== "text") {
+          unsupported = message.type;
+        }
+
+        // ── Quando il titolare sta INSEGNANDO, e quando sta PROVANDO ──
+        //
+        // ⚠️ Difetto d'uso trovato subito, il 9 Agosto 2026: appena registrato
+        // il numero del titolare, ogni sua parola finiva in memoria — e con un
+        // numero di prova che accetta 5 destinatari, il suo e' l'unico da cui
+        // si puo' provare. Cioe' aveva perso il modo di parlare col proprio
+        // agente come farebbe un cliente.
+        //
+        // La regola adesso e' esplicita e si spiega in una riga:
+        //   · una FOTO dal titolare  → e' uno scontrino, un menu': in memoria
+        //   · «segnati che...»       → sta dettando: in memoria
+        //   · qualunque altra cosa   → sta provando: gli si risponde da agente
+        //
+        // Indovinare sarebbe stato peggio: un sistema che a volte ti risponde
+        // e a volte si segna quello che dici, senza che tu sappia quando, e'
+        // un sistema di cui non ti fidi.
+        const staInsegnando =
+          daltitolare && (allegato === "foto" || /^\s*(segnati|ricorda|annota|memorizza|aggiungi|nota)\b/i.test(text));
 
         await handleOne({
           channel,
@@ -248,7 +329,9 @@ async function handle(payload: WebhookPayload): Promise<void> {
           from: message.from,
           contactName,
           text,
-          unsupported: message.type !== "text" ? (message.type ?? "sconosciuto") : null,
+          unsupported,
+          allegato,
+          staInsegnando,
         });
       }
     }
@@ -262,6 +345,8 @@ interface Channel {
   handoff: boolean;
   /** Riga 22: l'agente prepara la risposta ma non la manda finche' non approvi. */
   ghost: boolean;
+  /** Il numero personale del titolare: se scrive lui, non e' un cliente. */
+  ownerWa: string | null;
 }
 
 /**
@@ -291,6 +376,7 @@ async function findChannel(phoneNumberId: string): Promise<Channel | null> {
       agent_id: string | null;
       handoff: boolean;
       ghost: boolean;
+      owner_wa: string | null;
     }>("select * from public.resolve_wa_channel($1)", [phoneNumberId]);
     const row = result.rows[0];
     return row
@@ -300,6 +386,7 @@ async function findChannel(phoneNumberId: string): Promise<Channel | null> {
           agentId: row.agent_id,
           handoff: row.handoff,
           ghost: row.ghost,
+          ownerWa: row.owner_wa,
         }
       : null;
   } finally {
@@ -314,6 +401,10 @@ async function handleOne(input: {
   contactName: string | null;
   text: string;
   unsupported: string | null;
+  /** Com'e' arrivato: a voce, in foto, o scritto. Decide come si risponde. */
+  allegato: "voce" | "foto" | null;
+  /** Il titolare sta dettando qualcosa da ricordare, non provando l'agente. */
+  staInsegnando: boolean;
 }): Promise<void> {
   const { channel, waMessageId, from, contactName, text } = input;
   const userId = channel.userId;
@@ -349,9 +440,18 @@ async function handleOne(input: {
 
     await client.query(
       `insert into public.wa_messages
-         (user_id, conversation_id, direction, wa_message_id, body, status)
-       values ($1, $2, 'in', $3, $4, 'received')`,
-      [userId, id, waMessageId, text || `[${input.unsupported}]`]
+         (user_id, conversation_id, direction, wa_message_id, body, media_kind, status)
+       values ($1, $2, 'in', $3, $4, $5, 'received')`,
+      [
+        userId,
+        id,
+        waMessageId,
+        text || `[${input.unsupported}]`,
+        // Nella posta si deve vedere che quello era un vocale, non uno scritto:
+        // il testo e' la trascrizione, e leggerlo come se l'avessero digitato
+        // fa sembrare il cliente piu' formale di com'e'.
+        input.allegato === "voce" ? "audio" : input.allegato === "foto" ? "image" : null,
+      ]
     );
 
     // Quanti messaggi del cliente ha questa conversazione: serve a decidere se
@@ -382,11 +482,48 @@ async function handleOne(input: {
     return;
   }
 
+  // ── Lo scanner (dal documento: «lo scanna su WhatsApp») ─────────────
+  // Il titolare fotografa uno scontrino, il menù nuovo, un listino del
+  // fornitore — o lo racconta a voce mentre chiude. Quel testo non e' una
+  // conversazione: e' conoscenza, e va dritta in memoria.
+  if (input.staInsegnando && text) {
+    // ⚠️ Il nome dice come e' arrivato, e deve essere vero: la prima versione
+    // chiamava «detto a voce» anche un messaggio scritto, e nell'elenco della
+    // memoria non si capiva piu' cosa fosse cosa.
+    const nome =
+      input.allegato === "foto"
+        ? "Foto da WhatsApp"
+        : input.allegato === "voce"
+          ? "Detto a voce su WhatsApp"
+          : "Dettato su WhatsApp";
+    try {
+      const messo = await indexText(userId, {
+        name: `${nome} — ${new Date().toLocaleDateString("it-IT")}`,
+        text,
+        source: input.allegato === "foto" ? "photo" : "paste",
+      });
+      await sendWhatsApp(
+        from,
+        messo
+          ? `✅ Fatto, me lo sono segnato (${messo.chunks} ${messo.chunks === 1 ? "cosa" : "cose"}).\n\n` +
+              `Da adesso lo uso per rispondere ai clienti.\n\n_${text.slice(0, 300)}${text.length > 300 ? "…" : ""}_`
+          : "Ho letto ma non ho trovato niente da segnarmi. Riprova con una foto più a fuoco."
+      );
+    } catch (error) {
+      console.error("Scanner del titolare fallito:", error);
+      await sendWhatsApp(from, "Ho ricevuto ma non sono riuscito a segnarmelo. Riprova fra poco.");
+    }
+    return;
+  }
+
   if (!text) {
-    // Una nota vocale o una foto: si dice la verità invece di tacere.
+    // Un file che non sappiamo leggere: si dice la verità invece di tacere.
     await sendWhatsApp(
       from,
-      "Per ora leggo solo i messaggi scritti. Se mi scrive a parole le rispondo subito."
+      input.unsupported === "document"
+        ? "Ho ricevuto il documento ma non riesco ancora ad aprirlo da qui. " +
+            "Se me lo scrive a parole, o me ne manda una foto, le rispondo subito."
+        : "Ho ricevuto ma non sono riuscito a leggerlo. Può riprovare o scrivermelo?"
     );
     return;
   }
@@ -431,7 +568,19 @@ async function handleOne(input: {
   // casi, ma quello che il titolare legge nella posta e' diverso.
   const fermato = !verdetto.ok ? "watchdog" : channel.ghost ? "ghost" : null;
 
-  const sentId = fermato ? null : await sendWhatsApp(from, reply.text);
+  // ── Chi parla, si sente rispondere ──────────────────────────────────
+  // «Invece di mandarti un papiro di testo da leggere, l'agente ti risponde
+  // con un altro messaggio vocale.» Chi manda un vocale quasi sempre non ha le
+  // mani libere: rispondergli con tre righe da leggere e' ridargli il problema
+  // che stava evitando.
+  //
+  // ⚠️ Se la voce non parte si manda il testo. Meglio una risposta scritta che
+  // nessuna risposta — e succede: ElevenLabs puo' essere lento o senza credito.
+  const sentId = fermato
+    ? null
+    : input.allegato === "voce"
+      ? ((await rispondiAVoce(from, reply.text)) ?? (await sendWhatsApp(from, reply.text)))
+      : await sendWhatsApp(from, reply.text);
 
   // ⚠️ Se non e' partito e non l'abbiamo fermato noi, e' colpa della rete: va
   // in coda e riparte da solo (riga 25). Non e' la stessa cosa di un messaggio
