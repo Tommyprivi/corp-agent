@@ -672,3 +672,81 @@ body {
 .animate-value {
   animation: value-up 0.5s var(--ease-out) both;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   IL BAGLIORE DELL'ABBONAMENTO
+   ─────────────────────────────────────────────────────────────────────────
+   Chiesto da Tommaso il 9 Agosto 2026: «quando ti dice dell'abbonamento deve
+   avere colori glow che ti attirano l'attenzione».
+
+   ⚠️ È l'unica eccezione al grafite-e-bianco, ed è voluta: qui il colore porta
+   informazione, ed è l'informazione che paga gli stipendi. La regola resta
+   valida ovunque — proprio perché il resto della schermata non urla, un
+   riquadro che respira si vede da tre metri.
+
+   Due bagliori, due significati diversi, e non vanno confusi:
+     .glow-offer   il piano consigliato — invita, non allarma. Respira piano.
+     .glow-warn    i crediti stanno finendo — pulsa più corto, ambra.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@keyframes glow-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.985);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.015);
+  }
+}
+
+.glow-offer,
+.glow-warn {
+  position: relative;
+  isolation: isolate;
+}
+
+/* L'alone sta DIETRO (z-index negativo) e sfocato: se stesse sopra
+   sporcherebbe il testo, e un testo poco leggibile su un riquadro che brilla
+   è la definizione di pubblicità fastidiosa. */
+.glow-offer::before,
+.glow-warn::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border-radius: inherit;
+  filter: blur(11px);
+  animation: glow-breathe 3.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.glow-offer::before {
+  background: linear-gradient(120deg, #6366f1, #22d3ee 45%, #a855f7);
+}
+
+.glow-warn::before {
+  background: linear-gradient(120deg, #f59e0b, #f97316 60%, #fbbf24);
+  animation-duration: 2.2s;
+}
+
+/* Il bordo vero, sopra l'alone: senza, il riquadro sembra sfocato invece che
+   illuminato. */
+.glow-offer {
+  border-color: rgba(99, 102, 241, 0.55) !important;
+}
+
+.glow-warn {
+  border-color: rgba(245, 158, 11, 0.6) !important;
+}
+
+/* ⚠️ Chi ha chiesto meno animazioni al sistema operativo non deve vedere
+   niente pulsare: il bagliore resta, fermo. */
+@media (prefers-reduced-motion: reduce) {
+  .glow-offer::before,
+  .glow-warn::before {
+    animation: none;
+    opacity: 0.8;
+  }
+}

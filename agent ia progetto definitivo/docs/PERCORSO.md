@@ -270,16 +270,53 @@ di WhatsApp li vieta: senza il nome si dice «siamo qui», non si lascia il buco
 
 ## FASE 4 — Vendere 🔑
 
-| Ordine | Funzione | Chiave |
-|---|---|---|
-| 29 | Stripe: abbonamenti Starter / Pro / Enterprise | Stripe (serve P.IVA) |
-| 30 | Wallet a crediti e ricariche rapide | Stripe |
-| 31 | BYOK: l'utente mette la sua chiave OpenRouter | — |
-| 32 | Fatturazione elettronica italiana (P.IVA, codice univoco, PEC) | Provider e-fattura |
-| 33 | Alert di budget quando i token stanno finendo | — |
-| 34 | Beta con negozi e ristoranti veri | — |
+| Ordine | Funzione | Chiave | Stato |
+|---|---|---|---|
+| 29 | Stripe: abbonamenti Starter / Pro / Enterprise | Stripe | 🔧 **scritto, non provato: mancano le chiavi** |
+| 30 | Wallet a crediti e ricariche rapide | Stripe | ✅ i crediti si consumano · 🔧 la ricarica aspetta Stripe |
+| 31 | BYOK: l'utente mette la sua chiave OpenRouter | — | ✅ provata, e la chiave non esce mai |
+| 32 | Fatturazione elettronica italiana (P.IVA, codice univoco, PEC) | Provider e-fattura | ⬜ serve la P.IVA e un provider |
+| 33 | Alert di budget quando i token stanno finendo | — | ✅ una volta sola, non a ogni messaggio |
+| 34 | Beta con negozi e ristoranti veri | — | ⬜ tocca a Tommaso |
 
 **Fatto quando:** un ristoratore paga con la carta e l'agente si attiva da solo.
+
+🔑 **Cosa manca per chiudere la 29 e la 30: le chiavi di prova di Stripe.** Non serve la
+P.IVA — la modalità test di Stripe funziona da subito con carte finte, e la P.IVA serve
+solo per incassare davvero. Tre valori: `STRIPE_SECRET_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY`,
+`STRIPE_WEBHOOK_SECRET`.
+
+✅ **Provato il 9 Agosto 2026, senza Stripe:**
+
+| Prova | Esito |
+|---|---|
+| Comprare il Pro mandando «0,01 €» dal browser | il campo viene **ignorato**: il prezzo lo decide il server |
+| Chiave BYOK finta (`pippo123`) | rifiutata: «cominciano tutte con sk-or-» |
+| Chiave BYOK formalmente giusta ma inesistente | rifiutata: **provata contro OpenRouter prima di salvarla** |
+| Chiave BYOK vera | salvata · esce solo `sk-or-••••3110`, mai la chiave intera |
+| Una risposta in chat | **−333 crediti** scritti nel registro, con la causale |
+| Webhook di Stripe con firma falsa | rifiutato |
+
+⚠️ **Il saldo dei crediti non è una colonna, è una somma.** La strada ovvia — `credits`
+sul profilo, e ci sommi e ci sottrai — dà due guai certi: due richieste contemporanee
+leggono lo stesso saldo e ne scrivono uno sbagliato, e quando un cliente chiede «perché
+mi sono finiti?» non c'è niente da mostrargli. Qui c'è **una riga per movimento** e il
+saldo è la somma: si legge come un estratto conto.
+
+⚠️ **L'agente non si ferma quando i crediti finiscono.** Il documento è esplicito, e
+vale la pena ripeterlo: un agente che smette di rispondere ai clienti a metà giornata è
+un danno per il titolare e una disdetta per noi. Si va sotto zero, si avvisa una volta
+(non a ogni messaggio: un avviso ripetuto viene silenziato) e si offre la ricarica.
+
+⚠️ **Niente libreria di Stripe.** Il pacchetto ufficiale pesa qualche megabyte e su una
+funzione serverless quel peso si paga a ogni avvio a freddo — cioè proprio mentre il
+cliente guarda la rotellina prima di pagare. Servono tre chiamate HTTP e una verifica di
+firma: `fetch` e `node:crypto`, come già per WhatsApp.
+
+⚠️ **`api/models.ts` non esiste più.** È stato assorbito da `api/config.ts`
+(`/api/config?models=1`) per fare posto a `api/billing.ts`: Vercel Hobby ammette **12
+funzioni** e ne avevamo 12. Sono stati scelti loro due perché sono la stessa cosa — due
+letture pubbliche e senza stato che rispondono «cos'è disponibile».
 
 ---
 

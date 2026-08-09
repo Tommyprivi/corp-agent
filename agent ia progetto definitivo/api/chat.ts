@@ -15,7 +15,7 @@
  */
 
 import { currentUser } from "./_lib/auth.js";
-import { withUser } from "./_lib/db.js";
+import { spendCredits, userApiKey, withUser } from "./_lib/db.js";
 import {
   conflictingSources,
   embeddingConfigured,
@@ -63,8 +63,10 @@ export default {
       return json({ error: "Serve una richiesta POST." }, 405);
     }
 
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) {
+    // ⚠️ La chiave si sceglie DOPO aver saputo chi sta chiedendo (riga 31):
+    // se l'utente ne ha messa una sua, i consumi li paga lui. Qui si controlla
+    // solo che almeno una delle due esista, per dare l'errore giusto subito.
+    if (!process.env.OPENROUTER_API_KEY) {
       return json(
         {
           error:
@@ -87,6 +89,16 @@ export default {
     if (!user) {
       return json({ error: "Devi entrare prima di poter chattare." }, 401);
     }
+
+    // ── Riga 31: BYOK ──────────────────────────────────────────────────
+    // Se l'utente ha messo la sua chiave di OpenRouter, i consumi li paga lui
+    // e noi guadagniamo solo sull'abbonamento. `own` viaggia fino in fondo
+    // perche' chi paga di tasca sua non deve consumare crediti nostri.
+    const credenziali = await userApiKey(user.id);
+    if (!credenziali) {
+      return json({ error: "Nessuna chiave OpenRouter disponibile." }, 503);
+    }
+    const apiKey = credenziali.key;
 
     let body: Body;
     try {
@@ -212,6 +224,7 @@ export default {
 
       await persist({
         userId: user.id,
+        own: credenziali.own,
         projectId: body.projectId,
         question: lastUserText,
         answer,
@@ -339,6 +352,8 @@ async function persist(row: {
   tokensIn: number;
   tokensOut: number;
   cost: number;
+  /** Riga 31: true se ha pagato con la sua chiave, e quindi non consuma crediti. */
+  own: boolean;
 }): Promise<void> {
   await withUser(row.userId, async (client) => {
     if (row.projectId) {
@@ -366,6 +381,19 @@ async function persist(row: {
          cost_eur         = public.usage.cost_eur + excluded.cost_eur`,
       [row.userId, row.tokensIn + row.tokensOut, row.cost]
     );
+  });
+
+  // ── Righe 30 e 33: i crediti ─────────────────────────────────────────
+  // ⚠️ Non blocca mai la risposta, nemmeno a saldo zero: si va sotto, lo si
+  // dice e si offre la ricarica. Un agente che smette di rispondere ai clienti
+  // a meta' giornata e' un danno per il titolare e una disdetta per noi.
+  await spendCredits(
+    row.userId,
+    row.tokensIn + row.tokensOut,
+    row.projectId ?? "chat",
+    row.own
+  ).catch(() => {
+    // Il conteggio dei crediti non deve mai far fallire una risposta gia' data.
   });
 }
 

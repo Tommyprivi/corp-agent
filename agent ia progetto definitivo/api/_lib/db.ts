@@ -86,3 +86,70 @@ export async function ensureProfile(userId: string, email: string | null): Promi
     )
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// FASE 4 — LA CHIAVE DI CHI PAGA, E I CREDITI CHE CONSUMA
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * La chiave OpenRouter da usare per questo utente (riga 31, BYOK).
+ *
+ * Se l'utente ne ha messa una sua, si usa la sua: paga lui i consumi e noi
+ * guadagniamo solo sull'abbonamento al software. È il modello che il documento
+ * di Tommaso segna con la stella — «perfetto per AgentFlow» — e costa poco
+ * offrirlo: una riga in più qui.
+ *
+ * ⚠️ La chiave non esce mai verso il browser. Entra da `api/billing.ts`, vive
+ * nel database protetta dalle regole per riga, e da lì va solo verso
+ * OpenRouter. Chi la legge sta spendendo i soldi di un'altra persona.
+ */
+export async function userApiKey(userId: string): Promise<{ key: string; own: boolean } | null> {
+  const nostra = process.env.OPENROUTER_API_KEY;
+  try {
+    const sua = await withUser(userId, async (client) => {
+      const row = await client.query<{ byok_key: string | null }>(
+        "select byok_key from public.profiles where id = $1",
+        [userId]
+      );
+      return row.rows[0]?.byok_key ?? null;
+    });
+    if (sua) return { key: sua, own: true };
+  } catch {
+    // Se il database non risponde si usa la nostra: meglio rispondere al
+    // cliente e pagare noi che lasciarlo senza risposta.
+  }
+  return nostra ? { key: nostra, own: false } : null;
+}
+
+/**
+ * Segna i crediti consumati e dice se stanno finendo (righe 30 e 33).
+ *
+ * ⚠️ Non blocca **mai** la risposta, nemmeno a saldo zero. Il documento è
+ * esplicito: «il sistema non blocca l'agente di punto in bianco». Un agente che
+ * smette di rispondere ai clienti a metà giornata perché il titolare non ha
+ * visto un'email è un danno per lui e una disdetta per noi. Si va sotto zero,
+ * lo si dice, e si offre la ricarica.
+ *
+ * ⚠️ Chi usa la sua chiave (BYOK) non consuma crediti: sta già pagando lui.
+ */
+export async function spendCredits(
+  userId: string,
+  tokens: number,
+  ref: string,
+  own: boolean
+): Promise<{ balance: number; low: boolean }> {
+  if (own || tokens <= 0) return { balance: 0, low: false };
+
+  return withUser(userId, async (client) => {
+    await client.query(
+      "insert into public.credit_ledger (user_id, amount, reason, ref) values ($1, $2, 'usage', $3)",
+      [userId, -tokens, ref]
+    );
+    const saldo = await client.query<{ n: string }>(
+      "select public.credit_balance($1)::text as n",
+      [userId]
+    );
+    const balance = Number(saldo.rows[0]?.n ?? 0);
+    return { balance, low: balance < 20_000 };
+  });
+}

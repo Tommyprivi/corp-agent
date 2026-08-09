@@ -25,7 +25,7 @@
  *      la stessa risposta tre volte e noi la pagheremmo tre volte.
  */
 
-import { withUser, getPool } from "./_lib/db.js";
+import { spendCredits, userApiKey, withUser, getPool } from "./_lib/db.js";
 import {
   DISTILL_EVERY,
   flushQueue,
@@ -491,6 +491,39 @@ async function handleOne(input: {
     );
   });
 
+  // ── Righe 30 e 33: i crediti, e l'avviso quando finiscono ───────────
+  // ⚠️ L'avviso arriva UNA volta sola: `low_credit_warned_at` lo segna. Un
+  // avviso che arriva a ogni messaggio viene silenziato, e il giorno che i
+  // crediti finiscono davvero il titolare non se ne accorge.
+  const crediti = await spendCredits(
+    userId,
+    reply.tokensIn + reply.tokensOut,
+    conversationId,
+    reply.own
+  ).catch(() => null);
+
+  if (crediti?.low) {
+    const daAvvisare = await withUser(userId, async (client) => {
+      const row = await client.query<{ ok: boolean }>(
+        `update public.subscriptions
+            set low_credit_warned_at = now()
+          where user_id = $1
+            and (low_credit_warned_at is null or low_credit_warned_at < now() - interval '3 days')
+          returning true as ok`,
+        [userId]
+      );
+      return row.rows.length > 0;
+    });
+    if (daAvvisare) {
+      await notifyOwner(
+        userId,
+        `⚡ I crediti di CorpAgent stanno finendo (ne restano ${crediti.balance.toLocaleString("it-IT")}).\n\n` +
+          "L'agente continua a rispondere lo stesso — non si ferma. Quando puoi, " +
+          "fai una ricarica dal sito."
+      );
+    }
+  }
+
   // ── Riga 24: avvisare il titolare ───────────────────────────────────
   // Solo quando c'e' davvero qualcosa da fare per lui. Un avviso a ogni
   // messaggio diventa rumore, e il rumore si silenzia — che e' il modo piu'
@@ -545,6 +578,8 @@ interface Reply {
   knowledge: string | null;
   /** Riga 26: la lingua in cui scrive il cliente, riconosciuta dal classificatore. */
   lang: string | null;
+  /** Riga 31: true se ha risposto con la chiave del titolare, non con la nostra. */
+  own: boolean;
 }
 
 /**
@@ -559,11 +594,16 @@ async function generate(
   conversationId: string,
   question: string
 ): Promise<Reply | null> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    console.error("OPENROUTER_API_KEY non configurata: non posso rispondere.");
+  // ── Riga 31: BYOK ────────────────────────────────────────────────────
+  // Anche qui vale la chiave dell'utente, se ne ha messa una sua: il cliente
+  // che scrive su WhatsApp non deve consumare crediti nostri se il titolare
+  // sta gia' pagando OpenRouter di tasca sua.
+  const credenziali = await userApiKey(userId);
+  if (!credenziali) {
+    console.error("Nessuna chiave OpenRouter disponibile: non posso rispondere.");
     return null;
   }
+  const apiKey = credenziali.key;
 
   const catalog = await fetchCatalog();
   const { load, lang } = await classifyLoad(question, catalog, apiKey);
@@ -683,6 +723,7 @@ async function generate(
     cost: costEur(model, tokensIn, tokensOut),
     knowledge,
     lang,
+    own: credenziali.own,
   };
 }
 

@@ -689,7 +689,9 @@ export interface ModelsResponse {
  * È quello che alimenta il selettore dei modelli nella chat.
  */
 export async function getModels(): Promise<ModelsResponse> {
-  const response = await fetch("/api/models", { credentials: "same-origin" });
+  // ⚠️ `/api/config?models=1`, non `/api/models`: il catalogo è stato
+  // assorbito da `config` per liberare uno dei 12 posti di Vercel Hobby.
+  const response = await fetch("/api/config?models=1", { credentials: "same-origin" });
   if (!response.ok) throw await readError(response);
   return (await response.json()) as ModelsResponse;
 }
@@ -1011,4 +1013,88 @@ export async function getSavings(): Promise<Savings> {
   const response = await fetch("/api/projects?savings=1", { credentials: "same-origin" });
   if (!response.ok) throw await readError(response);
   return (await response.json()) as Savings;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// FASE 4 — I SOLDI
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface BillingState {
+  planId: string;
+  status: string;
+  /** ⚠️ Guarda questo, non `status`: chi disdice ha diritto fino a fine mese. */
+  active: boolean;
+  renewsOn: string | null;
+  endingAtPeriodEnd: boolean;
+  credits: number;
+  lowCredits: boolean;
+  /** Riga 31: le ultime 4 cifre della chiave dell'utente, se ne ha messa una. */
+  byokLast4: string | null;
+  plans: Array<{ id: string; name: string; priceEur: number; credits: number }>;
+  topups: Array<{ id: string; name: string; priceEur: number; credits: number }>;
+}
+
+export async function getBilling(): Promise<BillingState> {
+  const response = await fetch("/api/billing", { credentials: "same-origin" });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as BillingState;
+}
+
+/**
+ * Apre il pagamento dell'abbonamento (riga 29).
+ *
+ * ⚠️ Manda **il nome del piano**, mai la cifra: il prezzo lo decide il server.
+ * Se lo decidesse il browser, chiunque potrebbe comprare il Pro per un
+ * centesimo aprendo gli strumenti da sviluppatore.
+ */
+export async function startCheckout(planId: string): Promise<{ url: string }> {
+  const response = await fetch("/api/billing", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ checkout: planId }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as { url: string };
+}
+
+/** Compra un pacchetto di crediti (riga 30). */
+export async function startTopup(topupId: string): Promise<{ url: string }> {
+  const response = await fetch("/api/billing", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ topup: topupId }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as { url: string };
+}
+
+/** Carta, fatture e disdetta: è il portale di Stripe, non una schermata nostra. */
+export async function openBillingPortal(): Promise<{ url: string }> {
+  const response = await fetch("/api/billing", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ portal: true }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as { url: string };
+}
+
+/**
+ * La tua chiave di OpenRouter (riga 31). `null` la toglie.
+ *
+ * ⚠️ Torna indietro solo `byokLast4`: la chiave, una volta salvata, non esce
+ * più dal server. Chi la legge sta spendendo i soldi di un'altra persona.
+ */
+export async function saveByokKey(key: string | null): Promise<{ byokLast4: string | null }> {
+  const response = await fetch("/api/billing", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ byok: key }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()) as { byokLast4: string | null };
 }

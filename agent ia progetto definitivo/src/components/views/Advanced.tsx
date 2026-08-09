@@ -3,7 +3,7 @@ import MyAgents from "./MyAgents";
 import AgentCatalog from "./AgentCatalog";
 import Knowledge from "./Knowledge";
 import WhatsAppSettings from "./WhatsAppSettings";
-import { PLANS } from "../../data/plans";
+import Billing from "./Billing";
 import type { PresetAgent, RoleAgent } from "../../types";
 
 interface AdvancedProps {
@@ -60,7 +60,7 @@ export default function Advanced({
       )}
       {tab === "memory" && <Knowledge />}
       {tab === "whatsapp" && <WhatsAppSettings />}
-      {tab === "account" && <Account />}
+      {tab === "account" && <Billing />}
     </div>
   );
 }
@@ -88,35 +88,3 @@ function Tab({
   );
 }
 
-function Account() {
-  return (
-    <div className="mx-auto max-w-[640px] px-6 py-10 md:px-10 md:py-14">
-      <h1 className="text-[24px] font-semibold tracking-[-0.02em] text-[var(--text-primary)]">
-        Account e piano
-      </h1>
-      <p className="mt-2 text-[14.5px] text-[var(--text-secondary)]">
-        Stai usando CorpAgent in prova, senza account. L'accesso e i pagamenti arrivano prima
-        della beta di Novembre.
-      </p>
-
-      <div className="mt-8 flex flex-col gap-3">
-        {PLANS.filter((p) => p.id !== "enterprise").map((plan) => (
-          <div
-            key={plan.id}
-            className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-4"
-          >
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-[15px] font-medium text-[var(--text-primary)]">
-                {plan.name}
-              </span>
-              <span className="text-[13px] text-[var(--text-secondary)]">
-                {plan.price} {plan.cadence}
-              </span>
-            </div>
-            <p className="mt-1 text-[13.5px] text-[var(--text-secondary)]">{plan.pitch}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
