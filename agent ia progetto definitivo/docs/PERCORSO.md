@@ -450,6 +450,43 @@ letture pubbliche e senza stato che rispondono «cos'è disponibile».
 vede il calendario, è un dipendente. Costruire settanta agenti prima dei connettori vuol
 dire costruire settanta modi diversi di dire «non lo so».
 
+### ⚠️ LA REGOLA CHE COMANDA TUTTA QUESTA FASE
+
+Fissata da Tommaso il 9 Agosto 2026:
+
+> *«quando colleghi il connettore fai l'accesso con il tuo account e hai le tue cose,
+> ma questo vale per tutto»*
+
+**Ogni cliente collega il SUO account, e vede le SUE cose.** Le chiavi arrivate finora
+(Fluida, Maps, Microsoft) sono **di Tommaso**: servono a provare, non a servire tutti.
+Usarle per tutti sarebbe stato veloce e sbagliato in tre modi:
+
+1. il ristoratore di Milano vedrebbe i dipendenti di Tommaso — non è una scomodità, è
+   una fuga di dati;
+2. un solo tetto di chiamate per tutti: il decimo cliente rompe il servizio al primo;
+3. quando un cliente se ne va, i suoi dati restano dentro la nostra chiave.
+
+Le chiavi in `.env.local` restano ma **cambiano mestiere**: da «credenziali del servizio»
+a «carta d'identità di CorpAgent presso Google/Microsoft», cioè quello che serve per
+poter *chiedere il permesso*. I dati restano di chi li ha.
+
+✅ **La base è costruita e provata — 9 Agosto 2026** (migrazione 0014, `_lib/connectors.ts`):
+
+| Prova | Esito |
+|---|---|
+| Chiave sbagliata | **rifiutata prima di salvare**, con il motivo |
+| Chiave vera | collegata, e dice cosa ha trovato: «corp agent» |
+| Il segreto torna al browser? | **no** |
+| Nel database è in chiaro? | **no**, cifrato AES-256-GCM |
+| Un altro utente vede le mie? | **zero righe** |
+
+⚠️ **Si prova prima di salvare.** Salvare una chiave che non funziona regala all'utente
+un agente muto: lui legge «collegato», l'agente non trova niente, e nessuno dei due
+capisce perché.
+
+⚠️ **Il segreto non esce mai**, nemmeno verso chi l'ha appena scritto. Un valore che non
+esce non può finire in un registro, in una schermata d'errore o nella cronologia.
+
 ### Le chiavi che ci sono già
 
 | Ordine | Connettore | Cosa sblocca | Chiave |
@@ -477,8 +514,22 @@ documentazione sembra vuota, cerca l'`openapi.json` invece di indovinare.**
 `AADSTS53003 — Conditional Access` dice che l'organizzazione a cui appartiene l'account
 Microsoft di Tommaso proibisce il rilascio dei gettoni. È **la stessa organizzazione** che
 gli ha bloccato il token di Fly con l'SSO. Serve un tenant suo, non un dato mancante.
-| 39 | Il pannello «Connettori»: colleghi, provi, vedi se risponde | — | — |
-| 40 | Gli strumenti in mano all'agente (function calling) | — | — |
+| 39 | Il pannello «Connettori»: colleghi, provi, vedi se risponde | — | 🔧 il motore c'è, manca la schermata |
+| 40 | **Gli strumenti in mano all'agente** (function calling) | — | ⬜ **il pezzo che li rende utili** |
+| 41 | **I connettori anche da WhatsApp**: glielo chiedi e li usa | — | ⬜ |
+| 42 | Il Master Builder dice quali connettori servono a quell'agente | — | ⬜ |
+
+⚠️ **La riga 40 è quella che conta.** Un connettore collegato ma che l'agente non sa
+usare è una spia verde che non accende niente. Serve il *function calling*: l'agente
+decide da solo quando chiamare Fluida o Maps, come oggi decide se cercare sul web.
+
+⚠️ **E deve funzionare da WhatsApp**, non solo dal sito — richiesta esplicita di Tommaso
+il 9 Agosto 2026. È lì che vive il titolare: se «Marco è in ferie?» funziona solo davanti
+al computer, non serve a chi sta in magazzino.
+
+⚠️ **Riga 42:** quando il Master Builder propone un agente, deve dire anche **di cosa ha
+bisogno per funzionare** — «questo agente serve a poco senza il calendario collegato».
+Deciso da Tommaso: *«quando creerai gli agenti, poi dirai i connettori da aggiungere»*.
 
 ### ⚠️ Due famiglie di credenziali, e confonderle costa giornate
 

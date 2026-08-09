@@ -22,6 +22,13 @@
  */
 
 import { currentUser } from "./_lib/auth.js";
+import {
+  collega,
+  collegamenti,
+  prova,
+  stacca,
+  type ConnectorKind,
+} from "./_lib/connectors.js";
 import { ensureProfile, withUser } from "./_lib/db.js";
 
 const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
@@ -54,6 +61,31 @@ export default {
     }
     if (!user) return json({ error: "Devi entrare prima." }, 401);
 
+    // ═══════════════════════════════════════════════════════════════════
+    // I CONNETTORI — Fase 5
+    // ═══════════════════════════════════════════════════════════════════
+    //
+    // ⚠️ Vivono qui e non in `api/connectors.ts` per la solita ragione: Vercel
+    // Hobby ammette **12 funzioni** e ci siamo esattamente. La casa non è
+    // arbitraria — «cosa ho collegato io» è un fatto del profilo, come il
+    // mestiere e il sondaggio.
+    //
+    //   GET   ?connettori=1  → cosa ho collegato (mai i segreti)
+    //   POST  { collega }    → collega il MIO account, dopo averlo provato
+    //   DELETE ?connettore=  → stacca
+    const url = new URL(request.url);
+
+    if (request.method === "GET" && url.searchParams.get("connettori") !== null) {
+      return json({ connections: await collegamenti(user.id) }, 200);
+    }
+
+    if (request.method === "DELETE") {
+      const kind = url.searchParams.get("connettore") as ConnectorKind | null;
+      if (!kind) return json({ error: "Serve quale connettore staccare." }, 400);
+      await stacca(user.id, kind);
+      return json({ staccato: kind }, 200);
+    }
+
     if (request.method === "GET") {
       // Al primo accesso la riga non esiste ancora: la creiamo qui invece di
       // con un trigger sulle tabelle di Better Auth, così se un domani loro
@@ -67,6 +99,47 @@ export default {
 
     // ── Riga 10: la verifica anti-bot ────────────────────────────────────
     if (request.method === "POST") {
+      // ── Collega il MIO account ─────────────────────────────────────
+      // La regola di Tommaso, 9 Agosto 2026: «colleghi con il tuo account e hai
+      // le tue cose». Le chiavi di CorpAgent non entrano mai qui: quelle che
+      // arrivano sono dell'utente, e restano sue.
+      const grezzo = await request.clone().text();
+      if (grezzo.includes("\"collega\"")) {
+        let corpo: {
+          collega?: {
+            kind?: ConnectorKind;
+            secret?: string;
+            label?: string;
+            meta?: Record<string, unknown>;
+          };
+        };
+        try {
+          corpo = JSON.parse(grezzo) as typeof corpo;
+        } catch {
+          return json({ error: "Richiesta non leggibile." }, 400);
+        }
+
+        const c = corpo.collega;
+        if (!c?.kind || !c.secret) {
+          return json({ error: "Servono il connettore e la chiave." }, 400);
+        }
+
+        // ⚠️ Si prova PRIMA di salvare. Salvare una chiave che non funziona
+        // regala all'utente un agente muto: lui legge «collegato», l'agente non
+        // trova niente, e nessuno dei due capisce perché.
+        const esito = await prova(c.kind, c.secret, c.meta ?? {});
+        if (esito.ok !== true) return json({ error: esito.perche }, 400);
+
+        await collega(user.id, {
+          kind: c.kind,
+          label: c.label ?? esito.nome,
+          secret: c.secret,
+          meta: { ...(c.meta ?? {}), ...(esito.meta ?? {}), nome: esito.nome },
+        });
+
+        return json({ connected: c.kind, nome: esito.nome }, 200);
+      }
+
       const secret = process.env.TURNSTILE_SECRET_KEY;
 
       // Senza la chiave la verifica non si può fare. Si risponde "passato" con

@@ -195,6 +195,24 @@ white-label — resta congelato come prima.
 
 ## Regole
 
+### ⚠️ I connettori sono di chi li collega (9 Agosto 2026)
+
+> *«quando colleghi il connettore fai l'accesso con il tuo account e hai le tue cose,
+> ma questo vale per tutto»* — Tommaso
+
+Ogni credenziale di un servizio esterno appartiene **all'utente che l'ha collegata**, vive
+in `public.connections` cifrata (AES-256-GCM con `CONNECTORS_KEY`), ed è protetta dalla
+sicurezza per riga. Le chiavi in `.env.local` **non** servono i clienti: sono la carta
+d'identità di CorpAgent presso Google/Microsoft, cioè quello che serve per chiedere il
+permesso a nome loro.
+
+Tre cose da non sbagliare, tutte in `api/_lib/connectors.ts`:
+
+1. **Si prova prima di salvare.** Una chiave rotta salvata = agente muto e nessuno sa perché.
+2. **Il segreto non esce mai** verso il browser. Nemmeno subito dopo averlo scritto.
+3. **Un guasto si segna appena succede.** Un connettore rotto in silenzio è peggio di uno
+   mai collegato: l'agente continua a rispondere come se sapesse.
+
 - 
 
 # Il documento di Tommaso, integrale
