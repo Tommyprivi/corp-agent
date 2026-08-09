@@ -55,9 +55,19 @@
 > distruttivo è un pulsante che non può fare niente. La parola che comanda, nel
 > documento di Tommaso, è **«per errore»** — e chi sbaglia lo scopre dopo.
 >
-> **Fase aperta: FASE 3 — WhatsApp.** È quella che rende il prodotto vendibile.
-> ⏰ La verifica del Business Manager di Meta richiede **giorni**: quella pratica va
-> aperta con anticipo, ed è l'unico passaggio che non dipende da quanto si lavora.
+> 🎉 **ANCHE LA FASE 3 È CHIUSA** — 9 Agosto 2026, e con dentro roba della Fase 13:
+> WhatsApp legge le foto, ascolta i vocali, risponde a voce, e **risponde al telefono**
+> con un agente vocale in tempo reale (`voice-bridge/`).
+>
+> **Fase aperta: FASE 5 — I CONNETTORI.**
+>
+> ⚠️ **Sì, si salta la 4 di proposito**, e l'ha deciso Tommaso il 9 Agosto 2026:
+> *«prima degli agenti colleghiamo i connettori»*. La Fase 4 (Stripe) è scritta e
+> aspetta solo le chiavi di prova: non blocca niente, si chiude appena arrivano.
+>
+> ⚠️ **Perché i connettori prima degli agenti.** Un agente senza connettori sa parlare
+> e non sa fare. Costruire settanta agenti prima di collegare i dati vuol dire
+> costruire settanta modi diversi di dire «non lo so».
 >
 > ⚠️ **Cambio di architettura deciso da Tommaso il 1 Agosto 2026:** il backend è
 > **Neon + funzioni su Vercel + Better Auth**, non più Supabase. Neon è solo il database,
@@ -430,178 +440,209 @@ letture pubbliche e senza stato che rispondono «cos'è disponibile».
 
 ---
 
-## FASE 5 — Il tuo pannello admin
+## FASE 5 — I CONNETTORI 🔑 PRIORITÀ, PRIMA DEGLI AGENTI
 
-| Ordine | Funzione |
-|---|---|
-| 35 | MRR, ARR, fatturato netto vs lordo |
-| 36 | Suddivisione incassi per piano, LTV, CAC, churn rate |
-| 37 | Anagrafica utenti e aziende con ricerca |
-| 38 | Profilo utente: iscrizione, connettori, token, pagamenti |
-| 39 | Azioni admin: bannare, estendere, regalare un mese |
-| 40 | Consumo token globale e classifica modelli più usati |
-| 41 | Costo vivo API e margine per utente |
-| 42 | Alert anomalie (picchi sospetti di consumo) |
-| 43 | Stato connettori verde/rosso e uptime server |
-| 44 | Broadcast email a tutti gli utenti |
-| 45 | Feature flags per accendere e spegnere funzioni |
-| 46 | Codici promo e coupon |
-| 47 | Audit log completo |
-| 48 | Ticket di supporto con stati |
+> **Deciso da Tommaso il 9 Agosto 2026:** *«prima degli agenti colleghiamo i connettori,
+> e per ora abbiamo questi, in futuro altri»*. Questa fase **scavalca** tutto il resto.
 
----
+**Perché prima.** Un agente senza connettori è un agente che sa parlare e non sa fare.
+«Il Coordinatore di Reparto» che non vede il calendario è un tema di conversazione; se
+vede il calendario, è un dipendente. Costruire settanta agenti prima dei connettori vuol
+dire costruire settanta modi diversi di dire «non lo so».
 
-## FASE 6 — Automazioni e connettori
+### Le chiavi che ci sono già
 
-| Ordine | Funzione |
-|---|---|
-| 49 | Editor visivo di flussi a nodi (drag and drop) |
-| 50 | Trigger temporali (cron): "ogni venerdì alle 18 il report" |
-| 51 | Trigger condizionali se/allora |
-| 52 | Connettori ondata 1: Gmail, Google Calendar, Drive/Sheets |
-| 53 | Connettori ondata 2: Shopify, WooCommerce, Stripe |
-| 54 | Connettori ondata 3: Telegram, Instagram, Slack, Discord, Teams |
-| 55 | Connettori ondata 4: Notion, Airtable, CRM, database SQL |
-| 56 | Connettori ondata 5: Fatture in Cloud, Zucchetti, VIES, corrieri |
-| 57 | Zapier e Make, webhook in uscita, API pubbliche + SDK |
-| 58 | Sync bidirezionale in tempo reale |
-| 59 | Smart-routing dei canali per complessità |
-| 60 | Multi-channel fallback (SMS/email se WhatsApp non recapita) |
-| 61 | Recupero carrelli abbandonati |
-| 62 | Follow-up e nurturing automatico |
-| 63 | Monitoraggio reputazione online e risposta alle recensioni |
-| 64 | Smart Drive: archiviazione e rinomina automatica dei file |
-| 65 | Scanner fatture e scontrini da fotocamera |
-| 66 | Nexus Flash-Campaign (promozioni a tempo) |
+| Ordine | Connettore | Cosa sblocca | Chiave |
+|---|---|---|---|
+| 35 | **Fluida** | presenze, ferie, permessi, anagrafica dipendenti | ✅ in `.env.local` |
+| 36 | **Microsoft 365** | Outlook, Calendario, SharePoint, Teams | ⚠️ manca il Tenant ID |
+| 37 | **Google Maps** | indirizzi, distanze, tempi di consegna, zone | ✅ in `.env.local` |
+| 38 | **Google Workspace** | Gmail, Calendar, Drive | ⚠️ serve OAuth, non la chiave |
+| 39 | Il pannello «Connettori»: colleghi, provi, vedi se risponde | — | — |
+| 40 | Gli strumenti in mano all'agente (function calling) | — | — |
+
+### ⚠️ Due famiglie di credenziali, e confonderle costa giornate
+
+**La CHIAVE** dice *«sono io, l'applicazione»*. Google Maps e Fluida funzionano così:
+la chiave sta sul server, si chiama, risponde. Fine.
+
+**Il PERMESSO** dice *«quel signore mi lascia leggere la sua posta»*. Gmail e Microsoft
+365 funzionano così, e **nessuna chiave API basta**: serve che l'utente clicchi
+«autorizzo» e che noi conserviamo il gettone che ne esce.
+
+⚠️ La chiave `AIzaSy…` che Tommaso ha dato per Gmail **non aprirà mai una casella di
+posta** — non è colpa sua, è che Google chiama «API key» due cose diverse. Per Gmail si
+riusano `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` che già ci sono per l'accesso,
+aggiungendo gli ambiti. Dettagli in [SETUP-CONNETTORI.md](SETUP-CONNETTORI.md).
+
+⚠️ Di Microsoft 365 manca il **Tenant ID**: senza, non si sa a quale organizzazione
+chiedere il permesso. Sta nel portale Azure, «Panoramica» dell'applicazione.
+
+**Fatto quando:** l'agente risponde «il 14 hai già due consegne a Milano, ci metti 40
+minuti fra una e l'altra» — e quei dati non gliel'ha dati nessuno a mano.
 
 ---
 
-## FASE 7 — Aziende e team
+## FASE 6 — Il motore degli agenti
+
+> Nessun agente si costruisce a mano, uno per uno. Prima si costruisce il motore.
 
 | Ordine | Funzione |
 |---|---|
-| 67 | Organizzazioni e workspace condivisi |
-| 68 | Fino a 200 postazioni con contatore |
-| 69 | RBAC: Owner, Admin, Agent Creator, Operator/Viewer |
-| 70 | Inviti via email e revoca postazioni |
-| 71 | Profilo aziendale: nome, logo, dominio verificato, settore |
-| 72 | Budget cap e cost-cap per reparto |
-| 73 | Multi-workspace a reparti stagni |
-| 74 | SSO (Active Directory, Okta), 2FA forzato per admin |
-| 75 | PII Masking automatico + masking personalizzato |
-| 76 | No-training data agreements |
-| 77 | Audit trail immutabile ed esportabile |
-| 78 | Cancellazione dati a norma GDPR, log retention |
-| 79 | IP whitelisting, timeout inattività |
-| 80 | Vault crittografato zero-knowledge |
-| 81 | Export certificato per il commercialista |
-| 82 | Ghost Mode collaborativo, session recording |
+| 41 | **Motore Agenti Parametrico**: nome, tono, obiettivo e regole sono parametri, non codice |
+| 42 | **Orchestratore Multi-Agente**: un agente passa il testimone a un altro nella stessa conversazione |
+| 43 | **Memoria Condivisa**: quello che sa un agente lo sanno gli altri sullo stesso cliente |
+| 44 | **Guardrail**: limiti che un agente non può superare senza approvazione umana |
+| 45 | **PII Masking**: oscura codici fiscali, IBAN e carte prima che escano verso i modelli |
+| 46 | **Audit e log**: ogni azione registrata, per le contestazioni |
+| 47 | **Sandbox**: si prova contro conversazioni vere passate, non su una chat finta |
+
+⚠️ **La tensione da tenere d'occhio, dichiarata da Tommaso.** Il motore unico riduce il
+codice duplicato per la parte comune, ma **non deve mai diventare la scusa per non
+costruire la logica specifica di ciascun agente**. Il motore è la base; la qualità di
+ogni agente è responsabilità sua, e si verifica una per una.
 
 ---
 
-## FASE 8 — Voce, immagini, video 🔑
+## FASE 7 — Gli agenti 🔑 LA PARTE CHIAVE DEL SITO
+
+### ⚠️ LE SEI REGOLE — nessun agente viene pubblicato senza averle superate
+
+Fissate da Tommaso il 9 Agosto 2026. **Non sono consigli: sono la porta.**
+
+1. **Logica dedicata e documentata.** Per ogni agente: cosa fa esattamente, quali dati
+   legge, quali decisioni prende, e in quali casi si ferma e chiama un umano.
+   *Non basta un prompt generico con le parole cambiate.*
+2. **Provato con casi veri del suo ambito.** Il Verificatore di Fatture si prova con
+   fatture vere e discrepanze vere, non con una chat qualsiasi.
+3. **Provato sui casi limite.** Il Mediatore Familiare si prova su un litigio acceso,
+   non su uno scambio tranquillo: serve a vedere **se sa quando fermarsi**.
+4. **Guardrail verificati attivamente.** Si prova a *rompere* l'agente — chiedendogli
+   sconti fuori soglia, dati sensibili — non lo si guarda funzionare.
+5. **Soglia minima per pubblicare.** Chi non supera i punti 1-4 resta «in sviluppo» e
+   **non è selezionabile**, anche se il codice è già scritto.
+6. **Revisione periodica.** Si ricontrolla dopo gli aggiornamenti dei modelli e dopo un
+   numero significativo di conversazioni vere. Non solo al lancio.
+
+> **Priorità dichiarata:** *«è preferibile avere un numero minore di agenti che
+> funzionano in modo eccellente, piuttosto che tutti i 70+ pubblicati con qualità
+> incostante. La lista completa è l'obiettivo finale, ma nessun agente salta la
+> verifica.»*
+
+| Ordine | Gruppo | Quanti |
+|---|---|---|
+| 48 | Business & Operativi (Credit Manager, Customer Success, Data Entry…) | 38 |
+| 49 | Accademica & Ricerca (Tutor, Document Analyst, Ricercatore…) | 9 |
+| 50 | Social & Community (Moderatore, Content Monitor, Reputazione…) | 10 |
+| 51 | Relazioni & Privato (Mediatore Familiare, Pianificatore Domestico…) | 10 |
+| 52 | Strumenti di Piattaforma (Time-Machine, Smart-Routing, Batch…) | 10 |
+| 53 | **I cinque aggiunti da Tommaso** (vedi sotto) | 5 |
+
+**I cinque aggiunti il 9 Agosto 2026** — sono quelli che mancavano davvero:
+
+- **Traduttore Contrattuale** — traduce contratti stranieri in italiano semplice e
+  segnala le clausole rischiose
+- **Negoziatore di Fornitori** — confronta più preventivi e prepara la controproposta
+- **Analista di Recensioni** — legge tutte le recensioni e trova cosa si ripete
+- **Controllore Scorte** — avvisa *prima* che un prodotto finisca, sullo storico vendite
+- **Verificatore di Fatture** — controlla che le fatture dei fornitori corrispondano
+  all'ordinato, e segnala le differenze
+
+---
+
+## FASE 8 — Chi costruisce gli agenti: i tre livelli
+
+| Ordine | Livello | Per chi | Come si paga |
+|---|---|---|---|
+| 54 | **1 · Fai da te** | chi vuole metterci le mani | incluso |
+| 55 | **2 · Assistito dall'IA** | descrivi a parole, un meta-agente lo costruisce | incluso a consumo leggero |
+| 56 | **3 · Servizio del team** | chi non vuole impegnarsi | a pagamento — è tempo umano vero |
+
+**Il livello 1, per gradi:**
+
+- *Base* — capire un agente esistente, cambiare un parametro, vedere l'effetto
+- *Intermedio* — condizioni logiche multiple, variabili di stato, prove su conversazioni
+  complesse
+- *Avanzato* — agenti che orchestrano altri agenti, guardrail propri, ottimizzazione dei
+  costi in token
+
+| Ordine | Funzione |
+|---|---|
+| 57 | Sandbox con dati veri: si prova contro conversazioni passate anonimizzate |
+| 58 | Galleria dei propri agenti, con **storico versioni** e ritorno indietro |
+| 59 | Badge di competenza tecnica reale, non di tutorial completati |
+
+---
+
+## FASE 9 — Il marketplace e chi guadagna
+
+| Ordine | Funzione |
+|---|---|
+| 60 | Pubblica o tieni privato l'agente che hai creato |
+| 61 | Badge con nome e azienda dell'autore su ogni agente pubblico |
+| 62 | **Percentuale all'autore** quando altri attivano il suo agente |
+| 63 | Tracciamento dell'uso per agente (serve a calcolare la percentuale) |
+| 64 | Portafoglio: distribuzione dei guadagni fra CorpAgent e l'autore |
+| 65 | «I miei agenti pubblicati»: quanto ha reso ciascuno |
+
+⚠️ Le righe 63-65 **dipendono dalla Fase 4** (Stripe): senza pagamenti non c'è niente da
+distribuire.
+
+---
+
+## FASE 10 — I piani, e cosa c'è dentro
+
+| Ordine | Funzione |
+|---|---|
+| 66 | **Starter** — 1 agente WhatsApp, memoria standard, dashboard base, editor livello 1 limitato (tono e domande frequenti), supporto via email |
+| 67 | **Professionale** — 5 agenti, editor livello 1 completo, livello 2 con limite mensile, orchestratore, template di settore, ruoli interni, export commercialista, supporto prioritario |
+| 68 | **Enterprise** — agenti illimitati, multi-workspace, white-label, dispositivi |
+| 69 | I limiti si applicano davvero (non solo scritti nella pagina dei prezzi) |
+
+⚠️ **I limiti vanno fatti rispettare dal codice**, non solo dichiarati. Un piano che
+promette «1 agente» e ne lascia attivare cinque non è generoso: è un piano che nessuno
+compra al livello superiore.
+
+---
+
+## FASE 11 — Automazioni avanzate e resto dei connettori
+
+| Ordine | Funzione |
+|
+
+---
+
+## FASE 12 — Aziende e team
+
+| Ordine | Funzione |
+|
+
+---
+
+## FASE 13 — Voce, immagini, video 🔑
 
 | Ordine | Funzione | Chiave |
-|---|---|---|
-| 83 | Trascrizione note vocali WhatsApp | OpenAI Whisper |
-| 84 | Risposte vocali su WhatsApp | ElevenLabs |
-| 85 | Voice-clone aziendale | ElevenLabs |
-| 86 | Modalità walkie-talkie in tempo reale | ElevenLabs |
-| 87 | Chiamate telefoniche vocali | Twilio + ElevenLabs |
-| 88 | Note vocali d'azienda (racconti l'attività, si autoconfigura) | Whisper |
-| 89 | Voice-to-report giornaliero | Whisper |
-| 90 | Generazione immagini in chat | OpenAI / Flux |
-| 91 | Generazione video | Runway / Luma / Kling (il più caro) |
+|
 
 ---
 
-## FASE 9 — Crescita
+## FASE 14 — Crescita
 
 | Ordine | Funzione |
-|---|---|
-| 92 | Multi-lingua UI (8 lingue core + traduttore dinamico) |
-| 93 | Traduttore culturale incrociato |
-| 94 | Nexus Store: marketplace di agenti con revenue share |
-| 95 | White-label per agenzie (logo, colori, dominio) |
-| 96 | White-label app mobile iOS/Android |
-| 97 | Programma affiliazione Nexus Partner |
-| 98 | Nexus Audit: check-up gratuito come lead magnet |
-| 99 | Report di competitività automatizzati |
-| 100 | Gamification e badge di efficienza |
-| 101 | Licenze stagionali / pass temporanei |
-| 102 | Widget incorporabile per siti web |
-| 103 | Personalizzazioni estetiche avanzate (CSS, font, temi, Lottie) |
-| 104 | A/B testing dei prompt, red teaming, certificazioni agenti |
-| 105 | Multi-agent swarm, auto-healing dei prompt |
-| 106 | Browser Conductor, Computer-Use |
-| 107 | Desktop Electron |
-| 108 | Play Store con Capacitor |
+|
 
 ---
-Fase 10 — Dispositivi CorpAgent (hardware a marchio proprio)
 
-Logica:
+## FASE 15 — Il tuo pannello admin ⏳ ALLA FINE DI TUTTO
 
-	•	Il cliente, dalla sezione “Richieste extra” del sito, può ordinare un dispositivo (es. scanner) direttamente da CorpAgent
-	•	Flusso: cliente ordina → tu ricevi la notifica dell’ordine → tu acquisti il dispositivo dal fornitore → tu lo spedisci/consegni al cliente → il dispositivo arriva già pronto per integrarsi con l’agente (pre-configurato o con istruzioni di collegamento)
-	•	Prezzo: deve includere il costo del dispositivo + il tuo margine + eventualmente un costo di configurazione
-	•	Stato ordine: il cliente deve poter vedere lo stato (ordinato → in spedizione → consegnato) nella stessa sezione richieste
+| Ordine | Funzione |
+|
 
-Cosa serve prima di attivarlo:
+> **Spostata in fondo da Tommaso il 9 Agosto 2026:** *«la fase 5 alla fine di tutto»*.
+> Serve a te, non ai clienti: finche' non ci sono clienti non c'e' niente da guardare.
 
-	•	Un fornitore identificato per gli scanner (con prezzo all’ingrosso noto)
-	•	Un margine deciso (es. compri a 30€, vendi a 50€)
-	•	Un modo per gestire pagamento anticipato del cliente prima che tu acquisti (per non rischiare capitale tuo)
+---
 
-Fase Extra B — Dispositivi esterni (integrazione di hardware che il cliente ha già)
-
-Logica:
-
-	•	Il cliente scrive nella sezione “Richieste extra” che vuole integrare un dispositivo che possiede già (es. “ho già uno scanner Zebra modello X, voglio collegarlo”)
-	•	Questo è un servizio di integrazione, non una vendita di prodotto: il cliente paga per il lavoro di far parlare quel dispositivo con l’agente
-	•	Flusso: richiesta → tu valuti la fattibilità (dipende dal modello/marca) → dai un preventivo al cliente → cliente paga → tu fai l’integrazione
-	•	Prezzo: a preventivo caso per caso, non fisso, perché ogni dispositivo è diverso
-
-Cosa serve prima di attivarlo:
-
-	•	Una lista di dispositivi/marche che sai già di poter integrare (per non promettere lavoro su cose che non sai se sono fattibili)
-	•	Un modo per il cliente di descrivere il dispositivo (marca, modello, come si connette) nel form di richiesta
-
-Fase Extra C — Personalizzazione per settore (multi-tenant), funzioni estese
-
-C1. Template di settore
-
-	•	Al momento dell’iscrizione, il cliente scegli un settore di partenza (trasporti, ristorazione, retail, logistica, ecc.) che carica un template pre-impostato con tono, domande frequenti e workflow tipici di quel settore
-	•	Ogni template è un punto di partenza, non una gabbia: tutto resta modificabile dopo
-
-C2. Pannello di personalizzazione self-service
-
-	•	Il cliente accede a un pannello (senza scrivere codice) dove modifica: tono di voce dell’agente (formale/informale), le domande frequenti specifiche della sua azienda, le regole particolari (es. sconti clienti abituali, orari di risposta)
-	•	Ogni modifica si applica subito alla conversazione, senza bisogno del tuo intervento
-
-C3. Campi e workflow su misura
-
-	•	Il cliente può definire quali informazioni l’agente deve raccogliere per il suo caso specifico (es. un trasportatore vuole “numero targa” e “orario di consegna”, un ristorante vuole “numero di persone” e “allergie”)
-	•	Il cliente costruisce il proprio flusso di domande passo-passo, in ordine, per la sua richiesta tipica (es. prenotazione, preventivo, reclamo)
-
-C4. Isolamento dati tra clienti
-
-	•	I dati e le conversazioni di un’azienda non devono mai mescolarsi con quelle di un’altra azienda cliente
-	•	Ogni cliente ha la propria memoria, i propri clienti finali, le proprie regole — completamente separati
-
-C5. Ruoli e permessi interni
-
-	•	Dentro la stessa azienda cliente, possono esserci più persone che accedono al pannello (es. il titolare e un dipendente)
-	•	Non tutti devono poter modificare tutto: es. il dipendente vede le conversazioni ma solo il titolare modifica le regole di sconto
-
-C6. Libreria di moduli aggiuntivi
-
-	•	Oltre al template base, il cliente può attivare moduli extra a richiesta (es. modulo “prenotazioni con calendario”, modulo “catalogo prodotti”, modulo “raccolta recensioni”)
-	•	Ogni modulo è pensato per un bisogno specifico e si attiva/disattiva senza toccare il resto della configurazione
-
-C7. Anteprima prima di pubblicare
-
-	•	Ogni modifica che il cliente fa (tono, domande, regole) si può provare in una chat di test privata prima che diventi visibile ai clienti finali veri — per evitare che un errore di configurazione arrivi in produzione
 ## Cosa dice questo elenco, onestamente
 
 Le funzioni sono **108**. Le Fasi 0-3 (le prime 28) sono quelle che rendono il prodotto
