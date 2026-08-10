@@ -51,7 +51,12 @@ const CONNETTORI: Definizione[] = [
     kind: "fluida",
     nome: "Fluida",
     cosaFa: "Chi lavora qui, chi è in ferie oggi, chi c'è lunedì.",
-    come: "entrambi",
+    // ⚠️ Fluida non ha l'accesso col proprio account: si collega con la chiave.
+    // Tommaso, 10 Agosto 2026: «dobbiamo solo mettere che ognuno mette id e api,
+    // quello che serve, e usa la propria». Quindi niente link nascosto: il
+    // pulsante apre direttamente i due campi. Fingere un accesso che non esiste
+    // sarebbe peggio che chiedere una chiave.
+    come: "chiave",
     extra: [
       {
         campo: "companyId",
@@ -59,7 +64,7 @@ const CONNETTORI: Definizione[] = [
         aiuto: "Lo trovi in Fluida, nelle impostazioni dell'azienda.",
       },
     ],
-    aiutoChiave: "La chiave API di Fluida, dalle impostazioni del tuo account.",
+    aiutoChiave: "La tua chiave API, dalle impostazioni del tuo account Fluida.",
   },
   {
     kind: "microsoft",

@@ -448,10 +448,12 @@ function bigliettoValido(stato: string, userId: string, kind: ConnectorKind): bo
  * fosse lo dice il biglietto firmato, che quel dato ce l'ha già dentro. Era
  * ridondante fin dall'inizio: adesso serve.
  */
-export function ritornoPer(base: string, kind: ConnectorKind): string {
-  return kind === "microsoft"
-    ? `${base}/api/profile`
-    : `${base}/api/profile?ritorno=${kind}`;
+export function ritornoPer(base: string, _kind?: ConnectorKind): string {
+  // ⚠️ **Uno solo, per tutti.** Prima Microsoft tornava nudo e Google con la
+  // coda, e quella differenza e' costata un `redirect_uri_mismatch` da Google:
+  // due indirizzi diversi sono due cose da registrare, quindi due cose da
+  // sbagliare. Chi sia il connettore lo dice il biglietto firmato, sempre.
+  return `${base}/api/profile`;
 }
 
 /** Quale connettore era, letto dal biglietto. Serve quando manca la coda. */
