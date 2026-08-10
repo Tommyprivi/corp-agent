@@ -644,6 +644,37 @@ Fissate da Tommaso il 9 Agosto 2026. **Non sono consigli: sono la porta.**
 
 ---
 
+
+### Laboratorio creazione agenti — testo di Tommaso, 9 Agosto 2026
+
+> ⚠️ **Copiato parola per parola su sua richiesta** («mettile nel percorso però così
+> scritte come sono»). Non riassumerlo e non riscriverlo: quando si costruisce, si
+> torna qui e si controlla riga per riga.
+
+• Livello 1 — Fai da te (incluso nel piano):
+
+• Base: capire la struttura di un agente esistente, cambiare un parametro singolo, vedere l'effetto
+
+• Intermedio: costruire condizioni logiche multiple, collegare variabili di stato, testare con simulazioni di conversazioni complesse
+
+• Avanzato: costruire agenti che orchestrano altri agenti, definire guardrail propri, ottimizzare i costi token
+
+• Livello 2 — Assistito da IA: descrivi a parole l'agente voluto, un meta-agente lo traduce in agente funzionante, pronto da rifinire
+
+• Livello 3 — Servizio del team CorpAgent: intervista breve, il team costruisce su misura, prezzo premium (tempo umano)
+
+• Sandbox di test: prova contro conversazioni reali anonimizzate, non chat finte
+
+• Galleria personale con storico versioni, si torna indietro se una modifica peggiora le prestazioni
+
+• Badge di competenza tecnica reale (es. "ha costruito un agente con orchestrazione multi-livello"), non completamento tutorial
+
+• Marketplace: pubblica o tieni privato, badge autore visibile, percentuale sui ricavi se altri attivano il tuo agente, dashboard "i miei agenti pubblicati"
+
+• Sei Regole obbligatorie prima della pubblicazione: logica documentata, test su casi veri dell'ambito, test sui casi limite, guardrail verificati attivamente (si cerca di romperli), soglia minima di qualità, revisione periodica dopo update modelli o volume di conversazioni
+
+---
+
 ## FASE 9 — Il marketplace e chi guadagna
 
 | Ordine | Funzione |
@@ -710,6 +741,123 @@ compra al livello superiore.
 
 > **Spostata in fondo da Tommaso il 9 Agosto 2026:** *«la fase 5 alla fine di tutto»*.
 > Serve a te, non ai clienti: finche' non ci sono clienti non c'e' niente da guardare.
+
+---
+
+
+# LE FASI EXTRA — testo di Tommaso, 9 Agosto 2026
+
+> ⚠️ **Copiate parola per parola su sua richiesta.** Vengono **dopo** le fasi numerate:
+> non perché valgano meno, ma perché due di queste tre non aspettano codice — aspettano
+> decisioni di business (un fornitore, un margine, un listino). Si aprono quando quelle
+> decisioni ci sono, non prima.
+
+## Fase Extra A — Dispositivi CorpAgent (hardware a marchio proprio)
+
+Logica:
+
+• Il cliente, dalla sezione "Richieste extra" del sito, può ordinare un dispositivo (es. scanner) direttamente da CorpAgent
+
+• Flusso: cliente ordina → tu ricevi la notifica dell'ordine → tu acquisti il dispositivo dal fornitore → tu lo spedisci/consegni al cliente → il dispositivo arriva già pronto per integrarsi con l'agente (pre-configurato o con istruzioni di collegamento)
+
+• Prezzo: deve includere il costo del dispositivo + il tuo margine + eventualmente un costo di configurazione
+
+• Stato ordine: il cliente deve poter vedere lo stato (ordinato → in spedizione → consegnato) nella stessa sezione richieste
+
+Cosa serve prima di attivarlo:
+
+• Un fornitore identificato per gli scanner (con prezzo all'ingrosso noto)
+
+• Un margine deciso (es. compri a 30€, vendi a 50€)
+
+• Un modo per gestire pagamento anticipato del cliente prima che tu acquisti (per non rischiare capitale tuo)
+
+⚠️ **Dipende dalla Fase 4** (Stripe): senza pagamenti non c'è il «pagamento anticipato»,
+e senza quello ogni ordine è capitale tuo immobilizzato.
+
+---
+
+## Fase Extra B — Dispositivi esterni (integrazione di hardware che il cliente ha già)
+
+Logica:
+
+• Il cliente scrive nella sezione "Richieste extra" che vuole integrare un dispositivo che possiede già (es. "ho già uno scanner Zebra modello X, voglio collegarlo")
+
+• Questo è un servizio di integrazione, non una vendita di prodotto: il cliente paga per il lavoro di far parlare quel dispositivo con l'agente
+
+• Flusso: richiesta → tu valuti la fattibilità (dipende dal modello/marca) → dai un preventivo al cliente → cliente paga → tu fai l'integrazione
+
+• Prezzo: a preventivo caso per caso, non fisso, perché ogni dispositivo è diverso
+
+Cosa serve prima di attivarlo:
+
+• Una lista di dispositivi/marche che sai già di poter integrare (per non promettere lavoro su cose che non sai se sono fattibili)
+
+• Un modo per il cliente di descrivere il dispositivo (marca, modello, come si connette) nel form di richiesta
+
+⚠️ La riga più importante è **«per non promettere lavoro su cose che non sai se sono
+fattibili»**: è la stessa regola dei sei punti sugli agenti, applicata all'hardware.
+
+---
+
+## Fase Extra C — Personalizzazione per settore (multi-tenant), funzioni estese
+
+### C1. Template di settore
+
+• Al momento dell'iscrizione, il cliente scegli un settore di partenza (trasporti, ristorazione, retail, logistica, ecc.) che carica un template pre-impostato con tono, domande frequenti e workflow tipici di quel settore
+
+• Ogni template è un punto di partenza, non una gabbia: tutto resta modificabile dopo
+
+> ✅ **Esiste già in parte**: i Kit per 5 mestieri della Fase 0.
+
+### C2. Pannello di personalizzazione self-service
+
+• Il cliente accede a un pannello (senza scrivere codice) dove modifica: tono di voce dell'agente (formale/informale), le domande frequenti specifiche della sua azienda, le regole particolari (es. sconti clienti abituali, orari di risposta)
+
+• Ogni modifica si applica subito alla conversazione, senza bisogno del tuo intervento
+
+> 🔧 **In parte**: oggi tono e regole si cambiano parlando col Master Builder. Manca il
+> pannello a caselle.
+
+### C3. Campi e workflow su misura
+
+• Il cliente può definire quali informazioni l'agente deve raccogliere per il suo caso specifico (es. un trasportatore vuole "numero targa" e "orario di consegna", un ristorante vuole "numero di persone" e "allergie")
+
+• Il cliente costruisce il proprio flusso di domande passo-passo, in ordine, per la sua richiesta tipica (es. prenotazione, preventivo, reclamo)
+
+### C4. Isolamento dati tra clienti
+
+• I dati e le conversazioni di un'azienda non devono mai mescolarsi con quelle di un'altra azienda cliente
+
+• Ogni cliente ha la propria memoria, i propri clienti finali, le proprie regole — completamente separati
+
+> ✅ **C'è dal primo giorno**, ed è il database a garantirlo, non il codice: la sicurezza
+> per riga di Neon. Provato più volte — un altro utente vede **zero righe**, comprese le
+> credenziali dei connettori.
+
+### C5. Ruoli e permessi interni
+
+• Dentro la stessa azienda cliente, possono esserci più persone che accedono al pannello (es. il titolare e un dipendente)
+
+• Non tutti devono poter modificare tutto: es. il dipendente vede le conversazioni ma solo il titolare modifica le regole di sconto
+
+> ⬜ È la **Fase 12**, righe 67-70.
+
+### C6. Libreria di moduli aggiuntivi
+
+• Oltre al template base, il cliente può attivare moduli extra a richiesta (es. modulo "prenotazioni con calendario", modulo "catalogo prodotti", modulo "raccolta recensioni")
+
+• Ogni modulo è pensato per un bisogno specifico e si attiva/disattiva senza toccare il resto della configurazione
+
+> La tabella `modules` esiste dalla migrazione 0002 e non è mai stata usata: è il posto
+> giusto quando si arriva qui.
+
+### C7. Anteprima prima di pubblicare
+
+• Ogni modifica che il cliente fa (tono, domande, regole) si può provare in una chat di test privata prima che diventi visibile ai clienti finali veri — per evitare che un errore di configurazione arrivi in produzione
+
+> 🔧 **In parte**: la chat del sito *è* già la prova. Manca il confine dichiarato fra
+> «stai provando» e «stai rispondendo a clienti veri» — ed è tutta la differenza.
 
 ---
 
