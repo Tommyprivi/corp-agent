@@ -1098,3 +1098,70 @@ export async function saveByokKey(key: string | null): Promise<{ byokLast4: stri
   if (!response.ok) throw await readError(response);
   return (await response.json()) as { byokLast4: string | null };
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// I CONNETTORI — Fase 5
+// ─────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ Quello che passa di qui è **volutamente magro**: quale servizio, come si
+// chiama, se funziona. Le credenziali non arrivano mai al browser, nemmeno un
+// istante dopo averle scritte. Un valore che non esce dal server non può
+// finire in un registro, in una schermata d'errore o nella cronologia.
+
+export type ConnectorKind =
+  | "fluida" | "google" | "microsoft" | "maps"
+  | "shopify" | "stripe_shop" | "sheets" | "notion" | "custom";
+
+export interface Connessione {
+  kind: ConnectorKind;
+  label: string | null;
+  status: "connected" | "error" | "expired" | "revoked";
+  meta: Record<string, unknown>;
+  lastOkAt: string | null;
+  lastError: string | null;
+}
+
+export async function listConnectors(): Promise<Connessione[]> {
+  const r = await fetch("/api/profile?connettori=1", { credentials: "same-origin" });
+  if (!r.ok) throw await readError(r);
+  return ((await r.json()) as { connections: Connessione[] }).connections;
+}
+
+/**
+ * Dove mandare l'utente per fare l'accesso col **suo** account.
+ *
+ * ⚠️ Non apriamo noi la finestra e non facciamo redirect da qui: restituiamo
+ * l'indirizzo e lo mette il chiamante su un `<a>`. Un `window.open` partito da
+ * codice viene bloccato dai browser se non nasce da un clic vero, e il blocco
+ * è silenzioso: il pulsante sembrerebbe rotto.
+ */
+export async function connectorLoginUrl(kind: ConnectorKind): Promise<string> {
+  const r = await fetch(`/api/profile?accedi=${kind}`, { credentials: "same-origin" });
+  const corpo = (await r.json()) as { url?: string; error?: string };
+  if (!r.ok || !corpo.url) throw new ApiError(r.status, corpo.error ?? "Accesso non disponibile.");
+  return corpo.url;
+}
+
+/** Per i servizi che ancora si collegano con una chiave incollata. */
+export async function connectWithKey(input: {
+  kind: ConnectorKind;
+  secret: string;
+  label?: string;
+  meta?: Record<string, unknown>;
+}): Promise<void> {
+  const r = await fetch("/api/profile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ collega: input }),
+  });
+  if (!r.ok) throw await readError(r);
+}
+
+export async function disconnectConnector(kind: ConnectorKind): Promise<void> {
+  const r = await fetch(`/api/profile?connettore=${kind}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!r.ok) throw await readError(r);
+}

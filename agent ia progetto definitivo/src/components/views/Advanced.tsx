@@ -3,6 +3,7 @@ import MyAgents from "./MyAgents";
 import AgentCatalog from "./AgentCatalog";
 import Knowledge from "./Knowledge";
 import WhatsAppSettings from "./WhatsAppSettings";
+import Connectors from "./Connectors";
 import Billing from "./Billing";
 import type { PresetAgent, RoleAgent } from "../../types";
 
@@ -15,7 +16,7 @@ interface AdvancedProps {
   onActivatePreset: (agent: PresetAgent, systemPrompt: string) => Promise<void> | void;
 }
 
-type Tab = "agents" | "catalog" | "memory" | "whatsapp" | "account";
+type Tab = "agents" | "catalog" | "memory" | "connectors" | "whatsapp" | "account";
 
 /**
  * Impostazioni Avanzate: dove sta tutto quello che non serve all'ingresso.
@@ -38,6 +39,7 @@ export default function Advanced({
             <Tab label="I miei agenti" active={tab === "agents"} onClick={() => setTab("agents")} />
             <Tab label="Agenti pronti" active={tab === "catalog"} onClick={() => setTab("catalog")} />
             <Tab label="Memoria" active={tab === "memory"} onClick={() => setTab("memory")} />
+            <Tab label="Connettori" active={tab === "connectors"} onClick={() => setTab("connectors")} />
             <Tab label="WhatsApp" active={tab === "whatsapp"} onClick={() => setTab("whatsapp")} />
             <Tab label="Account e piano" active={tab === "account"} onClick={() => setTab("account")} />
           </div>
@@ -59,6 +61,7 @@ export default function Advanced({
         />
       )}
       {tab === "memory" && <Knowledge />}
+      {tab === "connectors" && <Connectors />}
       {tab === "whatsapp" && <WhatsAppSettings />}
       {tab === "account" && <Billing />}
     </div>
