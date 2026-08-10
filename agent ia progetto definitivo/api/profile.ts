@@ -27,7 +27,9 @@ import {
   collega,
   collegamenti,
   concludiAccesso,
+  kindDalBiglietto,
   prova,
+  ritornoPer,
   stacca,
   type ConnectorKind,
 } from "./_lib/connectors.js";
@@ -86,18 +88,27 @@ export default {
     // ⚠️ L'indirizzo di ritorno deve combaciare **carattere per carattere** con
     // quello registrato presso Google/Microsoft: e' la loro difesa contro chi
     // dirotta i codici, e il primo motivo per cui questi collegamenti falliscono.
-    const ritorno = `${origine(request)}/api/profile?ritorno=`;
+    //
+    // ⚠️ Non e' uguale per tutti: Microsoft vieta la coda `?ritorno=` alle app
+    // aperte agli account personali. Il perche' sta in `ritornoPer()`.
+    const base = origine(request);
 
     const accedi = url.searchParams.get("accedi") as ConnectorKind | null;
     if (request.method === "GET" && accedi) {
-      const esito = avviaAccesso(accedi, user.id, ritorno + accedi);
+      const esito = avviaAccesso(accedi, user.id, ritornoPer(base, accedi));
       return "url" in esito ? json(esito, 200) : json({ error: esito.errore }, 400);
     }
 
-    const tornato = url.searchParams.get("ritorno") as ConnectorKind | null;
-    if (request.method === "GET" && tornato) {
-      const codice = url.searchParams.get("code");
-      const stato = url.searchParams.get("state") ?? "";
+    const codiceInMano = url.searchParams.get("code");
+    const statoInMano = url.searchParams.get("state") ?? "";
+    // Chi torna con la coda dice da se' chi e'; chi torna nudo (Microsoft) lo
+    // dice col biglietto.
+    const tornato = (url.searchParams.get("ritorno") ??
+      (statoInMano ? kindDalBiglietto(statoInMano) : null)) as ConnectorKind | null;
+
+    if (request.method === "GET" && tornato && (codiceInMano || url.searchParams.get("error"))) {
+      const codice = codiceInMano;
+      const stato = statoInMano;
       const rifiuto = url.searchParams.get("error");
 
       // ⚠️ Si risponde con una REDIREZIONE, non con JSON: qui ci arriva il
@@ -107,12 +118,12 @@ export default {
       const torna = (esito: string) =>
         new Response(null, {
           status: 302,
-          headers: { Location: `${origine(request)}/?connettore=${tornato}&esito=${encodeURIComponent(esito)}` },
+          headers: { Location: `${base}/?connettore=${tornato}&esito=${encodeURIComponent(esito)}` },
         });
 
       if (rifiuto || !codice) return torna(rifiuto === "access_denied" ? "annullato" : "errore");
 
-      const esito = await concludiAccesso(tornato, user.id, codice, stato, ritorno + tornato);
+      const esito = await concludiAccesso(tornato, user.id, codice, stato, ritornoPer(base, tornato));
       return torna(esito.ok === true ? "ok" : esito.perche);
     }
 

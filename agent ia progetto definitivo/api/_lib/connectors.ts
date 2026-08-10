@@ -429,6 +429,44 @@ function bigliettoValido(stato: string, userId: string, kind: ConnectorKind): bo
   }
 }
 
+/**
+ * Dove torna l'utente dopo aver detto «autorizzo».
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ MICROSOFT NON AMMETTE LA CODA `?ritorno=`, E NON È UN CAPRICCIO
+ * ─────────────────────────────────────────────────────────────────────────
+ * Un'app aperta anche agli **account personali** (Hotmail, Outlook.com) non
+ * può registrare un indirizzo di ritorno con una stringa di query. Il portale
+ * lo rifiuta secco: *«L'URL non può contenere una stringa di query»*.
+ *
+ * La ragione è sensata: con gli account personali chiunque nel mondo può
+ * autorizzare l'app, e un parametro nell'indirizzo è una cosa in più che
+ * qualcuno può provare a piegare. Google, che resta nel recinto di un progetto,
+ * la coda la accetta.
+ *
+ * Quindi per Microsoft si torna sull'indirizzo nudo — e **quale** connettore
+ * fosse lo dice il biglietto firmato, che quel dato ce l'ha già dentro. Era
+ * ridondante fin dall'inizio: adesso serve.
+ */
+export function ritornoPer(base: string, kind: ConnectorKind): string {
+  return kind === "microsoft"
+    ? `${base}/api/profile`
+    : `${base}/api/profile?ritorno=${kind}`;
+}
+
+/** Quale connettore era, letto dal biglietto. Serve quando manca la coda. */
+export function kindDalBiglietto(stato: string): ConnectorKind | null {
+  try {
+    const [parte] = stato.split(".");
+    const quale = Buffer.from(parte, "base64url").toString("utf8").split("|")[1];
+    // ⚠️ Non ci si fida ancora: qui si legge soltanto. La firma la controlla
+    // `bigliettoValido` un attimo dopo, ed è quella che decide.
+    return (quale as ConnectorKind) || null;
+  } catch {
+    return null;
+  }
+}
+
 /** L'indirizzo dove mandare l'utente per fare l'accesso. */
 export function avviaAccesso(
   kind: ConnectorKind,
