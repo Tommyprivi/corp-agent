@@ -1165,3 +1165,55 @@ export async function disconnectConnector(kind: ConnectorKind): Promise<void> {
   });
   if (!r.ok) throw await readError(r);
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// LE RICHIESTE DELLE AZIENDE — Direzione finale, 10 Agosto 2026
+// ─────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ Sono le uniche chiamate del progetto che NON hanno bisogno di un accesso:
+// chi compila il form non ha un account, e non ne avrà uno finché Tommaso non
+// gli consegna la sua versione. Per questo non passano da `credentials` né si
+// aspettano un 401.
+
+export interface StatoRichiesta {
+  azienda: string;
+  stato: "nuova" | "qualificata" | "in_lavoro" | "consegnata" | "chiusa";
+  creata_il: string;
+  aggiornata: string;
+}
+
+export async function creaRichiesta(d: {
+  azienda: string;
+  settore: string;
+  telefono: string;
+  email: string;
+  esigenza: string;
+  gettone: string;
+}): Promise<{ chiave: string; saluto: string }> {
+  const r = await fetch("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ richiesta: d }),
+  });
+  if (!r.ok) throw await readError(r);
+  return (await r.json()) as { chiave: string; saluto: string };
+}
+
+export async function parlaConQualifica(
+  chiave: string,
+  messaggio: string
+): Promise<{ risposta: string }> {
+  const r = await fetch("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ qualifica: { chiave, messaggio } }),
+  });
+  if (!r.ok) throw await readError(r);
+  return (await r.json()) as { risposta: string };
+}
+
+export async function leggiStatoRichiesta(chiave: string): Promise<StatoRichiesta> {
+  const r = await fetch(`/api/config?stato=${encodeURIComponent(chiave)}`);
+  if (!r.ok) throw await readError(r);
+  return (await r.json()) as StatoRichiesta;
+}

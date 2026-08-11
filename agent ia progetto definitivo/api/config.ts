@@ -29,9 +29,59 @@
 import { authMissing, availableProviders } from "./_lib/auth.js";
 import { dbConfigured } from "./_lib/db.js";
 import { chooseModel, fetchCatalog } from "./_lib/openrouter.js";
+import {
+  avvisaTommaso,
+  conversazione,
+  cosaManca,
+  datiRichiesta,
+  istruzioniQualifica,
+  nuovaRichiesta,
+  scriviInRichiesta,
+  statoRichiesta,
+  umano,
+  type DatiRichiesta,
+} from "./_lib/richieste.js";
+
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 export default {
   async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    // ─────────────────────────────────────────────────────────────────
+    // LE RICHIESTE DELLE AZIENDE — Direzione finale, 10 Agosto 2026
+    // ─────────────────────────────────────────────────────────────────
+    //
+    //   POST { richiesta }         → una nuova richiesta dal form
+    //   POST { qualifica }         → una battuta con l'agente
+    //   GET  ?stato=<chiave>       → dove sta la mia pratica
+    //
+    // ⚠️ Vivono in `config.ts` e non in un file loro per la ragione di sempre:
+    // **Vercel Hobby ammette 12 funzioni** e siamo esattamente a 12. La casa
+    // però non è casuale: `config` è già l'indirizzo pubblico e senza accesso
+    // del progetto, e queste sono le uniche altre due cose che il mondo può
+    // chiamare senza essere nessuno.
+    if (request.method === "POST") {
+      let corpo: Record<string, unknown>;
+      try {
+        corpo = (await request.json()) as Record<string, unknown>;
+      } catch {
+        return json({ error: "Corpo della richiesta illeggibile." }, 400);
+      }
+
+      if (corpo.richiesta) return await creaRichiesta(corpo);
+      if (corpo.qualifica) return await rispondiQualifica(corpo);
+      return json({ error: "Non so cosa vuoi fare." }, 400);
+    }
+
+    if (request.method === "GET" && url.searchParams.get("stato")) {
+      const riga = await statoRichiesta(url.searchParams.get("stato") as string);
+      // ⚠️ Stessa risposta per «chiave sbagliata» e «richiesta inesistente»:
+      // distinguerle permetterebbe di indovinare quali chiavi esistono.
+      if (!riga) return json({ error: "Richiesta non trovata." }, 404);
+      return json(riga, 200);
+    }
+
     if (request.method !== "GET") {
       return json({ error: "Serve una richiesta GET." }, 405);
     }
@@ -40,7 +90,7 @@ export default {
     // Passa da qui e non direttamente da OpenRouter per un motivo pratico:
     // così il browser non chiama un dominio esterno a ogni caricamento, e noi
     // teniamo il catalogo in memoria per dieci minuti.
-    if (new URL(request.url).searchParams.get("models") !== null) {
+    if (url.searchParams.get("models") !== null) {
       try {
         const catalog = await fetchCatalog();
 
@@ -96,4 +146,132 @@ function json(body: unknown, status: number): Response {
       "Cache-Control": "no-store",
     },
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// UNA NUOVA RICHIESTA
+// ─────────────────────────────────────────────────────────────────────────
+
+async function creaRichiesta(corpo: Record<string, unknown>): Promise<Response> {
+  const d = corpo.richiesta as Partial<DatiRichiesta> & { gettone?: string };
+
+  // ⚠️ L'ordine conta: prima si controlla che sia una persona, poi che i campi
+  // ci siano. Al contrario, un programma ostile scoprirebbe le regole di
+  // validazione senza aver mai superato Turnstile.
+  if (!(await umano(d.gettone))) {
+    return json({ error: "Non riesco a verificare che tu sia una persona. Ricarica e riprova." }, 403);
+  }
+
+  const manca = cosaManca(d);
+  if (manca) return json({ error: manca }, 400);
+
+  const dati: DatiRichiesta = {
+    azienda: d.azienda as string,
+    settore: d.settore as string,
+    telefono: d.telefono as string,
+    email: d.email as string,
+    esigenza: d.esigenza as string,
+  };
+
+  const { chiave } = await nuovaRichiesta(dati);
+
+  // ⚠️ Prima si mette al sicuro, poi si avvisa — e senza aspettare. Se Resend
+  // fosse lento, l'imprenditore vedrebbe la rotella girare per otto secondi
+  // dopo aver premuto «invia», e penserebbe di aver sbagliato qualcosa.
+  void avvisaTommaso(dati, chiave);
+
+  // La prima frase dell'agente, salvata subito: al primo caricamento la chat
+  // ha già qualcosa da mostrare, senza un giro in più al modello.
+  const saluto =
+    `Ciao. Ho letto la richiesta di ${dati.azienda}. ` +
+    "Ti faccio tre domande veloci, così arriviamo preparati: " +
+    "qual è la cosa che oggi vi fa perdere più tempo con i clienti?";
+  await scriviInRichiesta(chiave, "agente", saluto);
+
+  return json({ chiave, saluto }, 200);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// L'AGENTE DI PRIMA QUALIFICA
+// ─────────────────────────────────────────────────────────────────────────
+
+async function rispondiQualifica(corpo: Record<string, unknown>): Promise<Response> {
+  const q = corpo.qualifica as { chiave?: string; messaggio?: string };
+  if (!q?.chiave || !q.messaggio?.trim()) {
+    return json({ error: "Serve la richiesta e un messaggio." }, 400);
+  }
+
+  const dati = await datiRichiesta(q.chiave);
+  if (!dati) return json({ error: "Richiesta non trovata." }, 404);
+
+  const quanti = await scriviInRichiesta(q.chiave, "azienda", q.messaggio.trim());
+  if (quanti === -2) {
+    return json(
+      {
+        risposta:
+          "Ti ho fatto abbastanza domande — il resto lo vediamo per iscritto. " +
+          "Scrivici a corpagent7@gmail.com e ti rispondiamo noi.",
+      },
+      200
+    );
+  }
+
+  const chiave = process.env.OPENROUTER_API_KEY;
+  if (!chiave) {
+    return json(
+      { risposta: "Grazie. Scrivici a corpagent7@gmail.com e continuiamo da lì." },
+      200
+    );
+  }
+
+  const storia = await conversazione(q.chiave);
+  try {
+    const r = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${chiave}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://corpagent.vercel.app",
+        "X-Title": "CorpAgent",
+      },
+      body: JSON.stringify({
+        // ⚠️ Modello leggero di proposito. Sono tre domande a un imprenditore,
+        // non un ragionamento: qui conta che risponda **subito**, perché chi ha
+        // appena compilato un form ha ancora un piede fuori dalla porta.
+        model: "openai/gpt-4o-mini",
+        max_tokens: 300,
+        temperature: 0.6,
+        messages: [
+          { role: "system", content: istruzioniQualifica(dati) },
+          ...storia.map((m) => ({
+            role: m.ruolo === "agente" ? "assistant" : "user",
+            content: m.testo,
+          })),
+        ],
+      }),
+      signal: AbortSignal.timeout(25_000),
+    });
+
+    const body = (await r.json()) as {
+      choices?: { message?: { content?: string } }[];
+    };
+    const risposta =
+      body.choices?.[0]?.message?.content?.trim() ||
+      "Grazie. Continuiamo per email: scrivici a corpagent7@gmail.com.";
+
+    await scriviInRichiesta(q.chiave, "agente", risposta);
+    return json({ risposta }, 200);
+  } catch {
+    // ⚠️ Il messaggio dell'azienda è **già salvato** sopra: anche se il modello
+    // non risponde, quello che ha scritto non si perde. È la differenza fra un
+    // contatto tiepido e un contatto perso.
+    return json(
+      {
+        risposta:
+          "Scusa, ho avuto un problema tecnico. Ma la tua richiesta è arrivata: " +
+          "scrivici a corpagent7@gmail.com e riprendiamo da lì.",
+      },
+      200
+    );
+  }
 }

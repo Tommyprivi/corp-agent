@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import Landing from "./components/views/Landing";
+import Richiesta from "./components/views/Richiesta";
+import StatoRichiesta from "./components/views/StatoRichiesta";
 import Auth from "./components/Auth";
 import MasterChat from "./components/MasterChat";
 import Advanced from "./components/views/Advanced";
@@ -55,6 +57,13 @@ export default function App() {
   const notify = useNotify();
 
   const [wantsIn, setWantsIn] = useState(false);
+  // ⚠️ Non c'è un router: l'indirizzo si legge una volta sola all'avvio. Basta
+  // e avanza per tre pagine pubbliche che non navigano fra loro, e una
+  // libreria di instradamento in più sarebbe peso sul primo caricamento —
+  // cioè sulla pagina che un imprenditore vede per prima.
+  const [percorso] = useState(() =>
+    typeof window === "undefined" ? "/" : window.location.pathname.replace(/\/$/, "") || "/"
+  );
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [justAnswered, setJustAnswered] = useState<SurveyAnswers | null>(null);
@@ -118,11 +127,31 @@ export default function App() {
   }
 
   if (!session) {
-    return wantsIn ? (
-      <Auth onDone={setJustAnswered} />
-    ) : (
-      <Landing onStart={() => setWantsIn(true)} />
-    );
+    // ─────────────────────────────────────────────────────────────────
+    // DIREZIONE FINALE, 10 Agosto 2026 — la porta pubblica è UNA SOLA
+    // ─────────────────────────────────────────────────────────────────
+    // «Pubblico va solo la landing con il form di contatto aziende. Tutto il
+    // resto resta privato finché non c'è un cliente reale collegato.»
+    //
+    // ⚠️ La vecchia vetrina con «Prova CorpAgent» NON è stata cancellata: sta
+    // ancora in `Landing.tsx` e si raggiunge da `/vetrina`. Serve il giorno in
+    // cui il prodotto si apre da solo — e cancellare due mesi di lavoro per un
+    // cambio di strategia sarebbe stato uno spreco, non una pulizia.
+    //
+    // ⚠️ L'ingresso vero vive su `/entra`, e nessuna pagina pubblica lo linka.
+    // Nascondere una porta però non è chiuderla: chi conoscesse l'indirizzo
+    // entrerebbe. La serratura vera è l'elenco degli account ammessi, e va
+    // messa prima di far girare il link della vetrina.
+    if (percorso.startsWith("/richiesta/")) {
+      return <StatoRichiesta chiave={percorso.slice("/richiesta/".length)} />;
+    }
+    if (percorso === "/entra" || wantsIn) {
+      return <Auth onDone={setJustAnswered} />;
+    }
+    if (percorso === "/vetrina") {
+      return <Landing onStart={() => setWantsIn(true)} />;
+    }
+    return <Richiesta />;
   }
 
   // Entrato, ma le tre domande non risultano fatte: l'ingresso riprende dalla
