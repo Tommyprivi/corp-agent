@@ -815,3 +815,95 @@ body {
   font-family: "GeistMono", ui-monospace, monospace;
   font-feature-settings: "tnum" 1;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   GLI ALTRI DUE CARATTERI — 11 Agosto 2026
+   ─────────────────────────────────────────────────────────────────────────
+   Tommaso: «metti più font». Adesso sono quattro, e ognuno ha un mestiere —
+   perché quattro caratteri senza un mestiere ciascuno non sono ricchezza, sono
+   confusione:
+
+   · Boldonse        il titolo grande, da manifesto
+   · Big Shoulders   i titoli di sezione: condensato, sta su una riga sola
+   · Instrument Serif le frasi che devono suonare dette da una persona
+   · Geist Mono      numeri, etichette, cose «di strumento»
+   · Inter           tutto il resto, il testo che si legge davvero
+
+   ⚠️ Il testo lungo resta Inter e non si tocca. Un carattere caratteristico è
+   bello per tre parole e faticoso per trenta righe: la regola è display per
+   quello che si guarda, Inter per quello che si legge. */
+@font-face {
+  font-family: "BigShoulders";
+  font-style: normal;
+  font-weight: 600 800;
+  font-display: swap;
+  src: url("/fonts/bigshoulders-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "InstrumentSerif";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/instrumentserif-latin.woff2") format("woff2");
+}
+
+.font-sezione {
+  font-family: "BigShoulders", "Inter", system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.font-voce {
+  font-family: "InstrumentSerif", Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* ── Le animazioni in più ────────────────────────────────────────────────
+
+   ⚠️ Tutte dietro `prefers-reduced-motion`: chi ha chiesto meno movimento
+   vede la pagina ferma, con lo stesso contenuto. */
+
+/* Un bagliore che attraversa una scritta, una volta ogni tanto. */
+@keyframes lampo {
+  0%, 88% { background-position: 200% 0; }
+  100%    { background-position: -100% 0; }
+}
+
+/* Il respiro degli aloni di sfondo: 14 secondi, così lento che non si "vede"
+   muovere — si sente solo che la pagina è viva. */
+@keyframes respiro {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.07); opacity: 0.78; }
+}
+
+/* La riga di luce che scorre sul bordo superiore di una card al passaggio. */
+@keyframes filo {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anima-lampo,
+  .anima-respiro { animation: none !important; }
+}
+
+.anima-lampo {
+  background-size: 200% 100%;
+  animation: lampo 7s linear infinite;
+}
+
+.anima-respiro { animation: respiro 14s ease-in-out infinite; }
+
+/* Le card delle funzioni: si sollevano di due pixel e prendono luce. */
+.card-funzione {
+  transition: transform 260ms cubic-bezier(.16, 1, .3, 1),
+              border-color 260ms, background-color 260ms;
+}
+.card-funzione:hover { transform: translateY(-2px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .card-funzione:hover { transform: none; }
+}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Landing from "./components/views/Landing";
 import Richiesta from "./components/views/Richiesta";
 import StatoRichiesta from "./components/views/StatoRichiesta";
+import Legale from "./components/views/Legale";
 import Auth from "./components/Auth";
 import MasterChat from "./components/MasterChat";
 import Advanced from "./components/views/Advanced";
@@ -142,6 +143,12 @@ export default function App() {
     // Nascondere una porta però non è chiuderla: chi conoscesse l'indirizzo
     // entrerebbe. La serratura vera è l'elenco degli account ammessi, e va
     // messa prima di far girare il link della vetrina.
+    // ⚠️ I quattro documenti pubblici stanno PRIMA di ogni altra cosa: la
+    // spunta obbligatoria del form rimanda a `/privacy`, e una spunta che punta
+    // al nulla è peggio di nessuna spunta.
+    if (["/documentazione", "/privacy", "/termini", "/cookie"].includes(percorso)) {
+      return <Legale quale={percorso.slice(1) as "documentazione" | "privacy" | "termini" | "cookie"} />;
+    }
     if (percorso.startsWith("/richiesta/")) {
       return <StatoRichiesta chiave={percorso.slice("/richiesta/".length)} />;
     }

@@ -100,6 +100,7 @@ export default function Richiesta() {
         ) : (
           <Form gettone={gettone} onGettone={setGettone} onFatto={setInviata} />
         )}
+        <Funzioni />
         <Piede />
       </main>
     </div>
@@ -122,11 +123,11 @@ function Bagliori() {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
       <div
-        className="absolute -top-40 left-1/2 h-[560px] w-[900px] -translate-x-1/2 rounded-full blur-[120px]"
+        className="anima-respiro absolute -top-40 left-1/2 h-[560px] w-[900px] -translate-x-1/2 rounded-full blur-[120px]"
         style={{ background: `radial-gradient(closest-side, rgba(${LUCE}, 0.16), transparent)` }}
       />
       <div
-        className="absolute top-[45%] -right-40 h-[420px] w-[620px] rounded-full blur-[130px]"
+        className="anima-respiro absolute top-[45%] -right-40 h-[420px] w-[620px] rounded-full blur-[130px]"
         style={{ background: `radial-gradient(closest-side, rgba(${LUCE}, 0.09), transparent)` }}
       />
       <div
@@ -163,7 +164,7 @@ function Hero() {
               />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ background: `rgb(${LUCE})` }} />
             </span>
-            Lavoriamo con poche aziende alla volta
+            Lavoriamo con tante aziende insieme
           </p>
         </Compare>
 
@@ -174,10 +175,12 @@ function Hero() {
         </Compare>
 
         <Compare ritardo={160}>
-          <p className="mt-5 max-w-[30rem] text-[17px] leading-relaxed text-white/60">
+          <p className="mt-5 max-w-[30rem] text-[16px] leading-relaxed text-white/60 sm:text-[17px]">
             I tuoi clienti ti scrivono su WhatsApp a tutte le ore. Risponde un agente che
-            conosce i tuoi prezzi, i tuoi orari e le tue regole — e che quando non sa,
-            lo dice e chiama te.
+            conosce i tuoi prezzi, i tuoi orari e le tue regole — e che{" "}
+            <span className="font-voce text-[19px] text-white/85 sm:text-[21px]">
+              quando non sa, lo dice e chiama te.
+            </span>
           </p>
         </Compare>
 
@@ -358,6 +361,7 @@ function Form({
   const [accetto, setAccetto] = useState(false);
   const [attesa, setAttesa] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
+  const [guastoBot, setGuastoBot] = useState(false);
   const turnstileRef = useRef<HTMLDivElement>(null);
 
   // Turnstile invisibile: si carica solo qui, non su tutta l'app.
@@ -368,7 +372,19 @@ function Form({
     const monta = () => {
       const t = (window as unknown as { turnstile?: { render: (el: HTMLElement, o: unknown) => void } }).turnstile;
       if (!t || !turnstileRef.current) return;
-      t.render(turnstileRef.current, { sitekey: chiave, callback: onGettone, theme: "dark", size: "flexible" });
+      t.render(turnstileRef.current, {
+        sitekey: chiave,
+        callback: onGettone,
+        theme: "dark",
+        // ⚠️ Senza `error-callback` un guasto di Turnstile è una scatola rotta
+        // e muta accanto al pulsante: l'imprenditore vede qualcosa che non
+        // funziona, non capisce se è colpa sua, e chiude. Con questo almeno
+        // legge cosa fare.
+        "error-callback": () => setGuastoBot(true),
+        "expired-callback": () => onGettone(""),
+        retry: "auto",
+        "retry-interval": 2000,
+      });
     };
 
     if ((window as unknown as { turnstile?: unknown }).turnstile) return monta();
@@ -432,6 +448,16 @@ function Form({
         </div>
 
         <div ref={turnstileRef} className="mt-5" />
+        {guastoBot && (
+          <p className="mt-3 rounded-lg border border-amber-400/25 bg-amber-400/[0.07] px-3.5 py-2.5 text-[13px] leading-relaxed text-amber-200/90">
+            Il controllo anti-robot non è partito. Ricarica la pagina e riprova — oppure
+            scrivici direttamente a{" "}
+            <a href="mailto:corpagent7@gmail.com" className="cursor-pointer underline underline-offset-2">
+              corpagent7@gmail.com
+            </a>
+            : rispondiamo comunque.
+          </p>
+        )}
 
         <label className="mt-5 flex cursor-pointer items-start gap-3 text-[13px] leading-relaxed text-white/55">
           <input
@@ -756,15 +782,162 @@ function GuidaEmail() {
   );
 }
 
-function Piede() {
+// ─────────────────────────────────────────────────────────────────────────
+// TUTTE LE FUNZIONI
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ QUI DENTRO CI VA SOLO QUELLO CHE FUNZIONA DAVVERO.
+ *
+ * È la regola più importante di questa sezione, e vale più di qualunque scelta
+ * grafica. Ogni voce elencata è provata in produzione: se un imprenditore legge
+ * «risponde al telefono» e poi scopre che non è vero, non ha trovato una
+ * funzione mancante — ha scoperto che gli abbiamo mentito, e da lì non si
+ * torna. Le cose in programma stanno nel percorso, non in vetrina.
+ */
+const FUNZIONI: { gruppo: string; voci: { nome: string; cosa: string }[] }[] = [
+  {
+    gruppo: "Come parla",
+    voci: [
+      { nome: "WhatsApp", cosa: "Risponde ai messaggi dei clienti sul numero della tua azienda, a tutte le ore." },
+      { nome: "Vocali", cosa: "Ascolta i messaggi vocali e risponde a voce, con un tono naturale." },
+      { nome: "Telefonate", cosa: "Risponde al telefono in tempo reale, come farebbe una segretaria." },
+      { nome: "Foto e documenti", cosa: "Guarda la foto di uno scontrino o di una bolla e ne estrae i dati." },
+      { nome: "Ogni lingua", cosa: "Risponde in cinese a chi scrive in cinese. Senza configurare niente." },
+      { nome: "Anche sul sito", cosa: "La stessa memoria e gli stessi strumenti, nella chat del sito." },
+    ],
+  },
+  {
+    gruppo: "Cosa sa",
+    voci: [
+      { nome: "I tuoi documenti", cosa: "Listini, orari, regole, contratti: li legge e risponde con quelli." },
+      { nome: "Le eccezioni", cosa: "«La veranda solo d'estate» la ricorda, e a gennaio dice no." },
+      { nome: "Racconti a voce", cosa: "Gli spieghi l'attività parlando dieci minuti, e si configura da sé." },
+      { nome: "Ricerca sul web", cosa: "Se la risposta non è nei tuoi documenti, la cerca e la porta." },
+      { nome: "I tuoi programmi", cosa: "Legge i dati veri da gestionali e calendari, invece di indovinare." },
+      { nome: "Memoria che dura", cosa: "«Al signor Rossi sconto 10% fisso» se lo ricorda fra sei mesi." },
+    ],
+  },
+  {
+    gruppo: "Chi lo controlla",
+    voci: [
+      { nome: "Modalità Ghost", cosa: "All'inizio non manda niente da solo: approvi tu, una risposta alla volta." },
+      { nome: "Il controllore", cosa: "Ogni risposta passa un controllo. Uno sconto non autorizzato non parte." },
+      { nome: "Passa a te", cosa: "Quando non sa, lo dice al cliente e la richiesta arriva sul tuo telefono." },
+      { nome: "Riepilogo serale", cosa: "Ogni sera un messaggio con com'è andata la giornata." },
+      { nome: "Coda intelligente", cosa: "Se qualcosa si guasta, i messaggi si mettono in fila e partono dopo." },
+      { nome: "Dati separati", cosa: "Ogni azienda ha la sua memoria: nessun'altra la vede, lo garantisce il database." },
+    ],
+  },
+];
+
+function Funzioni() {
   return (
-    <footer className="mt-24 border-t border-white/[0.07] pt-7 text-[12.5px] text-white/50">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <span>CorpAgent · corpagent7@gmail.com</span>
-        <a href="/privacy" className="hover:text-white/60">
-          Privacy
-        </a>
+    <section id="funzioni" className="mt-24 sm:mt-32">
+      <Compare>
+        <p className="font-dato text-[11px] uppercase tracking-[0.12em]" style={{ color: `rgb(${LUCE})` }}>
+          Tutto quello che fa
+        </p>
+        <h2 className="font-sezione mt-2 text-[clamp(1.9rem,6vw,3rem)] leading-[0.94]">
+          Nessuna di queste
+          <br />
+          è in programma
+        </h2>
+        <p className="mt-3.5 max-w-[34rem] text-[14.5px] leading-relaxed text-white/55">
+          Sono tutte provate e funzionanti oggi. Quello che stiamo ancora costruendo non
+          lo trovi elencato qui: se te lo promettessimo e poi non ci fosse, non avresti
+          scoperto una funzione mancante — avresti scoperto che ti abbiamo mentito.
+        </p>
+      </Compare>
+
+      <div className="mt-11 space-y-11 sm:space-y-14">
+        {FUNZIONI.map((g, gi) => (
+          <Compare key={g.gruppo} ritardo={gi * 70}>
+            <h3 className="font-dato text-[11px] uppercase tracking-[0.12em] text-white/45">
+              {g.gruppo}
+            </h3>
+            {/* ⚠️ Una colonna sotto 640px. Due card affiancate su un telefono
+                danno righe di quattro parole, e un testo che va a capo ogni
+                quattro parole non si legge: si scorre e si salta. */}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {g.voci.map((v) => (
+                <div
+                  key={v.nome}
+                  className="card-funzione group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.022] p-4 hover:border-white/[0.16] hover:bg-white/[0.04]"
+                >
+                  {/* Il filo di luce che attraversa il bordo di sopra al passaggio. */}
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-x-0 top-0 h-px opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                    style={{
+                      background: `linear-gradient(90deg, transparent, rgb(${LUCE}), transparent)`,
+                    }}
+                  />
+                  <p className="text-[14px] font-medium text-white">{v.nome}</p>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-white/55">{v.cosa}</p>
+                </div>
+              ))}
+            </div>
+          </Compare>
+        ))}
       </div>
+
+      <Compare>
+        <p
+          className="font-voce mt-14 border-l-2 pl-5 text-[19px] leading-snug text-white/80 sm:text-[22px]"
+          style={{ borderColor: `rgba(${LUCE}, 0.5)` }}
+        >
+          Non c'è un'iscrizione e non c'è una prova da attivare da soli. Ogni azienda la
+          prepariamo a mano, partendo dal suo mestiere.
+        </p>
+      </Compare>
+    </section>
+  );
+}
+
+function Piede() {
+  const documenti = [
+    { href: "/documentazione", testo: "Come funziona" },
+    { href: "/privacy", testo: "Privacy" },
+    { href: "/termini", testo: "Termini" },
+    { href: "/cookie", testo: "Cookie" },
+  ];
+
+  return (
+    <footer className="mt-24 border-t border-white/[0.07] pt-7">
+      {/* ⚠️ In colonna sotto 640px: quattro link in fila su un telefono
+          diventano bersagli piccoli e appiccicati, e si sbaglia quello che si
+          tocca. In colonna hanno tutti la loro riga e il loro spazio. */}
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <Logo size={20} />
+            <span className="text-[13.5px] font-medium text-white/85">CorpAgent</span>
+          </div>
+          <a
+            href="mailto:corpagent7@gmail.com"
+            className="font-dato mt-2 block cursor-pointer text-[11.5px] text-white/50 transition-colors hover:text-white"
+          >
+            corpagent7@gmail.com
+          </a>
+        </div>
+
+        <nav className="flex flex-col gap-1 sm:flex-row sm:gap-5">
+          {documenti.map((d) => (
+            <a
+              key={d.href}
+              href={d.href}
+              className="font-dato cursor-pointer py-1.5 text-[11px] uppercase tracking-[0.08em] text-white/50 transition-colors duration-200 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:py-1"
+            >
+              {d.testo}
+            </a>
+          ))}
+        </nav>
+      </div>
+
+      <p className="font-dato mt-8 text-[10.5px] uppercase leading-relaxed tracking-[0.08em] text-white/25">
+        Nessun cookie di tracciamento · Caratteri ospitati da noi
+      </p>
     </footer>
   );
 }
