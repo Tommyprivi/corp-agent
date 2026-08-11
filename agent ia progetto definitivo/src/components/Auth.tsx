@@ -426,6 +426,13 @@ function LoginButtons({
         </button>
       )}
 
+      {/* ⚠️ L'email sta SOTTO Google, e non è un caso: un clic contro
+          «inventa una password e ricordatela» non è una preferenza di gusto,
+          è meno attrito. Chi non ha Google però non deve restare fuori dalla
+          porta il giorno della consegna — ed è questa la ragione per cui
+          l'email esiste. */}
+      {config.providers.includes("email") && <ConEmail />}
+
       {/* Apple compare solo con l'account sviluppatore (99 €/anno) configurato:
           finché manca, il pulsante non c'è e niente si rompe. */}
       {config.providers.includes("apple") && (
@@ -440,6 +447,181 @@ function LoginButtons({
       )}
     </div>
   );
+}
+
+/**
+ * Accesso ed entrata con email e password.
+ *
+ * ⚠️ Aperto solo dopo un clic su «oppure con email»: sta chiuso di proposito.
+ * Due campi vuoti sotto un pulsante fanno sembrare l'email la strada
+ * principale, e la strada principale è Google.
+ *
+ * ⚠️ NON C'È IL RECUPERO PASSWORD, e non è una svista: senza un dominio
+ * verificato non possiamo mandare email a nessuno tranne che a noi stessi, e un
+ * pulsante «ho dimenticato la password» che non manda niente è peggio che non
+ * averlo. Finché i clienti sono pochi e li conosciamo uno per uno, la password
+ * la reimpostiamo a mano. Quel giorno arriva presto: appena c'è il dominio.
+ */
+function ConEmail() {
+  const [aperto, setAperto] = useState(false);
+  const [nuovo, setNuovo] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [nome, setNome] = useState("");
+  const [attesa, setAttesa] = useState(false);
+  const [problema, setProblema] = useState<string | null>(null);
+
+  async function entra() {
+    setAttesa(true);
+    setProblema(null);
+    try {
+      const esito = nuovo
+        ? await authClient.signUp.email({
+            email: email.trim(),
+            password,
+            name: nome.trim() || email.trim().split("@")[0],
+          })
+        : await authClient.signIn.email({ email: email.trim(), password });
+
+      // ⚠️ Better Auth NON solleva un'eccezione quando le credenziali sono
+      // sbagliate: restituisce un oggetto con `error` dentro. Senza questo
+      // controllo la schermata direbbe «fatto» e non succederebbe niente —
+      // il modo peggiore di fallire.
+      const errore = (esito as { error?: { message?: string } })?.error;
+      if (errore) throw new Error(errore.message ?? "Non ha funzionato.");
+
+      // La sessione compare da sé: il componente sopra se ne accorge e prosegue.
+    } catch (error) {
+      setProblema(
+        error instanceof Error
+          ? traduci(error.message)
+          : "Non ha funzionato. Riprova."
+      );
+      setAttesa(false);
+    }
+  }
+
+  if (!aperto) {
+    return (
+      <button
+        onClick={() => setAperto(true)}
+        className="cursor-pointer py-1 text-[13px] text-[var(--text-secondary)] underline underline-offset-2 transition-colors hover:text-[var(--text-primary)]"
+      >
+        oppure con email e password
+      </button>
+    );
+  }
+
+  const pieno = email.trim().length > 3 && password.length >= 8;
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+      <div className="flex gap-1">
+        <MiniScheda attiva={!nuovo} onClick={() => setNuovo(false)}>
+          Ho già un accesso
+        </MiniScheda>
+        <MiniScheda attiva={nuovo} onClick={() => setNuovo(true)}>
+          È la prima volta
+        </MiniScheda>
+      </div>
+
+      <div className="mt-4 space-y-2.5">
+        {nuovo && (
+          <input
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            placeholder="Il tuo nome"
+            autoComplete="name"
+            className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-[16px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+          />
+        )}
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="La tua email"
+          autoComplete="email"
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-[16px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+        />
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && pieno) void entra();
+          }}
+          placeholder="Password"
+          // ⚠️ `new-password` quando si registra: al gestore di password del
+          // browser dice «proponine una». Con `current-password` proporrebbe
+          // quelle vecchie, che è l'opposto di quello che serve.
+          autoComplete={nuovo ? "new-password" : "current-password"}
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-[16px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+        />
+        {nuovo && (
+          <p className="text-[12px] text-[var(--text-secondary)]">Almeno 8 caratteri.</p>
+        )}
+      </div>
+
+      {problema && (
+        <p className="mt-3 rounded-lg bg-[var(--danger-soft,rgba(220,38,38,.1))] px-3 py-2 text-[12.5px] leading-relaxed text-[var(--danger,#dc2626)]">
+          {problema}
+        </p>
+      )}
+
+      <button
+        onClick={() => void entra()}
+        disabled={!pieno || attesa}
+        className="btn-grad mt-3.5 w-full cursor-pointer rounded-lg py-2.5 text-[14px] font-medium disabled:opacity-40"
+      >
+        {attesa ? "Un attimo…" : nuovo ? "Crea l'accesso" : "Entra"}
+      </button>
+
+      <p className="mt-2.5 text-[11.5px] leading-relaxed text-[var(--text-secondary)]">
+        Se dimentichi la password scrivici a corpagent7@gmail.com: te la
+        reimpostiamo noi.
+      </p>
+    </div>
+  );
+}
+
+function MiniScheda({
+  attiva,
+  onClick,
+  children,
+}: {
+  attiva: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-[12.5px] transition-colors ${
+        attiva
+          ? "bg-[var(--accent-soft)] font-medium text-[var(--text-primary)]"
+          : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * I messaggi di Better Auth arrivano in inglese e da manuale tecnico.
+ *
+ * ⚠️ «Invalid email or password» non dice **quale** dei due è sbagliato, ed è
+ * giusto così: dire «l'email non esiste» permetterebbe a chiunque di scoprire
+ * chi ha un accesso. La traduzione mantiene quella prudenza.
+ */
+function traduci(messaggio: string): string {
+  const m = messaggio.toLowerCase();
+  if (m.includes("invalid") && m.includes("password")) return "Email o password non corrispondono.";
+  if (m.includes("already") || m.includes("exist"))
+    return "Questa email ha già un accesso. Prova con «Ho già un accesso».";
+  if (m.includes("password") && m.includes("short")) return "La password deve avere almeno 8 caratteri.";
+  if (m.includes("not found")) return "Email o password non corrispondono.";
+  return messaggio;
 }
 
 function Notice({ title, body }: { title: string; body: string }) {

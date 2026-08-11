@@ -317,10 +317,9 @@ const DOCUMENTI: Record<
       },
       {
         titolo: "Cosa c'è, allora",
-        righe: ["Due cose tecniche, e nessuna delle due serve a seguirti:"],
-        elenco: [
-          "Cloudflare Turnstile — il controllo che distingue una persona da un programma quando invii il form. Usa un cookie tecnico che dura poco e serve solo a quello. Senza, il form sarebbe aperto ai programmi automatici.",
-          "Il cookie di sessione — esiste solo per chi ha un accesso a CorpAgent, cioè le aziende già clienti. Se stai leggendo la vetrina, non ce l'hai.",
+        righe: [
+          "Una cosa sola, e non serve a seguirti: il cookie di sessione, che esiste solo per chi ha un accesso a CorpAgent — cioè le aziende già clienti. Se stai leggendo la vetrina e stai compilando il form, non ce l'hai.",
+          "Il form di contatto non usa nessun cookie. Per capire se chi scrive è una persona ci basiamo su controlli che avvengono sul nostro server, senza scrivere niente nel tuo browser e senza coinvolgere servizi terzi.",
         ],
       },
       {

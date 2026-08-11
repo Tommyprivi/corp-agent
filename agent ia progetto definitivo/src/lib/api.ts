@@ -1190,7 +1190,6 @@ export async function creaRichiesta(d: {
   telefono: string;
   email: string;
   esigenza: string;
-  gettone: string;
   /** L'esca invisibile: se arriva piena, chi ha compilato non è una persona. */
   sito?: string;
 }): Promise<{ chiave: string; saluto: string }> {

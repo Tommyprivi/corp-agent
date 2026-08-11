@@ -73,9 +73,6 @@ const COPIONE: { chi: "cliente" | "agente"; testo: string; nota?: string }[] = [
 export default function Richiesta() {
   const [inviata, setInviata] = useState<{ chiave: string; saluto: string } | null>(null);
 
-  // Il gettone di Cloudflare, che arriva dal widget invisibile.
-  const [gettone, setGettone] = useState<string>("");
-
   return (
     <div
       className="on-dark relative min-h-screen overflow-x-hidden bg-[#050507] text-[#F5F5F7]"
@@ -98,7 +95,7 @@ export default function Richiesta() {
         {inviata ? (
           <ChatQualifica chiave={inviata.chiave} saluto={inviata.saluto} />
         ) : (
-          <Form gettone={gettone} onGettone={setGettone} onFatto={setInviata} />
+          <Form onFatto={setInviata} />
         )}
         <Funzioni />
         <Piede />
@@ -348,15 +345,7 @@ function Bolla({
 // IL FORM
 // ─────────────────────────────────────────────────────────────────────────
 
-function Form({
-  gettone,
-  onGettone,
-  onFatto,
-}: {
-  gettone: string;
-  onGettone: (g: string) => void;
-  onFatto: (v: { chiave: string; saluto: string }) => void;
-}) {
+function Form({ onFatto }: { onFatto: (v: { chiave: string; saluto: string }) => void }) {
   const [d, setD] = useState({ azienda: "", settore: "", telefono: "", email: "", esigenza: "" });
   // ⚠️ L'esca. Una persona non la vede e non la compila mai; certi programmi
   // riempiono ogni campo che trovano nel codice. Se arriva piena, la richiesta
@@ -366,45 +355,26 @@ function Form({
   const [accetto, setAccetto] = useState(false);
   const [attesa, setAttesa] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
-  const [guastoBot, setGuastoBot] = useState(false);
-  const turnstileRef = useRef<HTMLDivElement>(null);
 
-  // Turnstile invisibile: si carica solo qui, non su tutta l'app.
-  useEffect(() => {
-    const chiave = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) ?? "";
-    if (!chiave || !turnstileRef.current) return;
-
-    const monta = () => {
-      const t = (window as unknown as { turnstile?: { render: (el: HTMLElement, o: unknown) => void } }).turnstile;
-      if (!t || !turnstileRef.current) return;
-      t.render(turnstileRef.current, {
-        sitekey: chiave,
-        callback: onGettone,
-        theme: "dark",
-        // ⚠️ Senza `error-callback` un guasto di Turnstile è una scatola rotta
-        // e muta accanto al pulsante: l'imprenditore vede qualcosa che non
-        // funziona, non capisce se è colpa sua, e chiude. Con questo almeno
-        // legge cosa fare.
-        "error-callback": () => setGuastoBot(true),
-        "expired-callback": () => onGettone(""),
-        retry: "auto",
-        "retry-interval": 2000,
-      });
-    };
-
-    if ((window as unknown as { turnstile?: unknown }).turnstile) return monta();
-    const s = document.createElement("script");
-    s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-    s.async = true;
-    s.onload = monta;
-    document.head.appendChild(s);
-  }, [onGettone]);
+  // ⚠️ QUI C'ERA CLOUDFLARE TURNSTILE, ED È STATO TOLTO — Tommaso, 11 Agosto
+  // 2026: «togli il controllo antirobot».
+  //
+  // Il motivo pratico: su questo dominio restituiva la pagina d'errore di
+  // Cloudflare, quindi il primo effetto del «controllo di sicurezza» era
+  // impedire alle aziende vere di scrivere. Un controllo che ferma i clienti e
+  // non i programmi è peggio di nessun controllo.
+  //
+  // ⚠️ Il form NON è rimasto senza difese, e le due che restano sono invisibili
+  // a chi compila in buona fede: l'esca qui sotto e il limite di tre richieste
+  // all'ora dallo stesso posto (migrazione 0017). Sono più debole di Turnstile:
+  // se un giorno arrivasse spam vero, la strada è rimettere Turnstile con
+  // l'hostname configurato bene, non inventarne una terza.
 
   async function invia() {
     setErrore(null);
     setAttesa(true);
     try {
-      const r = await creaRichiesta({ ...d, gettone, sito: esca });
+      const r = await creaRichiesta({ ...d, sito: esca });
       suonoFatto();
       onFatto(r);
     } catch (e) {
@@ -475,17 +445,6 @@ function Form({
           </label>
         </div>
 
-        <div ref={turnstileRef} className="mt-5" />
-        {guastoBot && (
-          <p className="mt-3 rounded-lg border border-amber-400/25 bg-amber-400/[0.07] px-3.5 py-2.5 text-[13px] leading-relaxed text-amber-200/90">
-            Il controllo anti-robot di Cloudflare non è partito. Non è un problema: la
-            tua richiesta arriva lo stesso. Se preferisci, scrivici a{" "}
-            <a href="mailto:corpagent7@gmail.com" className="cursor-pointer underline underline-offset-2">
-              corpagent7@gmail.com
-            </a>
-            : rispondiamo comunque.
-          </p>
-        )}
 
         <label className="mt-5 flex cursor-pointer items-start gap-3 text-[13px] leading-relaxed text-white/55">
           <input

@@ -32,6 +32,10 @@ export function availableProviders(): string[] {
   const providers: string[] = [];
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) providers.push("google");
   if (process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET) providers.push("apple");
+  // ⚠️ L'email non ha chiavi da configurare: se il database c'è, funziona.
+  // Sta in fondo di proposito — nell'interfaccia Google resta il primo, perché
+  // è un clic contro «inventa una password e ricordatela».
+  providers.push("email");
   return providers;
 }
 
@@ -62,9 +66,33 @@ function build() {
     database: getPool(),
     secret: process.env.BETTER_AUTH_SECRET as string,
     baseURL: process.env.BETTER_AUTH_URL,
-    // In V1 si entra con Google o Apple, come dice la bibbia: niente password da
-    // inventare, niente email da confermare.
-    emailAndPassword: { enabled: false },
+    // ─────────────────────────────────────────────────────────────────
+    // ACCESSO CON EMAIL — chiesto da Tommaso l'11 Agosto 2026
+    // ─────────────────────────────────────────────────────────────────
+    // «Metti l'accesso con Google o per mail.» La bibbia diceva solo Google e
+    // Apple («niente password da inventare»), e la ragione era buona. Ma il
+    // prodotto adesso si consegna a un'azienda alla volta, e un titolare che non
+    // ha un account Google — o che non vuole usarlo per il lavoro — resterebbe
+    // fuori dalla porta il giorno della consegna.
+    //
+    // ⚠️ `requireEmailVerification: false` è una scelta consapevole, non una
+    // dimenticanza: oggi Resend, senza un dominio verificato, **consegna solo
+    // alla casella con cui ci siamo iscritti**. Un'email di conferma non
+    // arriverebbe mai al cliente, e la sua verrebbe bloccata su una schermata
+    // «controlla la posta» davanti a una posta che non riceve niente.
+    // Il giorno del dominio proprio, questa riga diventa `true`.
+    //
+    // ⚠️ Stessa ragione per il recupero password: non c'è. Se un cliente la
+    // dimentica, gliela reimpostiamo noi. È accettabile perché i clienti sono
+    // pochi e li conosciamo uno per uno — smette di esserlo appena diventano
+    // decine, e quel giorno serve il dominio.
+    emailAndPassword: {
+      enabled: true,
+      requireEmailVerification: false,
+      // Otto caratteri: sotto è indifendibile, sopra è un ostacolo che porta a
+      // scriversi la password su un foglietto.
+      minPasswordLength: 8,
+    },
     socialProviders: { ...google, ...apple },
   });
 }

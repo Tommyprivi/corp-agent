@@ -40,7 +40,6 @@ import {
   nuovaRichiesta,
   scriviInRichiesta,
   statoRichiesta,
-  umano,
   type DatiRichiesta,
 } from "./_lib/richieste.js";
 
@@ -158,31 +157,34 @@ async function creaRichiesta(
   corpo: Record<string, unknown>,
   request: Request
 ): Promise<Response> {
-  const d = corpo.richiesta as Partial<DatiRichiesta> & { gettone?: string; sito?: string };
+  const d = corpo.richiesta as Partial<DatiRichiesta> & { sito?: string };
 
   // ─────────────────────────────────────────────────────────────────
-  // ⚠️ SI DEGRADA, NON SI SPEGNE
+  // ⚠️ IL CONTROLLO ANTI-ROBOT È STATO TOLTO — Tommaso, 11 Agosto 2026
   // ─────────────────────────────────────────────────────────────────
-  // L'11 Agosto Turnstile ha smesso di partire su questo dominio, e finché
-  // restava l'unica difesa **nessuna azienda poteva mandare una richiesta**:
-  // il controllo falliva, il server rifiutava, e la vetrina era online.
+  // «Togli il controllo antirobot.» Deciso da lui, e il motivo pratico gli dà
+  // ragione: su questo dominio Turnstile restituiva la pagina d'errore di
+  // Cloudflare, quindi il suo primo effetto era impedire alle aziende vere di
+  // scrivere. Un controllo che ferma i clienti e non i programmi è peggio di
+  // nessun controllo.
   //
-  // Togliere il controllo sarebbe stato sbagliato — ogni richiesta finta apre
-  // una conversazione con l'agente, e ogni conversazione sono soldi veri di
-  // modello. Quindi: se Turnstile risponde, vale Turnstile. Se è guasto,
-  // valgono due difese più deboli ma reali (l'esca invisibile e il limite di
-  // tre richieste all'ora dallo stesso posto), e il servizio resta in piedi.
+  // ⚠️ COSA RESTA, e perché non è «niente»:
+  //   1. l'esca — un campo che una persona non vede e non compila mai
+  //   2. tre richieste all'ora dallo stesso posto (migrazione 0017)
+  //   3. quaranta messaggi per richiesta, tetto in SQL (migrazione 0015)
+  //   4. campi tagliati alla lunghezza dal database
   //
-  // ⚠️ L'esca si controlla SEMPRE, anche quando Turnstile funziona: costa zero
-  // e ferma una classe di programmi che Turnstile non vede.
+  // Sono difese invisibili a chi compila in buona fede e più debole di
+  // Turnstile. Il rischio consapevole: ogni richiesta finta che passa apre una
+  // conversazione con l'agente, e ogni conversazione è costo di modello vero.
+  // Se un giorno arrivasse spam, la strada è **rimettere Turnstile con
+  // l'hostname configurato bene** — non inventare una difesa nuova.
   if (esca(d.sito)) {
     // Si risponde «va bene» a un programma automatico invece di dirgli che è
     // stato scoperto: chi scrive quei programmi corregge la trappola solo se
     // sa di averla trovata.
     return json({ chiave: "ok", saluto: "Grazie, ti ricontattiamo." }, 200);
   }
-
-  const passaTurnstile = await umano(d.gettone);
 
   const manca = cosaManca(d);
   if (manca) return json({ error: manca }, 400);
@@ -208,16 +210,6 @@ async function creaRichiesta(
   }
   const chiave = esito.chiave;
 
-  // Resta scritto se questa richiesta è passata dal controllo forte o dalle
-  // difese di riserva: quando si guarderà una richiesta strana, si saprà da
-  // quale porta è entrata.
-  if (!passaTurnstile) {
-    await scriviInRichiesta(
-      chiave,
-      "agente",
-      "[nota interna: Turnstile non ha risposto, richiesta accettata con esca e limite di frequenza]"
-    );
-  }
 
   // ⚠️ Prima si mette al sicuro, poi si avvisa — e senza aspettare. Se Resend
   // fosse lento, l'imprenditore vedrebbe la rotella girare per otto secondi
