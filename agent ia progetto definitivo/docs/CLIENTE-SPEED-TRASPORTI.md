@@ -587,3 +587,103 @@ nell'informativa, non deciso da noi.
 3. ⚠️ Preparare l'informativa ai lavoratori insieme a quel consulente. Non la
    scriviamo noi: non è il nostro mestiere, e sbagliarla costa a lui.
 
+---
+
+# La gestione clienti
+
+> Decisa l'11 agosto 2026. **Tutto**: il fascicolo del cliente, il CRM
+> commerciale, e la memoria dell'agente. Sono tre cose diverse e vanno
+> costruite in quest'ordine.
+
+## Il fascicolo: cosa si apre cliccando su un cliente
+
+```
+┌─ ROSSI SRL ────────────────────────────┐
+│ Torino · cliente dal 2019              │
+│ Referente: Marco · 340…                │
+│                                        │
+│ ● 3 spedizioni in corso                │
+│ ● 2 fatture da incassare — 4.200 €     │
+│ ● ultimo contatto: ieri, 18:40         │
+│                                        │
+│ ▌Sconto 10% concordato nel 2024        │
+│ ▌Scarico solo la mattina               │
+│ ▌Chiedono sempre la conferma scritta   │
+└────────────────────────────────────────┘
+```
+
+⚠️ **Le prime due righe sono nostre, le altre no.** Spedizioni e fatture vengono
+da K-Master e dal gestionale: senza quei connettori il fascicolo mostra il nome,
+i contatti, le conversazioni e gli accordi — che è già molto, ma non è «tutto».
+Va detto a Salvatore in questi termini, non scoperto dopo.
+
+## Da dove arriva l'anagrafica
+
+**Dal gestionale delle fatture.** È la fonte vera: chi fattura è cliente, e
+nessuno tiene aggiornati due elenchi.
+
+⚠️ **Dipende dal connettore che non esiste.** Finché non c'è, l'alternativa che
+funziona già è che le schede **nascano dalle conversazioni**: chi scrive su
+WhatsApp diventa un cliente e l'agente ci attacca quello che impara. L'elenco
+parte vuoto e si riempie da solo — meno completo, ma vivo dal primo giorno.
+
+🔑 **Da fare al sopralluogo:** chiedere un **export dell'anagrafica clienti** dal
+gestionale. Anche solo un CSV una tantum fa partire il fascicolo pieno mentre si
+lavora al collegamento vero.
+
+## Cosa fa l'agente su ogni cliente — tutte e quattro
+
+| | Cosa | Oggi | Rischio |
+|---|---|---|---|
+| 1 | **Ricorda gli accordi presi** | ✅ funziona | nessuno |
+| 2 | **Avvisa quando un cliente sparisce** | ⬜ serve K-Master | basso |
+| 3 | **Segnala chi non paga** | ⬜ serve il gestionale | basso |
+| 4 | **Scrive lui al cliente** | 🔧 il canale c'è | ⚠️ **alto** |
+
+### ⚠️ Sul punto 4, che è quello che può fare male
+
+Un messaggio automatico sbagliato a un cliente storico fa **più danni di dieci
+risposte lente**. Tre regole, non negoziabili:
+
+- **Parte sempre in modalità Ghost.** Salvatore o il capo reparto approvano ogni
+  messaggio in uscita finché non si fidano. Non è una fase di prova: è il
+  funzionamento normale del primo mese.
+- **Mai un sollecito di pagamento senza approvazione umana.** Chiedere soldi a
+  un cliente è la cosa più delicata che un'azienda fa. L'agente prepara, decide
+  una persona.
+- **Il cliente deve poter rispondere e trovare un umano.** Un messaggio
+  automatico a cui non si può replicare è peggio del silenzio.
+
+## Il CRM commerciale
+
+Trattative, preventivi mandati, chi ha comprato e chi no.
+
+⚠️ **Va dopo il fascicolo, e va costruito su quello che si scopre.** Speed
+Trasporti non ha un imbuto commerciale come un e-commerce: vendono trasporti a
+clienti che tornano. Il «CRM» utile per loro somiglia più a *«questo cliente
+spediva ogni 15 giorni e non spedisce da 40»* che a *«trattativa in fase 3 di 5»*.
+
+Al sopralluogo la domanda giusta non è «avete un CRM» ma: **«come vi accorgete
+che un cliente sta sparendo?»** La risposta dice cosa costruire davvero.
+
+---
+
+# I profili delle persone
+
+Ognuno crea il suo account con **foto, nome e reparto**. La foto compare
+accanto alle conversazioni e alle note: si vede a colpo d'occhio **chi ha
+risposto a quel cliente**.
+
+⚠️ **Questo è dato individuale, e ricade nel discorso dell'articolo 4** scritto
+sopra. La distinzione che regge:
+
+| ✅ Legittimo | ⚠️ Richiede la procedura |
+|---|---|
+| «Questa risposta l'ha scritta Mario» — serve a sapere a chi chiedere | «Mario ha risposto 12 volte, Luca 3» — è una valutazione |
+| Un capo reparto che rilegge una conversazione per correggere un errore | Una classifica di produttività per persona |
+
+🔑 **La faccia accanto a un messaggio serve a lavorare** — un cliente richiama e
+si sa chi gli aveva parlato. Diventa altro quando i singoli messaggi si contano
+per persona. La riga di codice è la stessa; **il confine è lo scopo**, e per
+questo va scritto nell'informativa ai lavoratori.
+
