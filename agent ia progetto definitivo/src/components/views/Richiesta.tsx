@@ -10,6 +10,7 @@ import {
   suonoSfiora,
 } from "../../lib/suoni";
 import { creaRichiesta, parlaConQualifica } from "../../lib/api";
+import { Compare, Numero, PulsanteMagnetico } from "../landing/movimento";
 
 /**
  * La vetrina pubblica — **l'unica cosa che il mondo può vedere.**
@@ -145,7 +146,7 @@ function Hero() {
   return (
     <section className="grid items-center gap-9 pt-6 pb-12 sm:gap-12 sm:pt-10 sm:pb-16 lg:grid-cols-[1fr_460px] lg:pt-16">
       <div>
-        <Entrando>
+        <Compare>
           <p
             className="mb-5 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[12px]"
             style={{ borderColor: `rgba(${LUCE}, 0.28)`, color: `rgba(${LUCE}, 0.95)` }}
@@ -159,36 +160,38 @@ function Hero() {
             </span>
             Lavoriamo con poche aziende alla volta
           </p>
-        </Entrando>
+        </Compare>
 
-        <Entrando ritardo={80}>
-          <h1 className="text-[clamp(2.4rem,5.5vw,3.9rem)] font-semibold leading-[1.04] tracking-[-0.035em]">
+        <Compare ritardo={80}>
+          <h1 className="font-vetrina text-[clamp(2.6rem,6vw,4.4rem)] leading-[0.98] tracking-[-0.03em]">
             Sei un&apos;azienda?
           </h1>
-        </Entrando>
+        </Compare>
 
-        <Entrando ritardo={160}>
+        <Compare ritardo={160}>
           <p className="mt-5 max-w-[30rem] text-[17px] leading-relaxed text-white/60">
             I tuoi clienti ti scrivono su WhatsApp a tutte le ore. Risponde un agente che
             conosce i tuoi prezzi, i tuoi orari e le tue regole — e che quando non sa,
             lo dice e chiama te.
           </p>
-        </Entrando>
+        </Compare>
 
-        <Entrando ritardo={240}>
-          <div className="mt-8 flex flex-wrap gap-x-7 gap-y-2 text-[13px] text-white/40">
-            <span>Risponde in 2 secondi</span>
-            <span>·</span>
-            <span>Legge foto e vocali</span>
-            <span>·</span>
-            <span>Risponde al telefono</span>
+        <Compare ritardo={240}>
+          {/* ⚠️ Cifre vere, non arrotondate in su: 1,5 s è il tempo misurato in
+              produzione il 2 Agosto; 24 sono le ore; 3 i canali su cui l'agente
+              risponde davvero (sito, WhatsApp, telefono). Gonfiare un numero
+              qui è ciò che poi tocca disinnescare alla prima email. */}
+          <div className="mt-9 flex gap-8 sm:gap-12">
+            <Numero fino={1.5} suffisso=" s" etichetta="per rispondere" />
+            <Numero fino={24} suffisso="h" etichetta="tutti i giorni" />
+            <Numero fino={3} etichetta="canali: sito, WhatsApp, telefono" />
           </div>
-        </Entrando>
+        </Compare>
       </div>
 
-      <Entrando ritardo={320}>
+      <Compare ritardo={320}>
         <ChatFinta />
-      </Entrando>
+      </Compare>
     </section>
   );
 }
@@ -387,7 +390,7 @@ function Form({
   const pieno = Object.values(d).every((v) => v.trim()) && accetto;
 
   return (
-    <Entrando ritardo={400}>
+    <Compare ritardo={400}>
       <section id="form" className="mx-auto max-w-[560px] pt-4 sm:pt-8">
         <h2 className="text-[26px] font-semibold tracking-[-0.025em]">Raccontaci il tuo problema</h2>
         <p className="mt-2 text-[14px] leading-relaxed text-white/50">
@@ -449,27 +452,23 @@ function Form({
           </p>
         )}
 
-        <button
-          onClick={() => {
-            suonoClick();
-            void invia();
-          }}
-          onMouseEnter={suonoSfiora}
+        <PulsanteMagnetico
+          onClick={() => void invia()}
           disabled={!pieno || attesa}
-          className="mt-6 w-full cursor-pointer rounded-xl px-5 py-4 text-[15.5px] font-medium text-[#04252c] transition-all duration-200 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#050507] active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-35 sm:py-3.5 sm:text-[15px]"
+          className="mt-6 w-full cursor-pointer rounded-xl px-5 py-4 text-[15.5px] font-medium text-[#04252c] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#050507] disabled:cursor-not-allowed disabled:opacity-35 sm:py-3.5 sm:text-[15px]"
           style={{
             background: `linear-gradient(180deg, rgb(${LUCE}), rgba(${LUCE},0.82))`,
             boxShadow: pieno && !attesa ? `0 0 40px rgba(${LUCE}, 0.32)` : "none",
           }}
         >
           {attesa ? "Invio…" : "Invia la richiesta"}
-        </button>
+        </PulsanteMagnetico>
 
         <p className="mt-3 text-center text-[12px] text-white/50">
           Non ti iscriviamo a niente. Ti scriviamo da corpagent7@gmail.com.
         </p>
       </section>
-    </Entrando>
+    </Compare>
   );
 }
 
@@ -582,7 +581,7 @@ function ChatQualifica({ chiave, saluto }: { chiave: string; saluto: string }) {
   }, [attesa, chiave, testo]);
 
   return (
-    <Entrando>
+    <Compare>
       <section className="mx-auto max-w-[620px] pt-4 sm:pt-8">
         <div
           className="rounded-2xl border p-4 sm:p-5"
@@ -654,6 +653,8 @@ function ChatQualifica({ chiave, saluto }: { chiave: string; saluto: string }) {
           </div>
         </div>
 
+        <GuidaEmail />
+
         <p className="mt-5 text-center text-[13px] text-white/60">
           Per qualsiasi cosa:{" "}
           <a href="mailto:corpagent7@gmail.com" className="text-white underline underline-offset-2">
@@ -667,13 +668,86 @@ function ChatQualifica({ chiave, saluto }: { chiave: string; saluto: string }) {
           </a>
         </p>
       </section>
-    </Entrando>
+    </Compare>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────
 // PEZZI COMUNI
 // ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Cosa scrivere nell'email — voluto da Tommaso l'11 Agosto 2026.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * PERCHÉ UN ELENCO E NON UNA FRASE GENTILE
+ * ─────────────────────────────────────────────────────────────────────────
+ * «Scrivici e raccontaci di più» produce email di due righe, e poi tre giorni
+ * di botta e risposta per sapere che gestionale usano. Un elenco di quattro
+ * punti produce **una email che si può già lavorare** — e visto che il
+ * contatto è manuale, ogni giro di email risparmiato è un giorno guadagnato
+ * sulla consegna.
+ *
+ * ⚠️ Chiediamo i NOMI dei programmi, mai le password o le chiavi. Le
+ * credenziali si collegano dopo, dal pannello, e le collega il cliente col suo
+ * account. Un'email con dentro una chiave API è una chiave che resta per
+ * sempre in due caselle di posta.
+ */
+function GuidaEmail() {
+  const punti = [
+    {
+      titolo: "I programmi che usate",
+      dettaglio:
+        "Scrivi i nomi: gestionale, fatturazione, magazzino, calendario, e-commerce. Anche «un foglio Excel» è una risposta utile.",
+    },
+    {
+      titolo: "Cosa vorresti che facesse l'agente",
+      dettaglio:
+        "«Rispondere ai preventivi», «prendere prenotazioni», «dire dov'è un pacco». Una frase per ognuna.",
+    },
+    {
+      titolo: "Chi risponde ai clienti oggi",
+      dettaglio: "Tu, un dipendente, nessuno dopo le 19. Serve a capire cosa deve sostituire e cosa no.",
+    },
+    {
+      titolo: "Il numero WhatsApp dell'azienda",
+      dettaglio: "Quello su cui ti scrivono i clienti. Se non ne hai uno dedicato, dillo: se ne trova uno.",
+    },
+  ];
+
+  return (
+    <div className="mt-6 rounded-2xl border border-white/[0.08] bg-white/[0.022] p-5">
+      <p className="text-[13.5px] font-medium text-white">Quando ci scrivi, mettici queste quattro cose</p>
+      <p className="mt-1 text-[12.5px] leading-relaxed text-white/55">
+        Ci fanno risparmiare due giorni di domande, e a te un paio di email.
+      </p>
+
+      <ol className="mt-4 space-y-3.5">
+        {punti.map((p, i) => (
+          <li key={p.titolo} className="flex gap-3">
+            <span
+              className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium"
+              style={{ background: `rgba(${LUCE}, 0.14)`, color: `rgb(${LUCE})` }}
+            >
+              {i + 1}
+            </span>
+            <span>
+              <span className="text-[13.5px] text-white/90">{p.titolo}</span>
+              <span className="mt-0.5 block text-[12.5px] leading-relaxed text-white/50">{p.dettaglio}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      {/* ⚠️ Questa riga è di sostanza, non di cortesia: senza, qualcuno ci
+          manderebbe davvero una chiave API per email. */}
+      <p className="mt-4 border-t border-white/[0.07] pt-3 text-[12px] leading-relaxed text-white/45">
+        Non mandarci password o chiavi: i collegamenti li fai tu dal pannello, col tuo
+        account, dopo la consegna.
+      </p>
+    </div>
+  );
+}
 
 function Piede() {
   return (
@@ -688,31 +762,3 @@ function Piede() {
   );
 }
 
-/**
- * Entra salendo di otto pixel, con un ritardo.
- *
- * ⚠️ Otto pixel e 500 ms: sopra questi numeri il movimento si nota **come
- * movimento**, e da lì in poi non sembra più costoso, sembra un sito che si
- * mette in mostra. Chi ha chiesto meno movimento non lo vede affatto.
- */
-function Entrando({ children, ritardo = 0 }: { children: React.ReactNode; ritardo?: number }) {
-  const [dentro, setDentro] = useState(false);
-  useEffect(() => {
-    const calmo = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (calmo) return setDentro(true);
-    const t = window.setTimeout(() => setDentro(true), ritardo);
-    return () => clearTimeout(t);
-  }, [ritardo]);
-
-  return (
-    <div
-      style={{
-        opacity: dentro ? 1 : 0,
-        transform: dentro ? "translateY(0)" : "translateY(8px)",
-        transition: "opacity 500ms cubic-bezier(.16,1,.3,1), transform 500ms cubic-bezier(.16,1,.3,1)",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
