@@ -751,41 +751,6 @@ body {
   }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   SYNE — il carattere della vetrina pubblica
-   ─────────────────────────────────────────────────────────────────────────
-   Scelto da Tommaso il 11 Agosto 2026: «un altro font però più particolare e
-   insolito». Syne ha proporzioni volutamente storte — le lettere sono strette
-   in alto e larghe in basso — ed è il tipo di carattere che si riconosce.
-
-   ⚠️ OSPITATO DA NOI, non caricato da Google, e non è pignoleria: un tribunale
-   tedesco ha già considerato il caricamento dei font dai server di Google una
-   violazione del GDPR, perché manda l'indirizzo IP del visitatore a un terzo
-   senza consenso. Su una pagina che raccoglie i dati di aziende europee, quella
-   è esattamente la cosa da non fare.
-
-   ⚠️ `font-display: swap`: il titolo si vede subito con Inter e poi cambia. È
-   preferibile a un titolo invisibile per mezzo secondo — su una vetrina, la
-   prima frase è tutto ciò che si ha.
-
-   ⚠️ Sta SOLO nell'hero della vetrina. Il prodotto resta Inter: chi entra dopo
-   la consegna non deve sentire uno scarto fra quello che ha visto e la stanza
-   in cui è entrato. */
-@font-face {
-  font-family: "Syne";
-  font-style: normal;
-  font-weight: 700 800;
-  font-display: swap;
-  src: url("/fonts/syne-latin.woff2") format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
-    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191,
-    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-.font-vetrina {
-  font-family: "Syne", "Inter", system-ui, sans-serif;
-  font-weight: 800;
-}
 
 /* L'onda che parte dal punto premuto sul pulsante principale.
    ⚠️ Scala fino a 26 volte: sotto, non copre un pulsante largo e l'effetto
@@ -795,4 +760,58 @@ body {
     transform: scale(26);
     opacity: 0;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   I CARATTERI DELLA VETRINA — 11 Agosto 2026
+   ─────────────────────────────────────────────────────────────────────────
+   Scelti fra i 29 della guida indicata da Tommaso. Non uno: un accostamento,
+   che è il modo in cui la tipografia fa davvero la differenza.
+
+   **Boldonse** per il titolo. È un carattere da manifesto, largo e squadrato,
+   di quelli che si riconoscono dopo averli visti una volta. Su «Sei
+   un'azienda?» funziona proprio perché non sembra il font di un software.
+
+   **Geist Mono** per numeri ed etichette. Un monospazio accanto a un display
+   dice «costruito», non «disegnato»: le cifre stanno incolonnate e le
+   etichettine sembrano parte di uno strumento. È il contrasto che regge tutto.
+
+   ⚠️ OSPITATI DA NOI, non caricati da Google. Un tribunale tedesco ha già
+   considerato quel caricamento una violazione del GDPR: manda l'indirizzo IP
+   del visitatore a un terzo senza consenso. Su una pagina che raccoglie i dati
+   di aziende europee è esattamente ciò da non fare. 46 KB in tutto.
+
+   ⚠️ `font-display: swap`: il titolo compare subito con Inter e poi cambia.
+   Meglio di un titolo invisibile per mezzo secondo — in vetrina la prima frase
+   è tutto quello che si ha.
+
+   ⚠️ Vivono SOLO qui. Il prodotto resta Inter: chi entra dopo la consegna non
+   deve sentire uno scarto fra la vetrina e la stanza. */
+@font-face {
+  font-family: "Boldonse";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/boldonse-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "GeistMono";
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url("/fonts/geistmono-latin.woff2") format("woff2");
+}
+
+.font-vetrina {
+  font-family: "Boldonse", "Inter", system-ui, sans-serif;
+  font-weight: 400;
+  /* Boldonse è già larghissimo di suo: senza stringere, un titolo grande
+     occupa due righe anche su desktop. */
+  letter-spacing: -0.02em;
+}
+
+.font-dato {
+  font-family: "GeistMono", ui-monospace, monospace;
+  font-feature-settings: "tnum" 1;
 }

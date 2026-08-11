@@ -25,8 +25,12 @@ import { useEffect, useRef } from "react";
  *    peggio di nessun effetto, perché fa sembrare lento tutto il sito.
  */
 
-/** Quanti punti compongono la scia. Più sono, più è lunga e più costa. */
-const CODA = 18;
+/**
+ * ⚠️ Niente scia — Tommaso, 11 Agosto 2026: «non mettere la scia, solo il glow
+ * al posto del cursore». Resta un punto solo, che insegue con un ritardo
+ * minimo: quel filo di ritardo è ciò che lo fa sembrare una cosa fisica invece
+ * di un adesivo incollato al puntatore.
+ */
 
 export default function CursoreGlow({ colore = "77, 225, 255" }: { colore?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -56,61 +60,65 @@ export default function CursoreGlow({ colore = "77, 225, 255" }: { colore?: stri
     }
     misura();
 
-    const punti = Array.from({ length: CODA }, () => ({ x: -100, y: -100 }));
+    const punto = { x: -100, y: -100 };
     let mouseX = -100;
     let mouseY = -100;
     let sopraCliccabile = false;
+    let sopraTesto = false;
     let vivo = true;
+
+    // ⚠️ IL CURSORE DI SISTEMA SPARISCE, ed è la cosa più rischiosa di questo
+    // file: da qui in poi l'unico segno di dove si clicca è quello che
+    // disegniamo noi. Per questo lo si nasconde **solo adesso** — dopo aver
+    // verificato che c'è un mouse, che il canvas esiste e che il disegno sta
+    // per partire. Se una qualsiasi di queste cose fallisse, la riga non viene
+    // mai eseguita e il cursore normale resta al suo posto.
+    const cursorePrima = document.body.style.cursor;
+    document.body.style.cursor = "none";
 
     function muovi(e: MouseEvent) {
       mouseX = e.clientX;
       mouseY = e.clientY;
       const sotto = e.target as HTMLElement | null;
-      sopraCliccabile = Boolean(
-        sotto?.closest("button, a, input, textarea, select, [role='button']")
-      );
+      sopraCliccabile = Boolean(sotto?.closest("button, a, [role='button']"));
+      // ⚠️ Sopra un campo di testo il punto diventa una barretta verticale. Un
+      // pallino sopra una casella da scrivere non dice dove finirà il cursore
+      // di scrittura, e chi deve compilare cinque campi lo nota subito.
+      sopraTesto = Boolean(sotto?.closest("input[type='text'], input[type='email'], input[type='tel'], textarea"));
     }
 
     function disegna() {
       if (!vivo) return;
       ctx!.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
-      // La testa insegue il mouse con un ritardo; ogni punto insegue quello
-      // davanti. È tutta qui la scia: nessuna fisica, solo rincorse in fila.
-      punti[0].x += (mouseX - punti[0].x) * 0.35;
-      punti[0].y += (mouseY - punti[0].y) * 0.35;
-      for (let i = 1; i < punti.length; i++) {
-        punti[i].x += (punti[i - 1].x - punti[i].x) * 0.35;
-        punti[i].y += (punti[i - 1].y - punti[i].y) * 0.35;
-      }
+      // Insegue con un ritardo: 0.22 è abbastanza lento da sentirsi e
+      // abbastanza veloce da non sembrare in ritardo.
+      punto.x += (mouseX - punto.x) * 0.22;
+      punto.y += (mouseY - punto.y) * 0.22;
 
-      const raggioTesta = sopraCliccabile ? 13 : 7;
+      const raggio = sopraCliccabile ? 15 : 8;
 
-      for (let i = punti.length - 1; i >= 0; i--) {
-        const q = 1 - i / punti.length;          // 1 in testa, 0 in coda
-        const raggio = raggioTesta * q;
-        if (raggio < 0.4) continue;
+      // L'alone.
+      const g = ctx!.createRadialGradient(punto.x, punto.y, 0, punto.x, punto.y, raggio * 3.4);
+      g.addColorStop(0, `rgba(${colore}, 0.55)`);
+      g.addColorStop(0.35, `rgba(${colore}, 0.18)`);
+      g.addColorStop(1, `rgba(${colore}, 0)`);
+      ctx!.fillStyle = g;
+      ctx!.beginPath();
+      ctx!.arc(punto.x, punto.y, raggio * 3.4, 0, Math.PI * 2);
+      ctx!.fill();
 
-        const g = ctx!.createRadialGradient(
-          punti[i].x, punti[i].y, 0,
-          punti[i].x, punti[i].y, raggio * 3.2
-        );
-        g.addColorStop(0, `rgba(${colore}, ${0.5 * q * q})`);
-        g.addColorStop(0.4, `rgba(${colore}, ${0.16 * q * q})`);
-        g.addColorStop(1, `rgba(${colore}, 0)`);
-
-        ctx!.fillStyle = g;
+      // Il nocciolo bianco: è quello che fa leggere il punto come **luce** e
+      // non come una macchia colorata. Ed è anche l'unico segno preciso di
+      // dove si sta puntando, ora che il cursore vero non c'è più.
+      ctx!.fillStyle = "rgba(255,255,255,0.95)";
+      if (sopraTesto) {
+        ctx!.fillRect(punto.x - 1, punto.y - 11, 2, 22);
+      } else {
         ctx!.beginPath();
-        ctx!.arc(punti[i].x, punti[i].y, raggio * 3.2, 0, Math.PI * 2);
+        ctx!.arc(punto.x, punto.y, sopraCliccabile ? 3.6 : 2.4, 0, Math.PI * 2);
         ctx!.fill();
       }
-
-      // Il nocciolo bianco: è quello che fa leggere il punto come "luce" e non
-      // come "macchia colorata".
-      ctx!.fillStyle = `rgba(255, 255, 255, ${sopraCliccabile ? 0.9 : 0.65})`;
-      ctx!.beginPath();
-      ctx!.arc(punti[0].x, punti[0].y, sopraCliccabile ? 3.2 : 2, 0, Math.PI * 2);
-      ctx!.fill();
 
       requestAnimationFrame(disegna);
     }
@@ -121,6 +129,10 @@ export default function CursoreGlow({ colore = "77, 225, 255" }: { colore?: stri
 
     return () => {
       vivo = false;
+      // ⚠️ Si RIMETTE il cursore uscendo: senza questa riga, chi passa dalla
+      // vetrina a una pagina interna si ritroverebbe senza cursore e senza
+      // niente che lo disegni.
+      document.body.style.cursor = cursorePrima;
       window.removeEventListener("mousemove", muovi);
       window.removeEventListener("resize", misura);
     };

@@ -129,11 +129,13 @@ export function Numero({
 
   return (
     <div ref={ref}>
-      <div className="text-[26px] font-semibold tracking-[-0.02em] tabular-nums text-white sm:text-[30px]">
+      <div className="font-dato text-[26px] font-medium tracking-[-0.03em] text-white sm:text-[30px]">
         {mostrato}
         <span className="text-white/50">{suffisso}</span>
       </div>
-      <div className="mt-0.5 text-[12.5px] text-white/55">{etichetta}</div>
+      <div className="font-dato mt-1 text-[11px] uppercase tracking-[0.08em] text-white/55">
+        {etichetta}
+      </div>
     </div>
   );
 }

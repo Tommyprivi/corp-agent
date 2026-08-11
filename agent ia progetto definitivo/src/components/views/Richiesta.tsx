@@ -52,12 +52,17 @@ const LUCE = "77, 225, 255";
 // un finale timido: è la risposta alla paura numero uno dell'imprenditore —
 // «dirà sciocchezze ai miei clienti?». Una vetrina che mostra solo le risposte
 // perfette conferma quella paura invece di scioglierla.
+//
+// ⚠️ Volutamente SENZA nome di azienda e senza un mestiere riconoscibile
+// (Tommaso, 11 Agosto): un esempio di trasporti fa pensare «non è per me» a un
+// ristoratore. Le battute funzionano per un negozio, uno studio, un'officina o
+// un ristorante — chiunque prenda appuntamenti e riceva richieste di sconto.
 const COPIONE: { chi: "cliente" | "agente"; testo: string; nota?: string }[] = [
-  { chi: "cliente", testo: "Buongiorno, quanto per un pallet da Catania a Milano?" },
-  { chi: "agente", testo: "Sono 968 km, circa 10 ore. Mi dice il peso e se serve la sponda idraulica?" },
-  { chi: "cliente", testo: "300 kg, sponda no" },
-  { chi: "agente", testo: "Perfetto. Le mando il preventivo entro stasera. A che nome lo intesto?" },
-  { chi: "cliente", testo: "Però mi fate il 30% di sconto?" },
+  { chi: "cliente", testo: "Buonasera, avete disponibilità per domani?" },
+  { chi: "agente", testo: "Sì, domani mattina siamo liberi dalle 9 alle 12. Le va bene alle 10?" },
+  { chi: "cliente", testo: "Perfetto. E quanto viene in tutto?" },
+  { chi: "agente", testo: "Come da listino sono 80 €. Le confermo l'appuntamento?" },
+  { chi: "cliente", testo: "Se ne prendo due mi fa 50?" },
   {
     chi: "agente",
     testo: "Su questo decide il titolare: gli passo la richiesta adesso e la richiamo entro stasera.",
@@ -85,7 +90,7 @@ export default function Richiesta() {
           <span className="text-[15px] font-medium tracking-[-0.01em]">CorpAgent</span>
         </div>
         {/* ⚠️ Nessun «Entra». Vedi il commento in cima al file. */}
-        <span className="text-[12.5px] text-white/55">Su invito</span>
+        <span className="font-dato text-[11px] uppercase tracking-[0.1em] text-white/55">Su invito</span>
       </header>
 
       <main className="relative z-10 mx-auto max-w-[1100px] px-5 pb-20 sm:px-6 sm:pb-24">
@@ -269,7 +274,9 @@ function ChatFinta() {
     >
       <div className="mb-3 flex items-center gap-2 border-b border-white/[0.07] pb-3">
         <span className="h-2 w-2 rounded-full" style={{ background: "#2ecc82" }} />
-        <span className="text-[12.5px] text-white/60">Speed Trasporti · WhatsApp</span>
+        <span className="font-dato text-[11.5px] uppercase tracking-[0.07em] text-white/60">
+          WhatsApp · ieri, 22:41
+        </span>
       </div>
 
       {/* ⚠️ Più bassa su telefono: 330px su uno schermo da 667px di altezza
