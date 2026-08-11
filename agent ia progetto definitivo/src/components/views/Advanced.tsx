@@ -4,6 +4,7 @@ import AgentCatalog from "./AgentCatalog";
 import Knowledge from "./Knowledge";
 import WhatsAppSettings from "./WhatsAppSettings";
 import Connectors from "./Connectors";
+import Richieste from "./Richieste";
 import Billing from "./Billing";
 import type { PresetAgent, RoleAgent } from "../../types";
 
@@ -14,9 +15,16 @@ interface AdvancedProps {
   onCreateAgent: (description: string) => void;
   /** Attiva un agente del catalogo: lo salva su Neon con le sue istruzioni. */
   onActivatePreset: (agent: PresetAgent, systemPrompt: string) => Promise<void> | void;
+  /**
+   * Vero solo per chi è in `ADMIN_EMAILS`. ⚠️ La scheda «Richieste» non si
+   * disegna affatto, invece di disegnarla e negare l'accesso: una voce di menu
+   * che c'è e non funziona dice a chiunque che esiste una parte riservata.
+   * Il vero controllo però è sul server — questo è solo per non mostrarla.
+   */
+  admin?: boolean;
 }
 
-type Tab = "agents" | "catalog" | "memory" | "connectors" | "whatsapp" | "account";
+type Tab = "agents" | "catalog" | "memory" | "connectors" | "whatsapp" | "account" | "richieste";
 
 /**
  * Impostazioni Avanzate: dove sta tutto quello che non serve all'ingresso.
@@ -28,6 +36,7 @@ export default function Advanced({
   onStartChat,
   onCreateAgent,
   onActivatePreset,
+  admin,
 }: AdvancedProps) {
   const [tab, setTab] = useState<Tab>("agents");
 
@@ -42,6 +51,13 @@ export default function Advanced({
             <Tab label="Connettori" active={tab === "connectors"} onClick={() => setTab("connectors")} />
             <Tab label="WhatsApp" active={tab === "whatsapp"} onClick={() => setTab("whatsapp")} />
             <Tab label="Account e piano" active={tab === "account"} onClick={() => setTab("account")} />
+            {admin && (
+              <Tab
+                label="Richieste"
+                active={tab === "richieste"}
+                onClick={() => setTab("richieste")}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -64,6 +80,7 @@ export default function Advanced({
       {tab === "connectors" && <Connectors />}
       {tab === "whatsapp" && <WhatsAppSettings />}
       {tab === "account" && <Billing />}
+      {tab === "richieste" && admin && <Richieste />}
     </div>
   );
 }

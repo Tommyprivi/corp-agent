@@ -33,9 +33,37 @@ import {
   stacca,
   type ConnectorKind,
 } from "./_lib/connectors.js";
-import { ensureProfile, withUser } from "./_lib/db.js";
+import { ensureProfile, getPool, withUser } from "./_lib/db.js";
 
 const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+
+/**
+ * Chi può vedere le richieste delle aziende.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ QUESTA È L'UNICA COSA CHE SEPARA LA SCRIVANIA DI TOMMASO DAL MONDO
+ * ─────────────────────────────────────────────────────────────────────────
+ * Le richieste contengono email e telefoni di aziende vere: un elenco di
+ * contatti commerciali. Non è protetto dalla sicurezza per riga — `leads` non ha
+ * un `user_id`, perché chi compila il form non ha un account — quindi il
+ * confine è qui, in tre righe di codice, e va guardato con sospetto.
+ *
+ * ⚠️ Si confronta l'**email** e non l'id utente: l'id lo genera Better Auth alla
+ * prima entrata, quindi non lo si può scrivere in una variabile d'ambiente
+ * prima che esista. L'email invece è stabile e verificata da Google.
+ *
+ * ⚠️ Se `ADMIN_EMAILS` non è configurata, **nessuno** passa. Il difetto opposto
+ * — «se manca la configurazione lascia entrare tutti» — è il modo più comune in
+ * cui un pannello privato diventa pubblico.
+ */
+function puoVedereLeRichieste(email: string | null): boolean {
+  if (!email) return false;
+  const ammessi = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+  return ammessi.includes(email.toLowerCase());
+}
 
 interface ProfileRow {
   id: string;
@@ -99,6 +127,62 @@ export default {
       return "url" in esito ? json(esito, 200) : json({ error: esito.errore }, 400);
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // LA SCRIVANIA DELLE RICHIESTE — solo per chi è nell'elenco
+    // ─────────────────────────────────────────────────────────────────
+    //   GET   ?richieste=1        le pratiche aperte
+    //   GET   ?richieste=archivio quelle chiuse
+    //   GET   ?pratica=<id>       la conversazione di una richiesta
+    //   PATCH { pratica }         sposta lo stato, salva le note
+    const quali = url.searchParams.get("richieste");
+    const pratica = url.searchParams.get("pratica");
+
+    if (request.method === "GET" && (quali || pratica)) {
+      if (!puoVedereLeRichieste(user.email)) {
+        // ⚠️ 404 e non 403: un «non hai il permesso» confermerebbe che qui
+        // dietro c'è qualcosa. Un «non esiste» non dice niente a nessuno.
+        return json({ error: "Non trovato." }, 404);
+      }
+
+      if (pratica) {
+        const m = await getPool().query(
+          "select ruolo, testo, creato_il from public.lead_messaggi($1)",
+          [pratica]
+        );
+        return json({ messaggi: m.rows }, 200);
+      }
+
+      const righe = await getPool().query(
+        "select * from public.leads_elenco($1)",
+        [quali === "archivio"]
+      );
+      return json({ richieste: righe.rows }, 200);
+    }
+
+    if (request.method === "PATCH") {
+      let corpoPatch: Record<string, unknown> = {};
+      try {
+        corpoPatch = (await request.clone().json()) as Record<string, unknown>;
+      } catch {
+        // Non è un PATCH di pratica: lo gestisce il ramo del profilo più sotto.
+      }
+      if (corpoPatch.pratica) {
+        if (!puoVedereLeRichieste(user.email)) return json({ error: "Non trovato." }, 404);
+        const p = corpoPatch.pratica as {
+          id?: string;
+          stato?: string;
+          note?: string;
+          esito?: string;
+        };
+        if (!p.id) return json({ error: "Serve quale pratica." }, 400);
+        const ok = await getPool().query<{ lead_aggiorna: boolean }>(
+          "select public.lead_aggiorna($1,$2,$3,$4) as lead_aggiorna",
+          [p.id, p.stato ?? "", p.note ?? null, p.esito ?? null]
+        );
+        return json({ aggiornata: ok.rows[0]?.lead_aggiorna === true }, 200);
+      }
+    }
+
     const codiceInMano = url.searchParams.get("code");
     const statoInMano = url.searchParams.get("state") ?? "";
     // Chi torna con la coda dice da se' chi e'; chi torna nudo (Microsoft) lo
@@ -145,7 +229,7 @@ export default {
       await ensureProfile(user.id, user.email);
       const profile = await read(user.id);
       return profile
-        ? json(shape(profile), 200)
+        ? json({ ...shape(profile), admin: puoVedereLeRichieste(user.email) }, 200)
         : json({ error: "Profilo non trovato subito dopo averlo creato." }, 500);
     }
 

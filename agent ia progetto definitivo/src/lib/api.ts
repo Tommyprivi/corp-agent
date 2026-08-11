@@ -783,6 +783,8 @@ export interface Profile {
   planId: string | null;
   survey: { source?: string; teamSize?: string; workplace?: string };
   createdAt: string;
+  /** Vero solo per chi è in `ADMIN_EMAILS`: sblocca la scrivania delle richieste. */
+  admin?: boolean;
 }
 
 export async function getProfile(): Promise<Profile> {
@@ -1218,4 +1220,62 @@ export async function leggiStatoRichiesta(chiave: string): Promise<StatoRichiest
   const r = await fetch(`/api/config?stato=${encodeURIComponent(chiave)}`);
   if (!r.ok) throw await readError(r);
   return (await r.json()) as StatoRichiesta;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LA SCRIVANIA DELLE RICHIESTE — solo per chi è nell'elenco degli ammessi
+// ─────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ Il server risponde **404** a chi non è ammesso, non 403: un «non hai il
+// permesso» confermerebbe che dietro c'è qualcosa. Quindi qui un errore non va
+// mostrato come un guasto — va trattato come «questa parte non esiste per te».
+
+export interface Pratica {
+  id: string;
+  azienda: string;
+  settore: string;
+  telefono: string;
+  email: string;
+  esigenza: string;
+  stato: "nuova" | "qualificata" | "in_lavoro" | "consegnata" | "chiusa";
+  esito: string | null;
+  note: string | null;
+  chiave: string;
+  creata_il: string;
+  aggiornata: string;
+  messaggi: string;
+}
+
+export async function listPratiche(archivio = false): Promise<Pratica[]> {
+  const r = await fetch(`/api/profile?richieste=${archivio ? "archivio" : "1"}`, {
+    credentials: "same-origin",
+  });
+  if (!r.ok) throw await readError(r);
+  return ((await r.json()) as { richieste: Pratica[] }).richieste;
+}
+
+export async function listMessaggiPratica(
+  id: string
+): Promise<{ ruolo: "agente" | "azienda"; testo: string; creato_il: string }[]> {
+  const r = await fetch(`/api/profile?pratica=${encodeURIComponent(id)}`, {
+    credentials: "same-origin",
+  });
+  if (!r.ok) throw await readError(r);
+  return ((await r.json()) as { messaggi: { ruolo: "agente" | "azienda"; testo: string; creato_il: string }[] })
+    .messaggi;
+}
+
+export async function aggiornaPratica(p: {
+  id: string;
+  stato?: string;
+  note?: string;
+  esito?: string;
+}): Promise<void> {
+  const r = await fetch("/api/profile", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ pratica: p }),
+  });
+  if (!r.ok) throw await readError(r);
 }

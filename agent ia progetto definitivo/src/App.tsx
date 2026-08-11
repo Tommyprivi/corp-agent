@@ -189,6 +189,7 @@ export default function App() {
           </header>
           <div className="flex-1 overflow-y-auto">
             <Advanced
+              admin={profile?.admin === true}
               agents={agents}
               onToggleAgent={(id) => {
                 // Prima si accende l'interruttore, poi si avvisa il server:
