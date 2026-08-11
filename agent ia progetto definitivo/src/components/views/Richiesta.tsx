@@ -84,7 +84,7 @@ export default function Richiesta() {
           <span className="text-[15px] font-medium tracking-[-0.01em]">CorpAgent</span>
         </div>
         {/* ⚠️ Nessun «Entra». Vedi il commento in cima al file. */}
-        <span className="text-[12.5px] text-white/40">Su invito</span>
+        <span className="text-[12.5px] text-white/55">Su invito</span>
       </header>
 
       <main className="relative z-10 mx-auto max-w-[1100px] px-5 pb-20 sm:px-6 sm:pb-24">
@@ -266,7 +266,7 @@ function ChatFinta() {
     >
       <div className="mb-3 flex items-center gap-2 border-b border-white/[0.07] pb-3">
         <span className="h-2 w-2 rounded-full" style={{ background: "#2ecc82" }} />
-        <span className="text-[12.5px] text-white/45">Speed Trasporti · WhatsApp</span>
+        <span className="text-[12.5px] text-white/60">Speed Trasporti · WhatsApp</span>
       </div>
 
       {/* ⚠️ Più bassa su telefono: 330px su uno schermo da 667px di altezza
@@ -282,7 +282,7 @@ function ChatFinta() {
             {[0, 1, 2].map((i) => (
               <span
                 key={i}
-                className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/35"
+                className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/50"
                 style={{ animationDelay: `${i * 130}ms` }}
               />
             ))}
@@ -431,12 +431,12 @@ function Form({
               setAccetto(e.target.checked);
               suonoClick();
             }}
-            className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/25 bg-transparent"
+            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-white/40 bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
             style={{ accentColor: `rgb(${LUCE})` }}
           />
           <span>
             Ho letto l&apos;
-            <a href="/privacy" className="underline underline-offset-2 hover:text-white">
+            <a href="/privacy" className="cursor-pointer underline underline-offset-2 transition-colors duration-200 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
               informativa privacy
             </a>{" "}
             e acconsento a essere ricontattato per questa richiesta.
@@ -456,7 +456,7 @@ function Form({
           }}
           onMouseEnter={suonoSfiora}
           disabled={!pieno || attesa}
-          className="mt-6 w-full rounded-xl px-5 py-4 text-[15.5px] font-medium text-[#04252c] transition-all active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-35 sm:py-3.5 sm:text-[15px]"
+          className="mt-6 w-full cursor-pointer rounded-xl px-5 py-4 text-[15.5px] font-medium text-[#04252c] transition-all duration-200 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#050507] active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-35 sm:py-3.5 sm:text-[15px]"
           style={{
             background: `linear-gradient(180deg, rgb(${LUCE}), rgba(${LUCE},0.82))`,
             boxShadow: pieno && !attesa ? `0 0 40px rgba(${LUCE}, 0.32)` : "none",
@@ -465,7 +465,7 @@ function Form({
           {attesa ? "Invio…" : "Invia la richiesta"}
         </button>
 
-        <p className="mt-3 text-center text-[12px] text-white/30">
+        <p className="mt-3 text-center text-[12px] text-white/50">
           Non ti iscriviamo a niente. Ti scriviamo da corpagent7@gmail.com.
         </p>
       </section>
@@ -498,12 +498,16 @@ function Campo({
   // iPhone ingrandisce la pagina da solo quando si tocca un campo con testo
   // sotto i 16px. Su un form che vale un cliente, quello zoom improvviso è il
   // momento in cui molti chiudono la scheda.
+  // ⚠️ `focus-visible` e non `focus`: il primo si accende **solo** quando ci
+  // sei arrivato da tastiera. Con `focus` semplice l'anello comparirebbe anche
+  // a ogni clic del mouse, e allora si tende a toglierlo — che è il modo in cui
+  // i siti finiscono per essere inutilizzabili senza mouse.
   const classi =
-    "mt-1.5 w-full rounded-xl border px-3.5 py-3 text-[16px] text-white outline-none transition-all placeholder:text-white/25 sm:py-2.5 sm:text-[14.5px]";
+    "mt-1.5 w-full rounded-xl border px-3.5 py-3 text-[16px] text-white outline-none transition-[border-color,box-shadow] duration-200 placeholder:text-white/45 focus-visible:ring-2 focus-visible:ring-white/70 sm:py-2.5 sm:text-[14.5px]";
 
   return (
     <label className="block">
-      <span className="text-[12.5px] text-white/45">{etichetta}</span>
+      <span className="text-[12.5px] text-white/60">{etichetta}</span>
       {righe ? (
         <textarea
           rows={righe}
@@ -588,7 +592,7 @@ function ChatQualifica({ chiave, saluto }: { chiave: string; saluto: string }) {
             boxShadow: `0 0 70px rgba(${LUCE}, 0.10)`,
           }}
         >
-          <p className="mb-4 border-b border-white/[0.07] pb-3 text-[13px] text-white/45">
+          <p className="mb-4 border-b border-white/[0.07] pb-3 text-[13px] text-white/60">
             Richiesta ricevuta. Tre domande veloci e abbiamo finito.
           </p>
 
@@ -614,7 +618,7 @@ function ChatQualifica({ chiave, saluto }: { chiave: string; saluto: string }) {
                 {[0, 1, 2].map((i) => (
                   <span
                     key={i}
-                    className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/35"
+                    className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/50"
                     style={{ animationDelay: `${i * 130}ms` }}
                   />
                 ))}
@@ -635,14 +639,14 @@ function ChatQualifica({ chiave, saluto }: { chiave: string; saluto: string }) {
               // ⚠️ 16px e non 14.5 su telefono: sotto i 16px Safari su iPhone
               // ZOOMA da solo quando tocchi un campo, e l'utente si ritrova la
               // pagina ingrandita e storta senza aver fatto niente.
-              className="min-w-0 flex-1 rounded-xl border px-3.5 py-3 text-[16px] text-white outline-none placeholder:text-white/25 sm:py-2.5 sm:text-[14.5px]"
+              className="min-w-0 flex-1 rounded-xl border px-3.5 py-3 text-[16px] text-white outline-none transition-colors duration-200 placeholder:text-white/45 focus-visible:ring-2 focus-visible:ring-white/70 sm:py-2.5 sm:text-[14.5px]"
               style={{ borderColor: "rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.028)" }}
             />
             <button
               onClick={() => void manda()}
               onMouseEnter={suonoSfiora}
               disabled={!testo.trim() || attesa}
-              className="shrink-0 rounded-xl px-4 text-[14px] font-medium text-[#04252c] transition-all active:scale-95 disabled:opacity-30"
+              className="shrink-0 cursor-pointer rounded-xl px-4 text-[14px] font-medium text-[#04252c] transition-all duration-200 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#050507] active:scale-95 disabled:opacity-30"
               style={{ background: `rgb(${LUCE})` }}
             >
               Invia
@@ -650,13 +654,13 @@ function ChatQualifica({ chiave, saluto }: { chiave: string; saluto: string }) {
           </div>
         </div>
 
-        <p className="mt-5 text-center text-[13px] text-white/45">
+        <p className="mt-5 text-center text-[13px] text-white/60">
           Per qualsiasi cosa:{" "}
           <a href="mailto:corpagent7@gmail.com" className="text-white underline underline-offset-2">
             corpagent7@gmail.com
           </a>
         </p>
-        <p className="mt-2 text-center text-[12px] text-white/25">
+        <p className="mt-2 text-center text-[12px] text-white/45">
           Segui la tua richiesta:{" "}
           <a href={`/richiesta/${chiave}`} className="underline underline-offset-2">
             salva questo link
@@ -673,7 +677,7 @@ function ChatQualifica({ chiave, saluto }: { chiave: string; saluto: string }) {
 
 function Piede() {
   return (
-    <footer className="mt-24 border-t border-white/[0.07] pt-7 text-[12.5px] text-white/30">
+    <footer className="mt-24 border-t border-white/[0.07] pt-7 text-[12.5px] text-white/50">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span>CorpAgent · corpagent7@gmail.com</span>
         <a href="/privacy" className="hover:text-white/60">
