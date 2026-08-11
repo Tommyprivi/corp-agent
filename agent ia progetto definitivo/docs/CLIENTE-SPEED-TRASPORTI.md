@@ -907,3 +907,151 @@ aprirla sperando.
 tuo per il primo cliente. È il tipo di scorciatoia che sembra pratica ad agosto
 e diventa un problema serio quando i clienti sono cinque.
 
+---
+
+# Il sopralluogo, ora per ora
+
+> Da leggere sul telefono mentre sei lì. **Non è un questionario**: metà delle
+> cose che servono non si chiedono, si guardano.
+
+## Prima di partire
+
+- [ ] Telefono carico, con **CorpAgent aperto e provato** quella mattina
+- [ ] Un blocco di carta. ⚠️ Prendere appunti a mano davanti a un imprenditore
+      di 60 anni dice «ti sto ascoltando»; il telefono in mano dice il contrario
+- [ ] **Nessuna presentazione, nessuna slide.** Vai a capire, non a vendere
+
+---
+
+## 1 · I primi dieci minuti: stai zitto
+
+Fatti far vedere il posto e non chiedere niente. Guarda:
+
+- **Quanti telefoni squillano** e chi corre a rispondere
+- Se c'è un **foglio appeso** con le zone o le tariffe: è la memoria dell'agente,
+  già scritta da loro
+- Come si parlano fra ufficio e magazzino — **gridando? con la radio? a gesti?**
+  Quello è il buco che l'agente riempie
+
+🔑 In dieci minuti di silenzio capisci più che in mezz'ora di domande.
+
+---
+
+## 2 · Il magazzino: la fotografia
+
+📷 **Fotografa uno scanner.** È la prima cosa, prima di parlare con chiunque.
+
+Da quella foto dipende se l'IA entra **dentro** lo scanner o solo nel software:
+
+- Palmare con schermo → la nostra app ci gira sopra, settimane di lavoro
+- Pistola attaccata a un PC → tutto dipende da K-Master
+
+Poi guarda: **dove si accumulano i pacchi**, quanti fogli girano, se c'è un
+posto dove qualcuno scrive a mano qualcosa. Ogni foglio scritto a mano è una
+cosa che si perde.
+
+---
+
+## 3 · Mezz'ora accanto a un operativo
+
+Chiedi a Salvatore: *«posso stare mezz'ora vicino a uno dei ragazzi mentre
+risponde?»*
+
+**Scrivi ogni domanda che gli fa un cliente.** Quelle sono le venti domande che
+l'agente deve saper rispondere — e nessuno te le saprebbe elencare a memoria,
+nemmeno l'operativo stesso.
+
+⚠️ Segna anche **quanto tempo** ci mette a trovare la risposta, e **dove va a
+cercarla**. Se apre K-Master, guarda cosa clicca: è la strada che dovrà fare
+l'agente.
+
+---
+
+## 4 · Le tre domande tecniche
+
+Da fare a chi si occupa dei sistemi, non a Salvatore:
+
+1. **«K-Master si può interrogare da un altro programma?»** API, accesso al
+   database, o export automatico. 🔑 **Se c'è un fornitore tecnico, fatti dare
+   nome e telefono**: quella chiamata vale più di un mese di tentativi.
+2. **«QCSNET fa cosa che K-Master non fa?»**
+3. **«Come si chiama il gestionale delle fatture?»** Il nome esatto.
+
+E una quarta, a Salvatore:
+
+4. **«Avete un account Meta Business?»** *(quello delle pagine Facebook /
+   Instagram)*. Se sì, WhatsApp si collega sotto il loro — ed è già mezza strada.
+
+---
+
+## 5 · Le quattro domande sulle regole
+
+Queste **solo a Salvatore**, con calma, seduti:
+
+1. *«Se un cliente chiede un prezzo che non è a listino, l'agente cosa dice?»*
+2. *«Se chiede quando arriva la merce, può dare un orario o deve girare a voi?»*
+3. *«Uno sconto già concordato può ricordarlo. Uno nuovo mai. Va bene?»*
+4. *«Il primo sollecito a sette giorni può partire da solo, o vuoi vederli tutti?»*
+
+Più le due per la notte:
+- *«Chi è il reperibile, e su che numero?»*
+- *«Cosa conta come urgenza vera?»*
+
+⚠️ **Le sue risposte sono le regole dell'agente.** Scrivile parola per parola:
+è la differenza fra un agente suo e un agente generico.
+
+---
+
+## 6 · La dimostrazione: dieci minuti, alla fine
+
+**Alla fine**, non all'inizio. Prima capisci, poi mostri — così mostri le cose
+che gli servono, non quelle che hai preparato.
+
+Dal telefono, tre cose e basta:
+
+1. Gli scrivi una domanda e l'agente risponde con **dati veri** (Maps: «quanto
+   dista Torino da Milano»)
+2. Gli mandi **un vocale** e risponde a voce
+3. **Fotografi un foglio** e te lo legge
+
+Poi chiudi con la frase che conta:
+
+> *«Questo lo fa già. Quello che manca è farlo con i vostri dati — ed è per
+> questo che sono venuto a vedere.»*
+
+---
+
+## 7 · Cosa NON fare
+
+- ⛔ **Non dire un prezzo.** Nemmeno «indicativamente». Si dice dopo, per iscritto
+- ⛔ **Non promettere il cruscotto dei guadagni** finché non sai se il gestionale
+  si collega
+- ⛔ **Non promettere il controllo sui dipendenti.** ⚠️ Se lo tira fuori lui,
+  la risposta onesta è: *«i dati dell'azienda tutti; per il dettaglio persona
+  per persona serve un passaggio con il tuo consulente del lavoro — è normale,
+  lo fanno tutte le aziende che mettono un gestionale»*
+- ⛔ **Non dire di sì a tutto.** La frase che costruisce fiducia è: *«questo
+  ancora no»*
+
+---
+
+## 8 · Cosa porti via
+
+- [ ] 📷 La foto di uno scanner
+- [ ] 📝 Le venti domande vere dei clienti
+- [ ] 🔑 Nome del gestionale · risposta su K-Master · contatto del fornitore tecnico
+- [ ] 📋 Le regole, parola per parola
+- [ ] 📞 Il numero WhatsApp aziendale e chi ci risponde oggi
+- [ ] 🎨 Logo in alta risoluzione e i colori
+- [ ] 👥 I nomi delle 24 persone e il reparto
+- [ ] 📄 Listino e zone, **se te li dà** — se esita, non insistere: si chiede
+      dopo, quando si fida
+
+---
+
+## Il giorno dopo
+
+Una email corta con **tre cose**: cosa hai capito, cosa farai per primo, cosa ti
+serve da lui. ⚠️ Il giorno dopo, non la settimana dopo — è il momento in cui è
+ancora caldo, e una email che arriva subito dice più di qualsiasi contratto.
+
