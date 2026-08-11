@@ -687,3 +687,80 @@ si sa chi gli aveva parlato. Diventa altro quando i singoli messaggi si contano
 per persona. La riga di codice è la stessa; **il confine è lo scopo**, e per
 questo va scritto nell'informativa ai lavoratori.
 
+---
+
+# Gli autisti
+
+> Decisi l'11 agosto 2026. **Dipendenti dell'azienda**, non padroncini.
+
+## Come parlano con l'agente: voce e foto
+
+**Tutte e due**, e la scelta la fa il momento, non un menù:
+
+- **A voce mentre guidano** — manda un vocale, riceve un vocale. Nessuna mano
+  sullo schermo, nessuna app da installare. ✅ Funziona già oggi.
+- **Con la foto quando sono fermi** — la bolla firmata a consegna fatta. ✅ Anche
+  questo funziona già.
+
+```
+autista │ 🎤 «sono arrivato alla Rossi»
+agente  │ 🔊 «segnato. Il prossimo è alla Bianchi, 12 km»
+
+autista │ 🎤 «qui non c'è nessuno»
+agente  │ 🔊 «avviso il traffico adesso»
+        └→ messaggio all'operativo ✓
+```
+
+## Le quattro cose che fa per loro
+
+| | Cosa | Oggi |
+|---|---|---|
+| 1 | **Dice il giro di oggi** — tappe, orari, note del cliente | ⬜ serve K-Master |
+| 2 | **Prende le segnalazioni a voce** e le gira al traffico | ✅ funziona |
+| 3 | **Registra la consegna** con la foto della bolla | ✅ funziona |
+| 4 | **Avvisa il cliente che sta arrivando** | 🔧 serve sapere dov'è il mezzo |
+
+🔑 **Il numero 2 è quello che vale di più e costa meno.** Oggi quella
+segnalazione si fa telefonando all'operativo, che magari è al telefono con un
+cliente. Un vocale che diventa un messaggio al traffico toglie una telefonata a
+due persone per volta — e funziona **senza nessun connettore**.
+
+## ⚠️ Il GPS sui mezzi: qui serve fermarsi
+
+È stato deciso di collegare il GPS già presente sui mezzi. Va fatto, ma
+**sapendo cosa si sta toccando.**
+
+La geolocalizzazione di un dipendente che guida è **il caso più sorvegliato
+dell'articolo 4** dello Statuto dei Lavoratori. Non è una zona grigia: è il
+caso da manuale su cui l'Ispettorato del Lavoro e il Garante privacy si sono
+pronunciati più volte.
+
+### Cosa serve, e non lo decidiamo noi
+
+1. **Accordo sindacale o autorizzazione dell'Ispettorato.** Obbligatorio.
+2. **Informativa scritta agli autisti**: cosa si rileva, ogni quanto, chi lo
+   vede, per quanto si conserva.
+3. **Spento fuori dall'orario di lavoro.** Un mezzo aziendale usato per tornare
+   a casa non si traccia.
+4. **Finalità dichiarata e rispettata**: sicurezza del carico e organizzazione
+   delle consegne. **Non** valutare come guida un autista.
+
+⚠️ **La cosa importante da capire, e da dire a Salvatore:** il GPS sui mezzi
+**probabilmente ce l'hanno già** — quasi tutte le flotte lo hanno. Se è già
+autorizzato per la telemetria esistente, collegarlo a noi è un passaggio in più
+sulla stessa procedura, non una procedura nuova. **Va chiesto al sopralluogo:**
+*«il GPS che avete è autorizzato? Avete già l'accordo?»*
+
+Se la risposta è no, il punto 4 dell'elenco sopra si fa **senza GPS**: è
+l'autista a dire «sto arrivando», e il cliente riceve l'avviso lo stesso.
+
+## La postazione autista è diversa da tutte le altre
+
+Non è una scrivania: è un uomo che guida. Quindi:
+
+- **Nessuna schermata da leggere** mentre il mezzo è in movimento
+- **Nessuna azione che richieda due mani**
+- L'agente parla **corto**: «segnato», «il prossimo è a 12 km», non paragrafi
+- ⚠️ **Niente notifiche che chiedono una risposta immediata.** Un messaggio che
+  fa guardare il telefono a 90 all'ora è un rischio che nessuna funzione vale.
+
