@@ -180,3 +180,132 @@ e **restringe il campo senza spegnere l'entusiasmo**.
 
 ⚠️ Da rileggere prima di mandarla: **non contiene un prezzo**, ed è voluto. Il
 prezzo si dice dopo aver visto il magazzino, non prima.
+
+---
+
+# Le decisioni prese — 11 agosto 2026
+
+> Prese da Tommaso rispondendo alle domande di strutturazione. **Da qui si
+> costruisce.** Quello che non è deciso qui si decide al sopralluogo, non prima.
+
+## L'azienda, dal loro sito
+
+Agenzia di trasporto merci a **Torino, dal 1998**, tre generazioni. Bilici
+completi (carico dedicato), **groupage**, e **trasporti urgenti** — quest'ultima
+è la specialità che dichiarano. Operano su tutta Italia e gran parte d'Europa.
+P.IVA 12147210012.
+
+🔑 **La frase che vale oro, e l'hanno scritta loro:**
+
+> *«Assistenza clienti attiva 24 ore»*
+
+Lo promettono **già**. Un agente che risponde a qualsiasi ora non gli vende una
+cosa nuova: **gli fa mantenere una promessa che ha già fatto ai suoi clienti.**
+È l'argomento di vendita più forte che abbiamo, e non è nostro — è loro.
+
+## La struttura
+
+| Cosa | Deciso |
+|---|---|
+| **Postazioni** | **Tutte e quattro**: titolare, operativo/traffico (12), magazzino (12), amministrazione |
+| **Agenti** | **Uno per reparto, memoria condivisa** |
+| **Accessi** | **Solo Salvatore** all'inizio; gli altri quando dice «funziona» |
+| **Magazzino** | Con **gli scanner collegati** |
+| **Piattaforma** | Stessa app, **database in comune**, spazio **esclusivo loro** |
+| **Numero WhatsApp** | Quello aziendale *(⚠️ vedi il rischio sotto)* |
+| **Prezzo** | **Dopo il sopralluogo**, non prima |
+| **Successo** | Che Salvatore lo voglia tenere |
+
+### ⚠️ «Database in comune ma esclusivo a loro»: c'è già, ed è provato
+
+Non è da costruire. CorpAgent è multi-tenant dal primo giorno, e la separazione
+**la fa il database**, non il codice: la sicurezza per riga di Neon confronta
+ogni lettura con `app.user_id`. Un altro utente non vede «poco»: vede **zero
+righe**, comprese le credenziali dei connettori.
+
+È una cosa da **mostrare** a Salvatore, non da promettergli — e va detta con le
+parole giuste: *«i suoi dati non sono protetti dal nostro codice, sono protetti
+dal database. Anche se sbagliassimo noi una riga, lui resterebbe separato.»*
+
+Sopra ci va il suo nome e il suo logo. Quello sì, è da fare.
+
+## I quattro agenti, e perché la memoria è una sola
+
+```
+┌─ MEMORIA COMUNE ────────────────────────────┐
+│ listino · zone · tempi · regole · clienti   │
+└──┬──────────┬──────────┬──────────┬─────────┘
+   │          │          │          │
+TITOLARE   TRAFFICO   MAGAZZINO   AMMIN.
+sintesi,   rapido,    voce e      formale,
+numeri     preciso    foto        solleciti
+```
+
+⚠️ **La memoria condivisa è la scelta strutturale che conta.** Quello che il
+traffico spiega una volta lo sa anche l'amministrazione. Senza, si finisce con
+quattro agenti che sanno cose diverse della stessa azienda — e il giorno in cui
+due danno risposte diverse allo stesso cliente, la fiducia è finita.
+
+## Il magazzino: tutte e quattro le cose, ma non lo stesso giorno
+
+Deciso di farle tutte:
+
+| | Cosa | Oggi |
+|---|---|---|
+| 1 | **Legge le bolle fotografate** | ✅ funziona, si può mostrare al sopralluogo |
+| 2 | **Risponde a voce mentre lavorano** | ✅ funziona ⚠️ da provare **in magazzino**, col rumore |
+| 3 | **Avvisa il traffico quando qualcosa non torna** | 🔧 il canale c'è, la regola va scritta |
+| 4 | **Controlla i conteggi** | ⬜ dipende da K-Master |
+
+⚠️ L'ordine non è casuale: **1 e 2 si vedono subito**, 3 è poco lavoro e collega
+due reparti che oggi si parlano gridando, 4 vale di più di tutte ma dipende da
+qualcosa che non controlliamo.
+
+## Gli scanner: la fotografia che decide il progetto
+
+Non sappiamo che tipo siano, ed è la risposta onesta. Ma **cambia tutto**:
+
+- **Terminali Android** (Zebra, Honeywell) → la nostra app ci gira **sopra**.
+  Fotocamera, microfono, lettore: settimane di lavoro, nessun hardware nuovo.
+- **Pistole USB o Bluetooth su un PC** → l'IA non entra nello scanner, entra nel
+  **software**. Lo scanner è solo una tastiera veloce, e tutto dipende da
+  K-Master.
+
+🔑 **La prima cosa da fare entrando in magazzino: fotografare uno scanner.**
+Quella foto vale più di mezz'ora di domande.
+
+## ⚠️ Il rischio sul numero aziendale, da non sottovalutare
+
+È stato scelto il numero che usano già. Prima di collegarlo va saputo che
+**portare un numero sull'API di WhatsApp Business può interrompere l'uso normale
+dell'app su quel numero.** Se oggi i suoi rispondono ai clienti con WhatsApp
+normale su quel telefono, il giorno del collegamento smetterebbero di poterlo
+fare.
+
+Non è un motivo per non farlo: è un motivo per **saperlo prima e decidere
+insieme a lui**, invece di scoprirlo il lunedì mattina.
+
+⚠️ E vale solo quando si apre ai clienti. Finché lo usa solo Salvatore, il
+numero aziendale **non serve**: gli basta il suo.
+
+## L'ordine di lavoro
+
+1. **Struttura completa** — quattro postazioni, quattro agenti, memoria comune,
+   il nome e il logo di Speed Trasporti. Si fa **adesso**, senza aspettare
+   nessuno.
+2. **La memoria di partenza** — quello che sappiamo dal loro sito, marcato per
+   quello che è. ⚠️ **Nessun prezzo inventato**: dove non sappiamo, l'agente dice
+   «faccio verificare», che è la verità.
+3. **Il sopralluogo** — la foto dello scanner, K-Master, il gestionale, e
+   mezz'ora accanto a un operativo che risponde al telefono.
+4. **Salvatore prova**, da solo, sul suo numero.
+5. Si aprono gli altri, un reparto alla volta.
+
+## Cosa ci blocca, e va risolto prima del punto 4
+
+| | |
+|---|---|
+| ⚠️ | **Gettone permanente di Meta** — senza, il canale scade ogni 24 ore. Non si consegna a un cliente vero una cosa che si spegne domani. |
+| ⚠️ | **La serratura sull'ingresso** — con l'accesso via email chiunque trovi `/entra` si crea un account. Va chiusa prima di dare il link a Salvatore. |
+| ⬜ | **Il connettore K-Master / QCSNET** — dipende dal sopralluogo. |
+
