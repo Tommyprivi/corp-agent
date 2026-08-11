@@ -806,3 +806,104 @@ dell'azienda, ascolta i vocali degli autisti e li gira al traffico, legge le
 bolle fotografate. Toglie telefonate dal primo giorno. **Non è un ripiego: è la
 cosa che lui ha messo al primo posto rispondendo alla domanda 7.**
 
+---
+
+# Le ultime decisioni, e la questione partita IVA
+
+## Cosa decide Salvatore, non noi
+
+Tre delle quattro domande finali hanno la stessa risposta: **decide lui.** Ed è
+la risposta giusta — sono regole del suo mestiere, non scelte di prodotto.
+
+| | Chi decide |
+|---|---|
+| Cosa l'agente non deve mai fare coi clienti | **Salvatore** |
+| Fin dove si spinge nei solleciti | **Salvatore** |
+| Chi insegna alle persone a usarlo | ⬜ ancora aperto |
+
+⚠️ **«Decide lui» va trasformato in domande precise al sopralluogo**, altrimenti
+resta un buon proposito. Le quattro da fargli, in questa forma:
+
+1. *«Se un cliente chiede un prezzo che non è a listino, l'agente cosa dice?»*
+2. *«Se chiede quando arriva la merce, può dare un orario o deve girare a voi?»*
+3. *«Uno sconto già concordato può ricordarlo. Uno nuovo, mai. Va bene?»*
+4. *«Il primo sollecito a sette giorni può partire da solo, o vuoi vederlo tutti?»*
+
+🔑 Le sue risposte diventano **le regole scritte dell'agente**, e sono la parte
+che rende l'agente *suo* invece che generico.
+
+### ⚠️ «Chi insegna alle persone» resta aperto, ed è il rischio numero uno
+
+Non è una domanda tecnica: è quella che decide se il progetto vive. Un agente
+perfetto che nessuno apre è un progetto fallito con ottime recensioni interne.
+
+La proposta, da mettere sul tavolo: **un'ora per reparto, fatta da Tommaso**,
+nella settimana della consegna. Mezz'ora per mostrare due cose utili, mezz'ora
+per stare zitti e guardarli provare. È anche il momento in cui si trova chi
+dirà di no — e lo si convince sul posto, che è l'unico posto dove funziona.
+
+## Di notte: solo urgenze
+
+L'agente risponde sempre, ma **filtra**: se è un'urgenza vera avvisa il
+reperibile, altrimenti prende nota per la mattina.
+
+⚠️ Servono due informazioni da Salvatore, e senza non si può costruire:
+- **Chi è il reperibile**, e su che numero
+- **Cosa conta come urgenza** — merce deperibile? un mezzo fermo? un carico che
+  deve partire all'alba? La definizione è sua, non nostra.
+
+---
+
+# ⚠️ La partita IVA: cosa blocca e cosa no
+
+> Tommaso, 11 agosto: *«serve la partita IVA, che poi la uso dopo che il
+> prodotto è finito… per i messaggi»*
+
+## Il fatto tecnico
+
+Il numero WhatsApp che stiamo usando oggi è **un numero di prova di Meta**:
+gettoni che scadono ogni 24 ore e pochissimi destinatari ammessi. Per mandare
+messaggi a clienti veri da un numero vero serve un **account business verificato
+presso Meta**, e la verifica richiede i documenti di un'azienda registrata.
+
+## 🔑 Il punto che sblocca tutto: il numero è di Speed Trasporti, non tuo
+
+**L'account WhatsApp Business si crea sotto l'azienda a cui appartiene il
+numero.** Speed Trasporti è una S.r.l. vera, con partita IVA `12147210012`,
+attiva dal 1998 e con un sito pubblico: **ha già tutto quello che Meta chiede.**
+
+Quindi:
+
+- Il numero aziendale e l'account business restano **loro**
+- Tu entri come **collaboratore** sul loro portfolio Meta, con i permessi per
+  gestire il canale
+- ⚠️ **Non serve la tua partita IVA per far partire Speed Trasporti a novembre**
+
+Ed è anche l'architettura corretta a prescindere: il numero di un cliente deve
+stare sotto il cliente. Se un domani smettesse di lavorare con te, si porta via
+il suo numero senza dover smontare niente — e questo, detto a un imprenditore,
+vale più di una rassicurazione.
+
+**Da verificare al sopralluogo:** hanno già un account Meta Business? Quasi tutte
+le aziende con una pagina Facebook ce l'hanno, e in quel caso è già mezza strada.
+
+## Quando la partita IVA ti serve davvero
+
+| Cosa | Serve la P.IVA? |
+|---|---|
+| Far funzionare WhatsApp per Speed Trasporti | ❌ no, si usa la loro |
+| Far funzionare il prodotto, i connettori, tutto il resto | ❌ no |
+| **Emettere fattura a Speed Trasporti** | ✅ **sì** |
+| **Incassare con Stripe** | ✅ **sì** |
+| Avere un tuo numero WhatsApp CorpAgent per la vetrina | ✅ sì |
+| Un dominio `corpagent.it` e le email da lì | ⬜ non obbligatoria, ma sensata |
+
+🔑 **Il momento in cui serve è quando incassi, non quando costruisci.** Con la
+consegna al 30 novembre, hai tutto agosto, settembre e ottobre per aprirla con
+calma — e la aprirai sapendo già di avere un cliente, che è molto meglio che
+aprirla sperando.
+
+⚠️ **Una cosa da non fare:** far fatturare a un'altra persona o azienda al posto
+tuo per il primo cliente. È il tipo di scorciatoia che sembra pratica ad agosto
+e diventa un problema serio quando i clienti sono cinque.
+
