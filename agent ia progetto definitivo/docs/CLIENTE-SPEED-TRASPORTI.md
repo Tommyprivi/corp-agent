@@ -309,3 +309,182 @@ numero aziendale **non serve**: gli basta il suo.
 | ⚠️ | **La serratura sull'ingresso** — con l'accesso via email chiunque trovi `/entra` si crea un account. Va chiusa prima di dare il link a Salvatore. |
 | ⬜ | **Il connettore K-Master / QCSNET** — dipende dal sopralluogo. |
 
+---
+
+# La sua area: com'è fatta
+
+> Decisa l'11 agosto 2026.
+
+## Cosa vede entrando
+
+La chat aperta, pronta a ricevere una domanda, con le **quattro postazioni in
+una barra laterale** — come le cartelle di una posta. Zero attrito: entra e
+chiede, senza un clic in mezzo.
+
+```
+┌──────────┬───────────────────────────┐
+│ Traffico●│  Buongiorno Salvatore     │
+│ Magazzino│                           │
+│ Ammin.   │  Cosa ti serve?           │
+│ Direzione│                           │
+│ ──────── │                           │
+│ Cruscotto│  ┌─────────────────────┐  │
+│ Persone  │  │ scrivi qui…         │  │
+│ Documenti│  └─────────────────────┘  │
+│ Connett. │                           │
+└──────────┴───────────────────────────┘
+```
+
+⚠️ **Il riepilogo non va in prima pagina**, e non è una svista: il primo giorno
+sarebbe tutto a zero, e una schermata di zeri è la peggiore prima impressione
+possibile. Sta nel **Cruscotto**, dove ha senso guardarlo dopo qualche giorno di
+dati veri.
+
+## Le persone: un elenco con dentro/fuori
+
+Nome, reparto, accesso attivo o no. Salvatore accende e spegne una persona con
+un interruttore.
+
+⚠️ **È «entra / non entra», non «vede questo e non quello».** I permessi veri —
+un magazziniere che non deve vedere i solleciti — sono la **Fase 12** del
+percorso e vanno costruiti. Finché non ci sono, chi entra vede le stesse cose:
+va detto a Salvatore prima di aprire gli accessi ai suoi 24, non dopo.
+
+## Il marchio
+
+- I **colori di Speed Trasporti in tutta l'interfaccia**, non solo il logo
+- Il logo già **nella schermata d'accesso**, prima ancora di entrare
+
+⚠️ È il momento in cui si decide se sembra *«un software che ho comprato»* o
+*«il nostro sistema»*. Per farlo mi servono i colori esatti: si prendono dal
+logo in alta risoluzione, oppure dal sito.
+
+## Cosa può cambiare da solo
+
+**Tutto**: tono, testi, regole, colori. Un pannello dove modifica e vede
+l'effetto subito.
+
+⚠️ Il rovescio, da dire a Salvatore una volta e con chiarezza: **può anche
+peggiorare l'agente senza accorgersene**, e da fuori sembrerà che «il prodotto
+è peggiorato». Due difese: ogni modifica salva la versione precedente e si
+torna indietro con un clic, e c'è una **chat di prova** dove vedere l'effetto
+prima che i clienti lo sentano.
+
+---
+
+# Il cruscotto: guadagni e dati dell'azienda
+
+> *«Salvatore avrà anche una dashboard coi guadagni giornalieri e tutti i dati
+> dell'azienda»*
+
+## ⚠️ Prima la cosa che conta più di tutte
+
+Questi numeri **CorpAgent non li ha**. Non li può calcolare, non li può stimare,
+non li può indovinare: vivono dentro **il gestionale delle fatture**, dentro
+**K-Master** e dentro **QCSNET**.
+
+Il cruscotto è una **finestra**, non una fonte. Quanto è pieno dipende
+interamente da quanti di quei sistemi riusciamo a collegare — ed è la ragione
+per cui la domanda «si possono interrogare?» al sopralluogo vale più di tutto il
+resto messo insieme.
+
+⚠️ **Non promettergli il cruscotto prima di saperlo.** Un cruscotto vuoto
+consegnato a un imprenditore è la cosa che fa dire «non funziona niente».
+
+## Cosa mostrerebbe, e da dove viene ogni numero
+
+| Riquadro | Da dove | Se manca il collegamento |
+|---|---|---|
+| **Fatturato di oggi / del mese** | gestionale fatture | ⛔ niente |
+| **Da incassare, e chi è in ritardo** | gestionale fatture | ⛔ niente |
+| **Fatture fornitori da controllare** | gestionale fatture | ⛔ niente |
+| **Spedizioni in corso / consegnate oggi** | K-Master o QCSNET | ⛔ niente |
+| **Ritardi e anomalie** | K-Master o QCSNET | ⛔ niente |
+| **Movimenti di magazzino** | scanner / WMS | ⛔ niente |
+| **Richieste gestite dall'agente** | ✅ **noi** | ✅ funziona sempre |
+| **Tempo medio di risposta** | ✅ **noi** | ✅ funziona sempre |
+| **Ore risparmiate (stima dichiarata)** | ✅ **noi** | ✅ funziona sempre |
+
+🔑 **Le ultime tre righe sono le uniche che funzionano dal primo giorno.** E sono
+anche quelle che rispondono alla domanda che conta per lui: *«questa cosa mi
+serve o no?»* Il resto è potente, ma è tutto in prestito da sistemi che non
+controlliamo.
+
+---
+
+# I connettori: la lista completa per Speed Trasporti
+
+## Quelli che decidono il progetto
+
+| Connettore | A cosa serve | Stato |
+|---|---|---|
+| **K-Master** | stato spedizioni, carichi, operativo | ⬜ **non esiste** — da capire al sopralluogo |
+| **QCSNET** | idem, o parte del flusso | ⬜ **non esiste** — idem |
+| **Gestionale fatture** *(nome ignoto)* | fatturato, incassi, solleciti, fornitori | ⬜ **non esiste** — serve il nome |
+
+⚠️ Senza almeno uno dei primi due, l'agente risponde su ciò che sa (orari, zone,
+tariffe) ma **non su cosa sta succedendo adesso**. Senza il terzo, il cruscotto
+dei guadagni e i solleciti non esistono. **Sono tre domande, e vanno fatte prima
+di promettere qualsiasi cosa.**
+
+## Quelli che abbiamo già
+
+| Connettore | A cosa serve | Stato |
+|---|---|---|
+| **WhatsApp Business** | il canale con i clienti | ⚠️ **gettone scaduto**, va rifatto permanente |
+| **Google Maps** | distanze e tempi per i preventivi | ✅ collegato e provato |
+| **Google / Gmail + Calendar** | posta e appuntamenti di carico | ✅ motore pronto, si collega col suo account |
+| **Microsoft 365 / Outlook** | idem, se usano Microsoft | ✅ motore pronto |
+
+## Quelli che servirebbero dopo
+
+| Connettore | A cosa serve | Difficoltà |
+|---|---|---|
+| **Email aziendale (IMAP/SMTP)** | solleciti e fatture fornitori che arrivano per posta | media |
+| **Terminali magazzino** | l'IA dentro gli scanner | ⚠️ dipende dal modello |
+| **Corrieri / tracking** | se si appoggiano a terzisti per le consegne | media |
+| **Home banking (flussi CBI)** | vedere gli incassi arrivati davvero | alta |
+| **Telemetria mezzi (GPS)** | dove sono i camion adesso | media |
+
+---
+
+# Tutte le informazioni che ti servono
+
+## Le tre che decidono se il progetto è di settimane o di mesi
+
+1. **K-Master si può interrogare?** API, accesso al database, o export
+   automatico. Se c'è un fornitore tecnico, **il suo contatto**: quella
+   telefonata vale più di un mese di tentativi.
+2. **QCSNET**: stessa domanda. E soprattutto: **cosa fa uno che non fa l'altro?**
+3. **Come si chiama il gestionale delle fatture.** Il nome esatto. Da lì si sa in
+   un pomeriggio se il cruscotto è possibile.
+
+## Le cinque da chiedere a Salvatore
+
+4. **Il numero WhatsApp aziendale**: qual è, chi ci risponde adesso, ed è già su
+   WhatsApp Business?
+5. **I colori e il logo** in alta risoluzione, per la sua area.
+6. **Chi sono le 24 persone**: nomi e reparto, per preparare le postazioni.
+7. **Le venti domande più frequenti** dei clienti. Se esistono già scritte da
+   qualche parte, sono la memoria dell'agente già pronta.
+8. **Il listino e le zone con i tempi.** ⚠️ È il documento più delicato che ha:
+   chiederlo con la ragione detta chiaramente («senza, l'agente non può fare
+   preventivi»), non come un modulo da compilare.
+
+## Le tre da guardare, non da chiedere
+
+9. 📷 **Fotografa uno scanner.** È la prima cosa entrando in magazzino, e da
+   sola cambia il progetto.
+10. ⏱️ **Stai mezz'ora accanto a un operativo** mentre risponde al telefono. Le
+    vere domande dei clienti si scoprono così, non elencandole a memoria.
+11. 👤 **Trova chi dirà di no.** In 24 persone c'è sempre qualcuno convinto che
+    «tanto poi risponde male ai clienti». Fargli vedere la modalità Ghost è più
+    utile che convincere il titolare due volte.
+
+## Le due che devi risolvere tu, prima
+
+12. ⚠️ **Il gettone permanente di Meta.** Senza, WhatsApp si spegne ogni 24 ore —
+    e metà della dimostrazione è WhatsApp.
+13. ⚠️ **La serratura sull'ingresso.** Con l'accesso via email chiunque trovi
+    `/entra` si crea un account. Va chiusa **prima** di mandare il link.
+
