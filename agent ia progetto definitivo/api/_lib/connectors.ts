@@ -397,8 +397,16 @@ function fornitore(kind: ConnectorKind): Fornitore | null {
         "openid",
         "email",
       ].join(" "),
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      // ⚠️ Un client SEPARATO da quello dell'ingresso, e non e' pignoleria.
+      // `GOOGLE_CLIENT_ID` e' quello con cui la gente ENTRA in CorpAgent: se
+      // toccassimo i suoi indirizzi di ritorno per far posto ai connettori,
+      // un errore li' vorrebbe dire **nessuno entra piu' nel sito**. Il
+      // connettore Gmail e' importante; l'ingresso e' vitale. Si separano.
+      //
+      // La ricaduta sul vecchio serve solo finche' il client nuovo non e'
+      // configurato ovunque: quando lo e', questa riga si puo' togliere.
+      clientId: process.env.GOOGLE_CONNECT_CLIENT_ID || process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CONNECT_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET,
     };
   }
 

@@ -74,6 +74,81 @@
 > quindi login e chiavi li gestiamo noi. L'ordine delle righe **non cambia**: cambiano due
 > nomi. Dettagli in [SETUP-DATABASE.md](SETUP-DATABASE.md) e [SETUP-ACCESSI.md](SETUP-ACCESSI.md).
 
+---
+
+# ⚠️ DIREZIONE FINALE — 10 Agosto 2026, decisa da Tommaso
+
+> **QUESTA SEZIONE VINCE SULL'ORDINE DELLE FASI SOTTO.** Non le cancella: le
+> mette dietro una porta. Tutto quello che è stato costruito diventa **la base
+> su cui si serviranno i clienti veri**, non un prodotto che si sfoglia da soli.
+
+## Cosa va pubblico ORA
+
+Solo la **landing page con il form di contatto aziende**. Tutto il resto —
+agente WhatsApp funzionante, dashboard interna, editor professionale — resta
+privato: **non visibile né accessibile pubblicamente finché non c'è un cliente
+reale collegato.**
+
+⚠️ Questa riga cambia la natura del sito. Oggi chiunque entra con Google e si
+trova in mano il prodotto. Da qui in poi l'ingresso è riservato: la porta
+pubblica è **una sola**, il form.
+
+## Landing page pubblica
+
+1. Messaggio chiaro: **«Sei un'azienda?»** → form
+2. Campi: nome azienda, settore, telefono, email, descrizione del problema
+3. Dopo l'invio, **un agente fa alcune domande base di approfondimento**, poi
+   chiude indirizzando l'azienda a scrivere via email per il contatto vero
+4. Il contatto commerciale resta **manuale** (Tommaso)
+
+**L'email è obbligatoria**, e il form dice perché: *«Ci serve la tua email per
+inviarti la proposta dettagliata dopo la prima chiacchierata.»* Il telefono
+resta l'alternativa rapida; l'email è il canale ufficiale per i dettagli lunghi.
+
+**Indirizzo di contatto: `corpagent7@gmail.com`**
+
+## Dashboard richieste (privata, solo Tommaso)
+
+- Tutte le richieste con dati del form **più** le risposte date all'agente
+- Le richieste chiuse vanno in un **archivio separato** da quelle attive
+- L'azienda che ha compilato il form può controllare **lo stato della propria
+  richiesta** con un link dedicato — senza vedere la dashboard completa
+
+## Processo dopo una richiesta
+
+- Quando un'azienda richiede il servizio, Tommaso ha **1-2 giorni** per
+  preparare la sua versione iniziale prima di mostrarla
+- Si parte da un **template di settore** — non da zero, e non da un generico
+  unico. All'inizio 2-3: **trasporti, ristorazione, retail** (espandibili se
+  emergono altri settori ricorrenti)
+- Il template include: agente WhatsApp pre-configurato con tono e FAQ tipiche
+  del settore, connettori pertinenti suggeriti (trasporti → Maps, K-Master;
+  ristorazione → prenotazioni/calendario), interfaccia base con colori e
+  layout adatti
+
+## Personalizzazione post-consegna
+
+Dopo la consegna iniziale, l'azienda ha un pannello per personalizzare: colori,
+logo, layout, testi, messaggi di benvenuto e chiusura su WhatsApp, tono
+dell'agente. **Nessun vincolo verso il template: è un punto di partenza veloce,
+non una gabbia.**
+
+## L'ordine di costruzione
+
+| | Cosa | Quando |
+|---|---|---|
+| **1** | Landing pubblica + form + agente di prima qualifica | ⬜ **subito, va online** |
+| **2** | Dashboard privata delle richieste in arrivo | ⬜ **subito** |
+| **3** | I 2-3 template di settore (**trasporti per primo**, è il caso vero che già conosciamo con Speed Trasporti) | ⬜ |
+| **4** | Pannello di personalizzazione post-consegna | ⬜ dopo il primo cliente vero |
+
+⚠️ **Perché trasporti per primo e non «tutti e tre insieme»:** Speed Trasporti
+è l'unica azienda di cui conosciamo davvero il lavoro. Un template di
+ristorazione scritto senza un ristoratore in stanza è un'ipotesi travestita da
+prodotto.
+
+---
+
 Ordinate per **dipendenza tecnica**: ogni fase usa quello che ha costruito la precedente.
 Non si può invertire l'ordine — senza la Fase 2 (backend) nulla di quello che segue
 funziona davvero, resta interfaccia.
