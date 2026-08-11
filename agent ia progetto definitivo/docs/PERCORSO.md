@@ -142,7 +142,7 @@ non una gabbia.**
 | **3** | I 2-3 template di settore (**trasporti per primo**, è il caso vero che già conosciamo con Speed Trasporti) | ⬜ |
 | **4** | Pannello di personalizzazione post-consegna | ⬜ dopo il primo cliente vero |
 
-⚠️ **Perché trasporti per primo e non «tutti e tre insieme»:** Speed Trasporti
+⚠️ **Perch arré trasporti per primo e non «tutti e tre insieme»:** Speed Trasporti
 è l'unica azienda di cui conosciamo davvero il lavoro. Un template di
 ristorazione scritto senza un ristoratore in stanza è un'ipotesi travestita da
 prodotto.

@@ -358,6 +358,11 @@ function Form({
   onFatto: (v: { chiave: string; saluto: string }) => void;
 }) {
   const [d, setD] = useState({ azienda: "", settore: "", telefono: "", email: "", esigenza: "" });
+  // ⚠️ L'esca. Una persona non la vede e non la compila mai; certi programmi
+  // riempiono ogni campo che trovano nel codice. Se arriva piena, la richiesta
+  // viene scartata — e a chi l'ha mandata rispondiamo «grazie», per non
+  // insegnargli dov'è la trappola.
+  const [esca, setEsca] = useState("");
   const [accetto, setAccetto] = useState(false);
   const [attesa, setAttesa] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
@@ -399,7 +404,7 @@ function Form({
     setErrore(null);
     setAttesa(true);
     try {
-      const r = await creaRichiesta({ ...d, gettone });
+      const r = await creaRichiesta({ ...d, gettone, sito: esca });
       suonoFatto();
       onFatto(r);
     } catch (e) {
@@ -410,6 +415,10 @@ function Form({
     }
   }
 
+  // ⚠️ Il gettone di Turnstile NON entra qui. Se ci entrasse, un guasto di
+  // Cloudflare terrebbe il pulsante spento e nessuna azienda potrebbe mandare
+  // una richiesta — che è esattamente quello che è successo l'11 Agosto. Il
+  // controllo lo fa il server, che sa anche degradare.
   const pieno = Object.values(d).every((v) => v.trim()) && accetto;
 
   return (
@@ -447,11 +456,30 @@ function Form({
           />
         </div>
 
+        {/* ⚠️ Nascosta col CSS e non con `type="hidden"`: i programmi che
+            riempiono i moduli SALTANO i campi hidden — sanno che sono trappole
+            — mentre compilano quelli visibili nel codice e invisibili sullo
+            schermo. `aria-hidden` e `tabIndex={-1}` la tengono fuori dalla
+            navigazione da tastiera e dai lettori di schermo, così nessuna
+            persona la incontra per sbaglio. */}
+        <div aria-hidden className="absolute left-[-9999px] h-0 w-0 overflow-hidden">
+          <label>
+            Sito web
+            <input
+              type="text"
+              tabIndex={-1}
+              autoComplete="off"
+              value={esca}
+              onChange={(e) => setEsca(e.target.value)}
+            />
+          </label>
+        </div>
+
         <div ref={turnstileRef} className="mt-5" />
         {guastoBot && (
           <p className="mt-3 rounded-lg border border-amber-400/25 bg-amber-400/[0.07] px-3.5 py-2.5 text-[13px] leading-relaxed text-amber-200/90">
-            Il controllo anti-robot non è partito. Ricarica la pagina e riprova — oppure
-            scrivici direttamente a{" "}
+            Il controllo anti-robot di Cloudflare non è partito. Non è un problema: la
+            tua richiesta arriva lo stesso. Se preferisci, scrivici a{" "}
             <a href="mailto:corpagent7@gmail.com" className="cursor-pointer underline underline-offset-2">
               corpagent7@gmail.com
             </a>

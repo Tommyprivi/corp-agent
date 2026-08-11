@@ -33,6 +33,8 @@ import {
   avvisaTommaso,
   conversazione,
   cosaManca,
+  esca,
+  improntaProvenienza,
   datiRichiesta,
   istruzioniQualifica,
   nuovaRichiesta,
@@ -69,7 +71,7 @@ export default {
         return json({ error: "Corpo della richiesta illeggibile." }, 400);
       }
 
-      if (corpo.richiesta) return await creaRichiesta(corpo);
+      if (corpo.richiesta) return await creaRichiesta(corpo, request);
       if (corpo.qualifica) return await rispondiQualifica(corpo);
       return json({ error: "Non so cosa vuoi fare." }, 400);
     }
@@ -152,15 +154,35 @@ function json(body: unknown, status: number): Response {
 // UNA NUOVA RICHIESTA
 // ─────────────────────────────────────────────────────────────────────────
 
-async function creaRichiesta(corpo: Record<string, unknown>): Promise<Response> {
-  const d = corpo.richiesta as Partial<DatiRichiesta> & { gettone?: string };
+async function creaRichiesta(
+  corpo: Record<string, unknown>,
+  request: Request
+): Promise<Response> {
+  const d = corpo.richiesta as Partial<DatiRichiesta> & { gettone?: string; sito?: string };
 
-  // ⚠️ L'ordine conta: prima si controlla che sia una persona, poi che i campi
-  // ci siano. Al contrario, un programma ostile scoprirebbe le regole di
-  // validazione senza aver mai superato Turnstile.
-  if (!(await umano(d.gettone))) {
-    return json({ error: "Non riesco a verificare che tu sia una persona. Ricarica e riprova." }, 403);
+  // ─────────────────────────────────────────────────────────────────
+  // ⚠️ SI DEGRADA, NON SI SPEGNE
+  // ─────────────────────────────────────────────────────────────────
+  // L'11 Agosto Turnstile ha smesso di partire su questo dominio, e finché
+  // restava l'unica difesa **nessuna azienda poteva mandare una richiesta**:
+  // il controllo falliva, il server rifiutava, e la vetrina era online.
+  //
+  // Togliere il controllo sarebbe stato sbagliato — ogni richiesta finta apre
+  // una conversazione con l'agente, e ogni conversazione sono soldi veri di
+  // modello. Quindi: se Turnstile risponde, vale Turnstile. Se è guasto,
+  // valgono due difese più deboli ma reali (l'esca invisibile e il limite di
+  // tre richieste all'ora dallo stesso posto), e il servizio resta in piedi.
+  //
+  // ⚠️ L'esca si controlla SEMPRE, anche quando Turnstile funziona: costa zero
+  // e ferma una classe di programmi che Turnstile non vede.
+  if (esca(d.sito)) {
+    // Si risponde «va bene» a un programma automatico invece di dirgli che è
+    // stato scoperto: chi scrive quei programmi corregge la trappola solo se
+    // sa di averla trovata.
+    return json({ chiave: "ok", saluto: "Grazie, ti ricontattiamo." }, 200);
   }
+
+  const passaTurnstile = await umano(d.gettone);
 
   const manca = cosaManca(d);
   if (manca) return json({ error: manca }, 400);
@@ -173,7 +195,29 @@ async function creaRichiesta(corpo: Record<string, unknown>): Promise<Response> 
     esigenza: d.esigenza as string,
   };
 
-  const { chiave } = await nuovaRichiesta(dati);
+  const esito = await nuovaRichiesta(dati, improntaProvenienza(request));
+  if (esito.rifiutata || !esito.chiave) {
+    return json(
+      {
+        error:
+          "Abbiamo già ricevuto delle richieste da qui poco fa. Riprova fra un'ora, " +
+          "oppure scrivici direttamente a corpagent7@gmail.com.",
+      },
+      429
+    );
+  }
+  const chiave = esito.chiave;
+
+  // Resta scritto se questa richiesta è passata dal controllo forte o dalle
+  // difese di riserva: quando si guarderà una richiesta strana, si saprà da
+  // quale porta è entrata.
+  if (!passaTurnstile) {
+    await scriviInRichiesta(
+      chiave,
+      "agente",
+      "[nota interna: Turnstile non ha risposto, richiesta accettata con esca e limite di frequenza]"
+    );
+  }
 
   // ⚠️ Prima si mette al sicuro, poi si avvisa — e senza aspettare. Se Resend
   // fosse lento, l'imprenditore vedrebbe la rotella girare per otto secondi

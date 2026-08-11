@@ -19,6 +19,7 @@
  */
 
 import { getPool } from "./db.js";
+import { createHash } from "node:crypto";
 
 const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
@@ -40,11 +41,7 @@ export interface DatiRichiesta {
  */
 export async function umano(gettone: string | undefined): Promise<boolean> {
   const segreto = process.env.TURNSTILE_SECRET_KEY;
-  // ⚠️ Se la chiave non è configurata NON si lascia passare tutto: si lascia
-  // passare tutto solo in sviluppo, dove il form serve a provare. In
-  // produzione una chiave mancante deve fermare, non aprire.
-  if (!segreto) return process.env.NODE_ENV !== "production";
-  if (!gettone) return false;
+  if (!segreto || !gettone) return false;
 
   try {
     const r = await fetch(SITEVERIFY, {
@@ -55,10 +52,43 @@ export async function umano(gettone: string | undefined): Promise<boolean> {
     });
     return ((await r.json()) as { success?: boolean }).success === true;
   } catch {
-    // Cloudflare irraggiungibile: si rifiuta. Un'azienda che riprova fra un
-    // minuto è un piccolo fastidio; un form aperto è un problema per giorni.
     return false;
   }
+}
+
+/**
+ * L'esca: un campo che una persona non vede e non compila mai.
+ *
+ * ⚠️ È nascosto con il CSS, non con `type="hidden"`. I programmi che riempiono
+ * i moduli saltano i campi `hidden` — sanno che sono una trappola — mentre
+ * riempiono quelli visibili nel codice ma invisibili sullo schermo. Il campo si
+ * chiama `sito` proprio perché sembri una cosa che valga la pena compilare.
+ *
+ * ⚠️ Non basta da sola: è una difesa debole, che ferma i programmi banali e non
+ * quelli scritti apposta. Vive insieme al limite di frequenza, e cede il posto
+ * a Turnstile appena Turnstile torna a funzionare.
+ */
+export function esca(valore: unknown): boolean {
+  return typeof valore === "string" && valore.trim().length > 0;
+}
+
+/**
+ * L'impronta di chi sta scrivendo — per contare, non per riconoscere.
+ *
+ * ⚠️ Non si conserva l'indirizzo IP. Un IP è un dato personale, e tenerlo per
+ * contare tre richieste all'ora sarebbe raccogliere molto più del necessario.
+ * L'impronta con sale permette di dire «queste vengono dallo stesso posto»
+ * senza permettere di dire «da quale posto»: è la differenza fra contare e
+ * sorvegliare.
+ */
+export function improntaProvenienza(request: Request): string | null {
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    null;
+  if (!ip) return null;
+  const sale = process.env.CONNECTORS_KEY ?? "corpagent";
+  return createHash("sha256").update(`${sale}|${ip}`).digest("hex").slice(0, 32);
 }
 
 /** Controlli minimi, quelli che evitano una richiesta inutilizzabile. */
@@ -76,11 +106,18 @@ export function cosaManca(d: Partial<DatiRichiesta>): string | null {
   return null;
 }
 
-/** Salva la richiesta e restituisce la chiave con cui l'azienda la seguirà. */
-export async function nuovaRichiesta(d: DatiRichiesta): Promise<{ id: string; chiave: string }> {
-  const r = await getPool().query<{ id: string; chiave: string }>(
-    "select id, chiave from public.lead_nuova($1,$2,$3,$4,$5)",
-    [d.azienda, d.settore, d.telefono, d.email, d.esigenza]
+/**
+ * Salva la richiesta e restituisce la chiave con cui l'azienda la seguirà.
+ * `rifiutata` è vero quando dallo stesso posto ne sono già arrivate tre in
+ * un'ora.
+ */
+export async function nuovaRichiesta(
+  d: DatiRichiesta,
+  impronta: string | null
+): Promise<{ id: string | null; chiave: string | null; rifiutata: boolean }> {
+  const r = await getPool().query<{ id: string | null; chiave: string | null; rifiutata: boolean }>(
+    "select id, chiave, rifiutata from public.lead_nuova($1,$2,$3,$4,$5,$6)",
+    [d.azienda, d.settore, d.telefono, d.email, d.esigenza, impronta]
   );
   return r.rows[0];
 }
