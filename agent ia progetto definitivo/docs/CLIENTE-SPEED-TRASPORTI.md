@@ -764,3 +764,45 @@ Non è una scrivania: è un uomo che guida. Quindi:
 - ⚠️ **Niente notifiche che chiedono una risposta immediata.** Un messaggio che
   fa guardare il telefono a 90 all'ora è un rischio che nessuna funzione vale.
 
+---
+
+# La scadenza: 30 novembre 2026
+
+> Fissata da Tommaso l'11 agosto. Sedici settimane.
+> ⚠️ Prima era il 30 settembre: sette settimane, e non bastavano — tre
+> connettori da inventare e due procedure legali di mezzo. Spostarla è stata la
+> decisione giusta, e combacia con la **beta di novembre** già scritta nel
+> percorso: **Speed Trasporti diventa la beta.**
+
+## Il calendario
+
+| Quando | Cosa | Dipende da |
+|---|---|---|
+| **Agosto, settimana 2** | Gettone Meta permanente · serratura sull'ingresso · **sopralluogo** | Tommaso |
+| **Agosto, sett. 3-4** | La sua area: colori, logo, quattro postazioni, memoria dal sito e dal sopralluogo | noi |
+| **Settembre** | **Salvatore usa l'agente tutti i giorni.** WhatsApp, vocali, foto, segnalazioni | noi |
+| **Settembre-ottobre** | I connettori: K-Master, gestionale fatture. Il cruscotto si riempie | ⚠️ terzi |
+| **Ottobre** | Ruoli e permessi (Fase 12) · fascicolo clienti · autisti | noi |
+| **Ottobre-novembre** | Si aprono le postazioni, un reparto alla volta | Salvatore |
+| **Novembre** | Magazzino e scanner · GPS se autorizzato · rifiniture | ⚠️ hardware, legge |
+| **30 novembre** | **Consegnato** | |
+
+🔑 **La riga di settembre è quella che conta.** Se a settembre Salvatore lo usa
+ogni giorno, tutto il resto è miglioramento. Se a settembre non lo usa, novembre
+non salva niente — si sarà costruito per due mesi qualcosa che nessuno ha
+provato.
+
+## ⚠️ Le due cose che possono far saltare la data, e non dipendono da noi
+
+1. **I connettori.** K-Master e il gestionale sono di terzi. Se non si possono
+   interrogare, il cruscotto dei guadagni e le risposte sulle spedizioni non
+   esistono — e vanno tolti dalla promessa **adesso**, non a novembre.
+2. **Le procedure dell'articolo 4** per GPS e dati individuali. Un accordo
+   sindacale non si fa in una settimana, e non lo controlliamo.
+
+**Il piano B, da dire a Salvatore fin da subito:** anche senza nessuno dei due,
+resta un agente che risponde ai clienti 24 ore su 24 con la memoria
+dell'azienda, ascolta i vocali degli autisti e li gira al traffico, legge le
+bolle fotografate. Toglie telefonate dal primo giorno. **Non è un ripiego: è la
+cosa che lui ha messo al primo posto rispondendo alla domanda 7.**
+
