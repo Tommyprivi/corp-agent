@@ -488,3 +488,102 @@ di promettere qualsiasi cosa.**
 13. ⚠️ **La serratura sull'ingresso.** Con l'accesso via email chiunque trovi
     `/entra` si crea un account. Va chiusa **prima** di mandare il link.
 
+---
+
+# I ruoli e i permessi
+
+> Decisi l'11 agosto 2026. ⚠️ **Non esistono ancora nel prodotto**: sono la
+> Fase 12 del percorso, e questa è la specifica per costruirla.
+
+## 100 postazioni, tutti i ruoli
+
+Non le 24 di oggi: **la struttura si dimensiona a 100**, così quando Speed
+Trasporti cresce non si rifà niente.
+
+| Ruolo | Quante persone | Cosa può fare |
+|---|---|---|
+| **Titolare** | 1 — Salvatore | Tutto. Aggiunge e toglie persone, vede ogni dato, cambia ogni impostazione. |
+| **Amministratore** | 2-3 | Come il titolare, **tranne** aggiungere persone e vedere i dati economici completi. |
+| **Capo reparto** | 4-6 | Il suo reparto: corregge l'agente, approva in modalità Ghost, legge le conversazioni del suo reparto. |
+| **Operatore** | la massa | Usa l'agente. Non modifica niente, non vede gli altri reparti. |
+| **Osservatore** | pochi | Solo lettura. Per chi deve guardare senza toccare — un consulente, un commercialista. |
+
+## I quattro confini: cosa NON vede un operatore
+
+Decisi tutti e quattro:
+
+1. **I dati economici** — fatturato, incassi, margini, chi è in ritardo.
+   ⚠️ È il confine più sentito da un imprenditore: sbagliarlo fa perdere la
+   fiducia in un colpo solo.
+2. **I solleciti e le fatture fornitori** — chi deve soldi a chi.
+3. **Le conversazioni degli altri reparti.**
+   ⚠️ Attenzione alla distinzione: **la memoria resta condivisa.** Il confine è
+   su cosa si **legge**, non su cosa l'agente **sa**. Un magazziniere non legge
+   la chat del traffico col cliente, ma il suo agente continua a sapere le
+   regole dell'azienda — altrimenti si torna a quattro agenti che sanno cose
+   diverse.
+4. **Le impostazioni dell'agente** — tono, regole, istruzioni. Un operatore che
+   le cambia senza saperlo rompe l'agente per tutti e cento.
+
+## Le chiavi di casa: solo Salvatore
+
+Solo lui aggiunge e toglie persone.
+
+⚠️ **Il costo di questa scelta, da dirgli:** quando è in viaggio — e in
+un'azienda di trasporti il titolare in giro c'è sempre — nessuno può dare
+l'accesso a un nuovo assunto. Se un giorno diventa un fastidio, la soluzione è
+una seconda persona di fiducia, non aprire a tutti i capi reparto.
+
+## Quando un dipendente se ne va
+
+**L'accesso si spegne, i dati restano.** Le conversazioni che ha avuto coi
+clienti sono lavoro dell'azienda, non suo: cancellarle danneggerebbe Speed
+Trasporti e la memoria dell'agente su quei clienti.
+
+---
+
+## ⚠️ Il controllo sull'attività dei dipendenti: leggere prima di prometterlo
+
+Tommaso, 11 agosto: *«tutti i dati li può vedere Salvatore visto che i PC
+dell'azienda sono suoi, potrà vedere anche la loro attività»*.
+
+**Possedere i computer non dà il diritto di controllare l'attività dei
+lavoratori.** In Italia lo regola l'**articolo 4 dello Statuto dei Lavoratori**
+(legge 300/1970, riformato dal Jobs Act): gli strumenti da cui deriva anche solo
+la *possibilità* di un controllo a distanza richiedono un **accordo sindacale**
+oppure l'**autorizzazione dell'Ispettorato del Lavoro**, più un'**informativa
+scritta** ai lavoratori su come vengono usati i dati.
+
+Le sanzioni ricadono su **Speed Trasporti**, cioè sul nostro cliente. E il
+fornitore che gli ha costruito lo strumento non fa una bella figura.
+
+### La linea che regge, e che non toglie niente di utile
+
+| ✅ Si può, senza procedure | ⚠️ Richiede l'articolo 4 |
+|---|---|
+| Fatturato, incassi, spedizioni, magazzino | «Cosa ha fatto Mario oggi» |
+| «Il traffico ha gestito 240 richieste» | «Mario ha gestito 12 richieste, Luca 3» |
+| Tempi medi di risposta del reparto | Orari di connessione della singola persona |
+| Chi ha l'accesso attivo | Cronologia di cosa ha scritto ognuno |
+
+🔑 **La differenza è fra dati aggregati e dati per persona.** Tutto ciò che
+serve a Salvatore per capire se l'azienda va meglio sta nella colonna di
+sinistra. La colonna di destra serve a valutare le persone — ed è esattamente
+quella che la legge protegge.
+
+⚠️ **Nota bene:** una parte del dettaglio individuale è **inevitabile e
+legittima**: se un capo reparto legge la conversazione di un suo operatore col
+cliente per correggere un errore, sta facendo il suo lavoro, non sorveglianza.
+Il confine non è tecnico, è **di scopo** — ed è per questo che va scritto
+nell'informativa, non deciso da noi.
+
+### Cosa fare, concretamente
+
+1. Non promettere a Salvatore il controllo individuale come se fosse una
+   funzione del prodotto.
+2. Dirgli che i dati aziendali li vede tutti, e che per il dettaglio per persona
+   **serve un passaggio con il suo consulente del lavoro** — è normale, lo fanno
+   tutte le aziende che mettono un gestionale.
+3. ⚠️ Preparare l'informativa ai lavoratori insieme a quel consulente. Non la
+   scriviamo noi: non è il nostro mestiere, e sbagliarla costa a lui.
+
