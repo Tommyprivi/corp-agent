@@ -181,3 +181,22 @@ export interface RepartoDati {
   controlli: Controllo[];
   magazzino: Magazzino | null;
 }
+
+export interface Movimento {
+  id: string;
+  tipo: "carico" | "scarico" | "differenza" | "problema";
+  colli: number | null;
+  atteso: number | null;
+  contato: number | null;
+  mezzo: string;
+  controparte: string;
+  testo: string;
+  stato: "aperto" | "chiuso";
+  chi: string;
+  creato: string;
+}
+
+export interface Banchina {
+  magazzino: Magazzino | null;
+  movimenti: Movimento[];
+}

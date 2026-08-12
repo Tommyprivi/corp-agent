@@ -416,6 +416,21 @@ export async function daControllare(azienda: string, reparto: string | null) {
 }
 
 /**
+ * I movimenti del giorno di un reparto — il registro della banchina.
+ *
+ * ⚠️ Sono i MOVIMENTI, non le chat: chi ha scaricato cosa è un dato operativo
+ * condiviso (sta anche sulla bolla di carta). Le conversazioni con l'agente
+ * restano private; da qui non ne passa nemmeno una riga.
+ */
+export async function movimentiOggi(azienda: string, reparto: string | null) {
+  const r = await getPool().query("select * from public.az_movimenti_oggi($1,$2)", [
+    azienda,
+    reparto,
+  ]);
+  return r.rows;
+}
+
+/**
  * Quanto usano lo strumento, persona per persona — la vista del capo.
  *
  * ⚠️ Non esce nessun testo di chat, per costruzione: la funzione SQL non

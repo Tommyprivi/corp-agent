@@ -418,6 +418,17 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       // La lista dei mezzi serve a chiunque registra un carico: tutti la leggono.
       return json({ mezzi: await az.mezzi(chi.azienda) }, 200);
 
+    case "banchina": {
+      // Il posto di lavoro del magazzino: i numeri di oggi e il registro dei
+      // movimenti. Lo vede chiunque sia dentro — è il dato operativo condiviso
+      // della banchina, non una chat. Le conversazioni restano private.
+      const [mag, movimenti] = await Promise.all([
+        az.magazzino(chi.azienda),
+        az.movimentiOggi(chi.azienda, "Magazzino"),
+      ]);
+      return json({ magazzino: mag, movimenti }, 200);
+    }
+
     case "reparto": {
       // ⚠️ Il capo vede SOLO il suo reparto: la postazione è calcolata dal suo
       // reparto, non presa dalla richiesta. Un capo del magazzino non può

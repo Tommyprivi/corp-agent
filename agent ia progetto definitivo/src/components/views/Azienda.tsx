@@ -11,6 +11,7 @@ import {
   type Cruscotto as DatiCruscotto,
   type Documento,
   type Messaggio,
+  type Banchina,
   type Mezzo,
   type PersonaElenco,
   type PersonaViva,
@@ -329,7 +330,20 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
           <Marchio nome={m.nome} compatto />
         </header>
 
-        {sezioneVera === "chat" && (
+        {/* ⚠️ Il magazzino NON è una chat: è un posto di lavoro (voluto da
+            Tommaso: «un'interfaccia più bella, non solo chat — tipo quella del
+            capo»). Numeri del giorno, bottoni grossi, il registro dei
+            movimenti — e l'agente in una scheda, quando serve. Le altre
+            postazioni restano conversazione, finché non avranno le loro. */}
+        {sezioneVera === "chat" && postazione === "magazzino" && (
+          <Banchina
+            postazione={postazioni.find((p) => p.id === "magazzino") ?? postazioni[0]}
+            nome={(persona.nome || "").split(" ")[0]}
+            agenteVivo={agenteVivo}
+            seScaduta={seScaduta}
+          />
+        )}
+        {sezioneVera === "chat" && postazione !== "magazzino" && (
           <Conversazione
             postazione={postazioni.find((p) => p.id === postazione) ?? postazioni[0]}
             nome={(persona.nome || "").split(" ")[0]}
@@ -1888,6 +1902,233 @@ function Documenti({
         </div>
       )}
     </Pagina>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LA BANCHINA — il posto di lavoro del magazzino
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * La postazione Magazzino, rifatta come un posto di lavoro e non una chat
+ * (Tommaso, 12 agosto: *«un'interfaccia più bella, non solo chat — falla tipo
+ * quella del capo»*).
+ *
+ * Tre pezzi, nell'ordine in cui servono a chi ha i guanti addosso:
+ * 1. **I bottoni grossi** — carico, scarico, differenza, problema. Grandi
+ *    perché si premono col pollice, di fretta, in banchina.
+ * 2. **Oggi** — i numeri contati dalle registrazioni, e il registro dei
+ *    movimenti del giorno (chi, cosa, quando). È la bolla di carta, ma viva.
+ * 3. **L'agente** — in una scheda: c'è quando serve una risposta, non in mezzo
+ *    quando serve registrare.
+ *
+ * ⚠️ Il posto è già pronto per gli scanner: quando arriverà il collegamento, le
+ * letture entreranno in questo stesso registro e l'IA le analizzerà qui. La
+ * cornice in fondo lo dice.
+ */
+function Banchina({
+  postazione,
+  nome,
+  agenteVivo,
+  seScaduta,
+}: {
+  postazione: PostazioneViva;
+  nome?: string;
+  agenteVivo: boolean;
+  seScaduta: (e: unknown) => void;
+}) {
+  const [scheda, setScheda] = useState<"lavoro" | "agente">("lavoro");
+  const [dati, setDati] = useState<Banchina | null>(null);
+  const [azione, setAzione] = useState<TipoMovimento | null>(null);
+  const [fatto, setFatto] = useState<string | null>(null);
+
+  const carica = useCallback(() => {
+    leggi<Banchina>("banchina")
+      .then(setDati)
+      .catch((e) => seScaduta(e));
+  }, [seScaduta]);
+
+  useEffect(() => carica(), [carica]);
+
+  const mag = dati?.magazzino;
+  const AZIONI: { tipo: TipoMovimento; icona: string; nome: string; sotto: string }[] = [
+    { tipo: "carico", icona: "📥", nome: "Carico", sotto: "merce che entra" },
+    { tipo: "scarico", icona: "📤", nome: "Scarico", sotto: "merce che esce" },
+    { tipo: "differenza", icona: "⚠️", nome: "Differenza", sotto: "il conto non torna" },
+    { tipo: "problema", icona: "🛠️", nome: "Problema", sotto: "qualcosa non va" },
+  ];
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-3.5 md:px-8">
+        <div>
+          <h1 className="text-[15.5px] font-semibold tracking-[-0.01em]">{postazione.nome}</h1>
+          <p className="mt-0.5 text-[12.5px] text-[var(--text-secondary)]">{postazione.cosa}</p>
+        </div>
+        {/* Le due schede: il lavoro davanti, l'agente a un tocco. */}
+        <div className="flex rounded-lg border border-[var(--border)] p-0.5">
+          {(
+            [
+              ["lavoro", "Banchina"],
+              ["agente", "Agente"],
+            ] as const
+          ).map(([id, etichetta]) => (
+            <button
+              key={id}
+              onClick={() => setScheda(id)}
+              className={`cursor-pointer rounded-md px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
+                scheda === id
+                  ? "bg-[var(--accent-soft)] text-[var(--text-primary)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              {etichetta}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {scheda === "agente" ? (
+        <Conversazione
+          postazione={postazione}
+          nome={nome}
+          agenteVivo={agenteVivo}
+          seScaduta={seScaduta}
+        />
+      ) : (
+        <div className="flex-1 overflow-y-auto px-5 py-6 md:px-8">
+          <div className="mx-auto max-w-[900px]">
+            {/* ── 1 · I BOTTONI GROSSI ───────────────────────────────── */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {AZIONI.map((a) => (
+                <button
+                  key={a.tipo}
+                  onClick={() => {
+                    setAzione(a.tipo);
+                    setFatto(null);
+                  }}
+                  className={`cursor-pointer rounded-xl border p-4 text-left transition-colors ${
+                    azione === a.tipo
+                      ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                      : "border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--accent)]"
+                  }`}
+                >
+                  <span aria-hidden className="text-[26px] leading-none">
+                    {a.icona}
+                  </span>
+                  <span className="mt-2 block text-[14.5px] font-semibold">{a.nome}</span>
+                  <span className="block text-[11.5px] text-[var(--text-secondary)]">
+                    {a.sotto}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {azione && (
+              <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)]">
+                <FormMovimento
+                  tipo={azione}
+                  onChiudi={() => setAzione(null)}
+                  onFatto={(riga) => {
+                    setAzione(null);
+                    setFatto(riga);
+                    carica();
+                  }}
+                  seScaduta={seScaduta}
+                />
+              </div>
+            )}
+
+            {fatto && !azione && (
+              <p
+                className="mt-3 rounded-xl border-l-2 bg-[var(--fill-quiet)] px-4 py-3 text-[13.5px]"
+                style={{ borderColor: "var(--accent)" }}
+              >
+                {fatto}
+              </p>
+            )}
+
+            {/* ── 2 · OGGI, CONTATO ──────────────────────────────────── */}
+            {mag && (
+              <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Numero valore={String(mag.entrati)} titolo="Colli entrati" sotto="oggi" />
+                <Numero valore={String(mag.usciti)} titolo="Colli usciti" sotto="oggi" />
+                <Numero valore={String(mag.movimenti)} titolo="Movimenti" sotto="carichi e scarichi" />
+                <Numero valore={String(mag.differenze)} titolo="Differenze" sotto="segnalate al capo" />
+              </div>
+            )}
+
+            {/* ── 3 · IL REGISTRO DEL GIORNO ─────────────────────────── */}
+            <div className="mt-6">
+              <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+                Oggi in banchina
+              </h2>
+              {dati === null && (
+                <p className="mt-3 text-[13px] text-[var(--text-secondary)]">Leggo…</p>
+              )}
+              {dati !== null && dati.movimenti.length === 0 && (
+                <div className="mt-3 rounded-xl border border-dashed border-[var(--border)] p-6 text-center">
+                  <p className="text-[14px] font-medium">Ancora niente, oggi</p>
+                  <p className="mx-auto mt-1.5 max-w-[44ch] text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+                    Il primo carico o scarico registrato compare qui, con chi
+                    l'ha fatto e a che ora — come la bolla di carta, ma viva.
+                  </p>
+                </div>
+              )}
+              {dati !== null && dati.movimenti.length > 0 && (
+                <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+                  {dati.movimenti.map((mv, i) => (
+                    <div
+                      key={mv.id}
+                      className={`flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-4 py-2.5 ${
+                        i > 0 ? "border-t border-[var(--border)]" : ""
+                      }`}
+                    >
+                      <span aria-hidden className="text-[15px]">
+                        {mv.tipo === "carico"
+                          ? "📥"
+                          : mv.tipo === "scarico"
+                            ? "📤"
+                            : mv.tipo === "differenza"
+                              ? "⚠️"
+                              : "🛠️"}
+                      </span>
+                      <span className="min-w-0 flex-1 text-[13.5px]">
+                        {mv.tipo === "carico" && `${mv.colli ?? "?"} colli${mv.controparte ? ` da ${mv.controparte}` : ""}`}
+                        {mv.tipo === "scarico" && `${mv.colli ?? "?"} colli${mv.controparte ? ` per ${mv.controparte}` : ""}`}
+                        {mv.tipo === "differenza" && `attesi ${mv.atteso}, contati ${mv.contato}${mv.testo ? ` — ${mv.testo}` : ""}`}
+                        {mv.tipo === "problema" && (mv.testo || "segnalazione")}
+                        {mv.mezzo ? ` · ${mv.mezzo}` : ""}
+                      </span>
+                      <span className="shrink-0 text-[11.5px] text-[var(--text-secondary)]">
+                        {mv.chi ? `${mv.chi} · ` : ""}
+                        {new Date(mv.creato).toLocaleTimeString("it-IT", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                        {(mv.tipo === "problema" || mv.tipo === "differenza") &&
+                          (mv.stato === "aperto" ? " · dal capo" : " · risolto")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── 4 · GLI SCANNER, QUANDO ARRIVANO ───────────────────── */}
+            <div className="mt-6 rounded-xl border border-dashed border-[var(--border)] px-5 py-4">
+              <p className="text-[13px] font-medium">Gli scanner passeranno di qui</p>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+                Quando colleghiamo gli scanner del magazzino, ogni lettura entra
+                in questo registro da sola e l'IA la analizza: conteggi
+                automatici, differenze trovate al volo, zero doppia scrittura.
+                Fino ad allora, si registra da qui — e vale uguale.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
