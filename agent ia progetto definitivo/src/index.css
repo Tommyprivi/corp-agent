@@ -907,3 +907,54 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .card-funzione:hover { transform: none; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   IL MARCHIO DEL CLIENTE — 11 agosto 2026
+   ─────────────────────────────────────────────────────────────────────────
+   «I loro colori in tutta l'interfaccia» — Tommaso, per Speed Trasporti.
+
+   Non si riscrivono i componenti: si riscrivono le variabili che i componenti
+   usano già. Un `data-marchio` sulla radice e ogni pulsante, bordo attivo e
+   accento di tutta l'app cambia colore, senza che nessun componente sappia di
+   esistere in versione Speed Trasporti.
+
+   ⚠️ Vale in TUTTI E DUE i temi: un'azienda che ha scelto lo scuro non deve
+   perdere il suo marchio, e un colore definito una volta sola diventerebbe
+   illeggibile nell'altro tema. Per questo le due varianti sono separate. */
+:root[data-marchio] {
+  --accent: var(--marchio-primario);
+  --accent-hover: var(--marchio-primario-scuro);
+  --accent-soft: color-mix(in srgb, var(--marchio-primario) 8%, transparent);
+  --accent-ring: color-mix(in srgb, var(--marchio-primario) 30%, transparent);
+  --grad-primary: linear-gradient(
+    180deg,
+    var(--marchio-primario) 0%,
+    var(--marchio-primario-scuro) 100%
+  );
+  --on-primary: var(--marchio-su-primario);
+}
+
+/* Nel tema scuro il primario si schiarisce: lo stesso verde che su bianco è
+   solido, su nero diventa cupo e il testo bianco sopra fatica. */
+:root[data-theme="dark"][data-marchio] {
+  --accent: color-mix(in srgb, var(--marchio-primario) 82%, white);
+  --accent-hover: color-mix(in srgb, var(--marchio-primario) 65%, white);
+  --accent-soft: color-mix(in srgb, var(--marchio-primario) 16%, transparent);
+  --accent-ring: color-mix(in srgb, var(--marchio-primario) 42%, transparent);
+}
+
+/* Il secondario è un DETTAGLIO, mai una superficie di testo.
+   ⚠️ L'oro di Speed Trasporti su bianco ha un contrasto di circa 1,8:1 contro
+   il 4,5:1 richiesto: una parola scritta così non si legge. Qui vive come
+   filo, bordo, sottolineatura — cose che non si leggono, si vedono. */
+.filo-marchio {
+  background: linear-gradient(
+    90deg,
+    var(--marchio-primario),
+    var(--marchio-secondario)
+  );
+}
+
+.bordo-marchio {
+  border-color: var(--marchio-secondario);
+}
