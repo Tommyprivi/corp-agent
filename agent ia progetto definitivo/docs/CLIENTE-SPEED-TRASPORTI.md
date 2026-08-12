@@ -1154,3 +1154,45 @@ urgente») — da fare **prima** di dare il link alle 150 persone:
    parte; non va bene con 150 persone che se lo passano.
 2. **Il limite di frequenza sull'accesso**: senza, una password si può provare
    all'infinito. Stessa migrazione, mezz'ora di lavoro, va solo decisa.
+
+## I connettori di Speed Trasporti — la lista, in ordine di valore
+
+Voluta da Tommaso il 12 agosto. ⚠️ Non è la lista dei connettori di CorpAgent:
+è la lista di **quello che Speed Trasporti usa davvero**, letta anche dai
+preferiti del browser di Salvatore (Borse Carichi, GPS Mezzi, Gasolio e
+Contratti, Assistant Evolution, Fabrick, Palletways, Tender). Ogni riga dice
+cosa riempie nel cruscotto e **cosa chiedere al sopralluogo**.
+
+### Prima ondata — quelli che accendono il cruscotto
+
+| # | Connettore | Cosa riempie | Da chiedere al sopralluogo |
+|---|---|---|---|
+| 1 | **K-Master / QCSNET (Assistant Evolution)** — il gestionale del traffico | Spedizioni in corso, consegnate, in ritardo, da caricare domani. La fascia «Il lavoro» intera | Il contatto QCSNET per le **API** (Salvatore ha già una scheda «API-TARIFFARI» aperta: le API esistono). Serve un utente tecnico o un gettone |
+| 2 | **Gestionale fatture** | Fatturato di oggi e del mese, da incassare, fatture fornitori. La fascia «I soldi» | **Quale programma è** (non lo sappiamo ancora), chi lo tiene aggiornato, se esporta tracciati o ha API |
+| 3 | **La banca — open banking PSD2** | «Da incassare» che si spunta da solo: l'agente incrocia i movimenti in entrata con le fatture emesse (riconciliazione) | Con quali banche lavorano. ⚠️ Strada giusta: un **aggregatore PSD2** (Fabrick è già nei suoi preferiti — o CBI Globe, Tink). **Solo lettura** (saldi e movimenti), mai disposizione di pagamenti, mai le credenziali bancarie da noi: l'autorizzazione la dà la banca con il suo consenso, rinnovata ogni 90-180 giorni |
+| 4 | **Scanner e barcode del magazzino** | Colli movimentati, differenze di conteggio, la fascia «Magazzino» | Che scanner sono, con che programma parlano, se quel programma esporta qualcosa |
+
+### Seconda ondata — quelli che fanno lavorare l'agente
+
+| # | Connettore | Cosa fa l'agente | Attenzione |
+|---|---|---|---|
+| 5 | **WhatsApp Business API** | Risponde ai clienti sul numero aziendale | Si collega **alla consegna**, serve la P.IVA per il gettone Meta — già deciso |
+| 6 | **Email / PEC amministrazione** | Solleciti di pagamento, fatture fornitori in arrivo smistate da sole | La PEC in Italia è quasi sempre Aruba/InfoCert: si legge via IMAP |
+| 7 | **GPS dei mezzi** | «Dov'è il camion di Franco» detto al volo, ritardi previsti | ⚠️ **Articolo 4, Statuto dei Lavoratori**: la posizione dei mezzi usata per i clienti va bene, usata per sorvegliare gli autisti serve accordo sindacale o autorizzazione. Sta già scritto sopra, vale doppio qui |
+| 8 | **Borse carichi (Timocom / Trans.eu)** | Avvisa quando compare un carico compatibile coi mezzi vuoti | Quale borsa usano e con che abbonamento |
+| 9 | **Palletways Portal** | Tracking dei pallet nel network, stato ritiri | È nei preferiti: chiedere se hanno l'accesso API del network |
+
+### Terza ondata — completamento
+
+| # | Connettore | Cosa fa |
+|---|---|---|
+| 10 | **Fogli Google / Excel** («Sheet utili» nei preferiti) | L'agente legge e aggiorna i fogli che già usano, senza costringerli a cambiarli |
+| 11 | **Carte carburante (DKV / UTA / IP)** | Costi gasolio per mezzo, anomalie di consumo — nei preferiti c'è «Gasolio e contratti» |
+| 12 | **Portali tender / gare** | Avvisa quando esce una gara compatibile (preferito «Tender») |
+| 13 | **Corrieri terzi (DHL / UPS / FedEx)** | Tracking dei colli affidati fuori network |
+
+⚠️ **La regola per tutte le banche e per tutto il resto:** le credenziali non
+passano mai da un'email e non finiscono mai nel codice — ogni collegamento vive
+cifrato in `public.connections` (AES-256-GCM), intestato a chi l'ha collegato,
+come per tutti i connettori di CorpAgent. E ogni connettore **si prova prima di
+salvarlo**: una chiave rotta salvata è un agente muto e nessuno sa perché.

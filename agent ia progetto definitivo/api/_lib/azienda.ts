@@ -138,9 +138,27 @@ export function verifica(password: string, salvata: string): boolean {
 export async function entra(
   azienda: string,
   email: string,
-  password: string
+  password: string,
+  ipHash: string | null = null
 ): Promise<{ token: string; persona: Persona } | { errore: string }> {
   const pool = getPool();
+
+  // ⚠️ Il freno si guarda PRIMA di toccare la password (migrazione 0019):
+  // otto errori in un quarto d'ora dalla stessa impronta non sono un
+  // magazziniere coi guanti, sono un programma che prova password. Chi entra
+  // giusto al primo colpo non lo incontra mai.
+  const freno = await pool.query<{ az_freno: boolean }>(
+    "select public.az_freno($1, $2, $3)",
+    [azienda, ipHash, email]
+  );
+  if (freno.rows[0]?.az_freno) {
+    return {
+      errore:
+        "Troppi tentativi in poco tempo. Aspetta un quarto d'ora e riprova — " +
+        "o chiedi in ufficio di reimpostarti la password.",
+    };
+  }
+
   const trovata = await pool.query<{
     id: string;
     segreto: string;
@@ -152,6 +170,9 @@ export async function entra(
     const r = trovata.rows[0];
     if (!r.attiva) return { errore: "Questa postazione è stata chiusa. Chiedi in ufficio." };
     if (!verifica(password, r.segreto)) {
+      await pool
+        .query("select public.az_freno_segna($1, $2, $3)", [azienda, ipHash, email])
+        .catch(() => {});
       // ⚠️ Stesso messaggio per «password sbagliata» e per «email che non
       // esiste»: distinguerli direbbe a chiunque quali email sono valide.
       return { errore: "Email o password non corrispondono." };

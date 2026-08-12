@@ -73,7 +73,7 @@ export default {
 
       if (corpo.richiesta) return await creaRichiesta(corpo, request);
       if (corpo.qualifica) return await rispondiQualifica(corpo);
-      if (typeof corpo.az === "string") return await areaAzienda(corpo);
+      if (typeof corpo.az === "string") return await areaAzienda(corpo, request);
       return json({ error: "Non so cosa vuoi fare." }, 400);
     }
 
@@ -400,7 +400,10 @@ async function leggiAzienda(url: URL): Promise<Response> {
   }
 }
 
-async function areaAzienda(corpo: Record<string, unknown>): Promise<Response> {
+async function areaAzienda(
+  corpo: Record<string, unknown>,
+  request: Request
+): Promise<Response> {
   const cosa = corpo.az as string;
 
   // ── Entrare è l'unica cosa che si fa senza essere già nessuno ────────
@@ -412,7 +415,9 @@ async function areaAzienda(corpo: Record<string, unknown>): Promise<Response> {
     if (!email.includes("@") || password.length < 4) {
       return json({ error: "Email o password non corrispondono." }, 400);
     }
-    const esito = await az.entra(azienda, email, password);
+    // ⚠️ La stessa impronta salata del form pubblico (0017): serve al freno
+    // anti-forza-bruta della migrazione 0019, mai a sapere chi è.
+    const esito = await az.entra(azienda, email, password, improntaProvenienza(request));
     if ("errore" in esito) return json({ error: esito.errore }, 401);
     return json(
       {
