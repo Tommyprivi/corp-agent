@@ -1055,3 +1055,73 @@ Una email corta con **tre cose**: cosa hai capito, cosa farai per primo, cosa ti
 serve da lui. ⚠️ Il giorno dopo, non la settimana dopo — è il momento in cui è
 ancora caldo, e una email che arriva subito dice più di qualsiasi contratto.
 
+---
+
+# Aggiornamenti dell'11 agosto, sera
+
+## 150 postazioni
+
+Non 24, non 100: **la struttura si dimensiona a 150.**
+
+⚠️ **Cosa cambia davvero**, perché non è solo un numero più grande:
+
+- **I ruoli non sono più opzionali.** Su 24 persone si poteva sopravvivere con
+  «entra / non entra»; su 150 no. La Fase 12 passa da «bella da avere» a
+  **necessaria prima dell'apertura ai reparti**.
+- **Chi aggiunge le persone.** Era deciso «solo Salvatore». Su 150 diventa un
+  lavoro a tempo pieno per una settimana: va rivisto, e la soluzione è dare la
+  facoltà anche a **un paio di capi reparto**, non a tutti.
+- **Il prezzo cambia di scala.** Un canone unico per l'azienda a 24 persone e a
+  150 sono due cose diverse. ⚠️ Da tenere presente quando si farà il preventivo
+  dopo il sopralluogo — 150 postazioni non è una PMI, è una struttura.
+
+## La dimostrazione: alla fine, non al sopralluogo
+
+Deciso da Tommaso: **il sopralluogo serve solo a capire.** Si mostra il prodotto
+quando è finito, con i suoi dati dentro.
+
+✅ **Il vantaggio è reale**: un imprenditore che vede il *suo* magazzino e i
+*suoi* clienti dentro il sistema capisce in trenta secondi quello che dieci
+dimostrazioni generiche non spiegherebbero.
+
+⚠️ **Il rischio, da conoscere:** fra il sopralluogo e la consegna passano circa
+tre mesi. Tre mesi in cui Salvatore non vede niente sono tre mesi in cui
+l'entusiasmo si raffredda — e in cui si può costruire la cosa sbagliata senza
+accorgersene, perché nessuno la corregge.
+
+🔑 **Il rimedio che costa poco:** verso **metà ottobre**, quando la sua area
+esiste con i suoi colori e la sua memoria, mandargli **un video di due minuti**
+fatto col telefono. Non una consegna, non una riunione: un video. Serve a due
+cose, e valgono entrambe più del tempo che costa:
+
+1. Tiene vivo il rapporto senza chiedergli niente
+2. Se abbiamo capito male qualcosa, lo scopriamo a ottobre invece che a novembre
+
+## Il numero WhatsApp: alla fine
+
+Si compra e si collega **verso la consegna**, non prima.
+
+✅ Coerente con la decisione sopra: se non c'è dimostrazione al sopralluogo, il
+numero non serve prima.
+
+⚠️ **Due cose da non dimenticare:**
+
+- La SIM va presa **qualche giorno prima**, non la mattina stessa: certe
+  attivazioni richiedono ore, e non lo si vuole scoprire il giorno della
+  consegna.
+- Al sopralluogo la domanda sul numero **si fa lo stesso**, anche senza
+  collegare niente: *«su quel numero rispondete ancora dall'app? Da quanti
+  telefoni?»* Serve a sapere quanto sarà delicato il passaggio, e si scopre solo
+  chiedendo.
+
+## Il piano aggiornato
+
+| Quando | Cosa |
+|---|---|
+| **Agosto** | Sopralluogo — **solo raccolta**, nessuna dimostrazione |
+| **Agosto-settembre** | La sua area: colori, 150 postazioni, quattro agenti, memoria |
+| **Settembre-ottobre** | Connettori · fascicolo clienti · **ruoli e permessi** (ora obbligatori) |
+| **Metà ottobre** | 📹 **Il video di due minuti** — l'unico contatto in mezzo |
+| **Novembre** | Numero WhatsApp · magazzino · rifiniture |
+| **30 novembre** | **Dimostrazione e consegna**, con i suoi dati dentro |
+
