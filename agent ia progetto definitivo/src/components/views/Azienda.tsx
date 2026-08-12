@@ -83,11 +83,15 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
         if (r.postazioni?.length) setPostazioni(r.postazioni);
         setAgenteVivo(r.agenteVivo);
       })
-      .catch(() => {
-        // Sessione scaduta o server irraggiungibile: si torna all'ingresso.
-        // Non si mostra un errore: chiedere di rientrare È il messaggio.
-        salvaGettone(null);
-        setPersona(null);
+      .catch((e) => {
+        // ⚠️ Si torna all'ingresso SOLO se la sessione è davvero morta. Un
+        // intoppo di rete — il wifi del magazzino a una tacca, un 500
+        // momentaneo — NON deve cancellare un gettone valido tre mesi e
+        // rispedire al login: è esattamente la cosa che il gettone lungo serve
+        // a evitare. `leggi` cancella già il gettone e lancia SessioneScaduta
+        // quando il server dice 401; su tutto il resto si tiene il gettone e si
+        // riproverà al prossimo giro.
+        if (e instanceof SessioneScaduta) setPersona(null);
       })
       .finally(() => setControllo(false));
   }, []);
@@ -310,11 +314,15 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
             seScaduta={seScaduta}
           />
         )}
-        {sezioneVera === "clienti" && <Clienti seScaduta={seScaduta} />}
+        {sezioneVera === "clienti" && (
+          <Clienti ruolo={persona.ruolo} seScaduta={seScaduta} />
+        )}
         {sezioneVera === "persone" && vedeTutto && (
           <Persone mieEmail={persona.email} seScaduta={seScaduta} />
         )}
-        {sezioneVera === "documenti" && <Documenti seScaduta={seScaduta} />}
+        {sezioneVera === "documenti" && (
+          <Documenti ruolo={persona.ruolo} seScaduta={seScaduta} />
+        )}
       </main>
     </div>
   );
@@ -361,18 +369,37 @@ function Conversazione({
   const dettatura = useRef<{ stop: () => void } | null>(null);
 
   useEffect(() => {
+    // ⚠️ Guardia anti-sorpasso: se si cambia postazione mentre la richiesta
+    // della precedente è ancora in volo, la risposta vecchia arriverebbe DOPO e
+    // riempirebbe la nuova postazione con la conversazione sbagliata. La
+    // richiesta obsoleta viene ignorata quando torna.
+    let attuale = true;
     setMessaggi(null);
     leggi<{ messaggi: Messaggio[] }>("chat", { p: postazione.id })
-      .then((r) => setMessaggi(r.messaggi))
+      .then((r) => {
+        if (attuale) setMessaggi(r.messaggi);
+      })
       .catch((e) => {
+        if (!attuale) return;
         seScaduta(e);
+        // Una conversazione che non si carica non è «vuota»: dirlo, invece di
+        // mostrare il saluto come se fosse il primo messaggio.
         setMessaggi([]);
       });
+    return () => {
+      attuale = false;
+    };
   }, [postazione.id, seScaduta]);
 
   useEffect(() => {
     fondo.current?.scrollIntoView({ block: "end" });
   }, [messaggi, inCorso]);
+
+  // ⚠️ Il microfono va spento uscendo dalla chat: senza, la dettatura resta
+  // accesa dopo aver cambiato sezione, con la spia del microfono del telefono
+  // che continua a lampeggiare. Su un'app aziendale è la cosa che fa pensare
+  // «questo mi sta ascoltando» — e a ragione.
+  useEffect(() => () => dettatura.current?.stop(), []);
 
   async function invia() {
     const t = testo.trim();
@@ -603,6 +630,8 @@ function Cruscotto({
 }) {
   const [dati, setDati] = useState<DatiCruscotto | null>(null);
   const [errore, setErrore] = useState(false);
+  const [riepilogo, setRiepilogo] = useState<string | null>(null);
+  const [riepilogoInCorso, setRiepilogoInCorso] = useState(false);
 
   useEffect(() => {
     leggi<{ cruscotto: DatiCruscotto }>("cruscotto")
@@ -612,6 +641,18 @@ function Cruscotto({
         setErrore(true);
       });
   }, [seScaduta]);
+
+  async function chiediRiepilogo() {
+    setRiepilogoInCorso(true);
+    try {
+      const r = await leggi<{ testo: string }>("riepilogo");
+      setRiepilogo(r.testo);
+    } catch (e) {
+      seScaduta(e);
+    } finally {
+      setRiepilogoInCorso(false);
+    }
+  }
 
   const ora = new Date().getHours();
   const saluto = ora < 12 ? "Buongiorno" : ora < 18 ? "Buon pomeriggio" : "Buonasera";
@@ -644,8 +685,58 @@ function Cruscotto({
 
         {dati && (
           <>
+            {/* ── 0 · L'AGENTE CHE GUARDA TUTTA L'AZIENDA ──────────────── */}
+            {/* ⚠️ È la cosa che fa sentire l'IA in TUTTA l'azienda e non solo
+                nella chat: un agente di direzione che legge i numeri veri di
+                tutti i reparti insieme e racconta com'è andata. Su richiesta,
+                non a ogni apertura: ogni riepilogo è una chiamata al modello,
+                cioè un costo, e uno che non lo hai chiesto è un costo sprecato. */}
+            <div
+              className="mt-6 rounded-xl border bg-[var(--bg-card)] p-4 sm:p-5"
+              style={{ borderColor: "var(--accent)" }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span
+                    aria-hidden
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-[15px]"
+                    style={{ background: "var(--accent-soft)" }}
+                  >
+                    ✦
+                  </span>
+                  <div>
+                    <p className="text-[13.5px] font-medium">L'agente di direzione</p>
+                    <p className="text-[12px] text-[var(--text-secondary)]">
+                      Guarda tutta l'azienda insieme e ti dice com'è andata.
+                    </p>
+                  </div>
+                </div>
+                {!riepilogo && (
+                  <button
+                    onClick={() => void chiediRiepilogo()}
+                    disabled={riepilogoInCorso}
+                    className="btn-grad shrink-0 cursor-pointer rounded-lg px-4 py-2 text-[13px] font-medium disabled:opacity-50"
+                  >
+                    {riepilogoInCorso ? "Sto guardando…" : "Fatti raccontare la giornata"}
+                  </button>
+                )}
+              </div>
+              {riepilogo && (
+                <div className="mt-3 border-t border-[var(--border)] pt-3">
+                  <p className="text-[14px] leading-relaxed">{riepilogo}</p>
+                  <button
+                    onClick={() => void chiediRiepilogo()}
+                    disabled={riepilogoInCorso}
+                    className="mt-2.5 cursor-pointer text-[12px] text-[var(--text-secondary)] underline-offset-2 hover:underline disabled:opacity-50"
+                  >
+                    {riepilogoInCorso ? "Sto guardando…" : "Aggiorna"}
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* ── 1 · OGGI, IN QUATTRO NUMERI ─────────────────────────── */}
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Numero
                 valore={String(dati.oggi.domande)}
                 titolo="Richieste all'agente"
@@ -861,17 +952,35 @@ const CLIENTE_VUOTO = {
   note: "",
 };
 
-function Clienti({ seScaduta }: { seScaduta: (e: unknown) => void }) {
+function Clienti({
+  ruolo,
+  seScaduta,
+}: {
+  ruolo: string;
+  seScaduta: (e: unknown) => void;
+}) {
   const [elenco, setElenco] = useState<Cliente[] | null>(null);
   const [cerca, setCerca] = useState("");
   const [bozza, setBozza] = useState<typeof CLIENTE_VUOTO | null>(null);
   const [inCorso, setInCorso] = useState(false);
+  // Chi «guarda e non tocca» vede le schede ma non i pulsanti per cambiarle:
+  // il vero cancello è sul server, questo evita solo un pulsante che darebbe errore.
+  const puoScrivere = ruolo !== "osservatore";
+  // ⚠️ Il numero d'ordine dell'ultima ricerca partita. Se uno cerca «ro» e poi
+  // «rossi», la risposta di «ro» può tornare DOPO quella di «rossi» e
+  // sovrascrivere i risultati giusti coi vecchi. Si applica solo la risposta
+  // dell'ultima ricerca partita, le altre si scartano quando tornano.
+  const ultima = useRef(0);
 
   const carica = useCallback(
     (q = "") => {
+      const mia = ++ultima.current;
       leggi<{ clienti: Cliente[] }>("clienti", q ? { q } : {})
-        .then((r) => setElenco(r.clienti))
+        .then((r) => {
+          if (mia === ultima.current) setElenco(r.clienti);
+        })
         .catch((e) => {
+          if (mia !== ultima.current) return;
           seScaduta(e);
           setElenco([]);
         });
@@ -879,12 +988,11 @@ function Clienti({ seScaduta }: { seScaduta: (e: unknown) => void }) {
     [seScaduta]
   );
 
-  useEffect(() => carica(), [carica]);
-
-  // La ricerca aspetta che si smetta di scrivere: una chiamata per lettera
-  // sarebbe traffico inutile e risultati che si scavalcano a vicenda.
+  // Una sola strada: la ricerca aspetta che si smetta di scrivere (una chiamata
+  // per lettera è traffico inutile), e al primo montaggio parte con cerca vuoto,
+  // quindi carica tutto. Nessun secondo effetto che raddoppierebbe la chiamata.
   useEffect(() => {
-    const t = setTimeout(() => carica(cerca), 250);
+    const t = setTimeout(() => carica(cerca), cerca ? 250 : 0);
     return () => clearTimeout(t);
   }, [cerca, carica]);
 
@@ -926,12 +1034,14 @@ function Clienti({ seScaduta }: { seScaduta: (e: unknown) => void }) {
           placeholder="Cerca per nome, referente o zona…"
           className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3.5 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[13.5px]"
         />
+        {puoScrivere && (
         <button
           onClick={() => setBozza({ ...CLIENTE_VUOTO })}
           className="btn-grad shrink-0 cursor-pointer rounded-xl px-4 py-2.5 text-[13.5px] font-medium"
         >
           Nuovo cliente
         </button>
+        )}
       </div>
 
       {bozza && (
@@ -1026,30 +1136,32 @@ function Clienti({ seScaduta }: { seScaduta: (e: unknown) => void }) {
                   </p>
                 )}
               </div>
-              <div className="flex shrink-0 gap-1">
-                <button
-                  onClick={() =>
-                    setBozza({
-                      id: c.id,
-                      nome: c.nome,
-                      referente: c.referente,
-                      telefono: c.telefono,
-                      email: c.email,
-                      zona: c.zona,
-                      note: c.note,
-                    })
-                  }
-                  className="cursor-pointer rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
-                >
-                  Modifica
-                </button>
-                <button
-                  onClick={() => void elimina(c.id)}
-                  className="cursor-pointer rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
-                >
-                  Elimina
-                </button>
-              </div>
+              {puoScrivere && (
+                <div className="flex shrink-0 gap-1">
+                  <button
+                    onClick={() =>
+                      setBozza({
+                        id: c.id,
+                        nome: c.nome,
+                        referente: c.referente,
+                        telefono: c.telefono,
+                        email: c.email,
+                        zona: c.zona,
+                        note: c.note,
+                      })
+                    }
+                    className="cursor-pointer rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+                  >
+                    Modifica
+                  </button>
+                  <button
+                    onClick={() => void elimina(c.id)}
+                    className="cursor-pointer rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+                  >
+                    Elimina
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -1203,12 +1315,22 @@ function Persone({
 // I DOCUMENTI — quello che l'agente sa
 // ─────────────────────────────────────────────────────────────────────────
 
-function Documenti({ seScaduta }: { seScaduta: (e: unknown) => void }) {
+function Documenti({
+  ruolo,
+  seScaduta,
+}: {
+  ruolo: string;
+  seScaduta: (e: unknown) => void;
+}) {
   const [elenco, setElenco] = useState<Documento[] | null>(null);
   const [titolo, setTitolo] = useState("");
   const [testo, setTesto] = useState("");
   const [aperto, setAperto] = useState(false);
   const [inCorso, setInCorso] = useState(false);
+  // ⚠️ La memoria dell'agente la tocca solo chi guida: cancellare un documento
+  // gli toglie quello che sa, ed è troppo per una postazione qualunque. Un
+  // operatore la legge, non la cambia. Il vero cancello è sul server.
+  const puoGestire = ["titolare", "amministratore", "capo"].includes(ruolo);
 
   const carica = useCallback(() => {
     leggi<{ documenti: Documento[] }>("documenti")
@@ -1242,7 +1364,12 @@ function Documenti({ seScaduta }: { seScaduta: (e: unknown) => void }) {
       titolo="Documenti"
       sotto="Listini, zone, regole. Quello che scrivi qui l'agente lo sa dal messaggio dopo."
     >
-      {!aperto ? (
+      {!puoGestire ? (
+        <p className="text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+          Questa è la memoria dell'agente: la puoi leggere. A cambiarla ci pensa
+          chi guida il reparto.
+        </p>
+      ) : !aperto ? (
         <button
           onClick={() => setAperto(true)}
           className="btn-grad cursor-pointer rounded-xl px-4 py-2.5 text-[13.5px] font-medium"
@@ -1304,19 +1431,21 @@ function Documenti({ seScaduta }: { seScaduta: (e: unknown) => void }) {
             <div key={d.id} className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
               <div className="flex items-baseline justify-between gap-3">
                 <p className="text-[14px] font-medium">{d.titolo}</p>
-                <button
-                  onClick={async () => {
-                    try {
-                      await manda({ az: "documento-elimina", id: d.id });
-                      carica();
-                    } catch (e) {
-                      seScaduta(e);
-                    }
-                  }}
-                  className="shrink-0 cursor-pointer rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
-                >
-                  Elimina
-                </button>
+                {puoGestire && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await manda({ az: "documento-elimina", id: d.id });
+                        carica();
+                      } catch (e) {
+                        seScaduta(e);
+                      }
+                    }}
+                    className="shrink-0 cursor-pointer rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+                  >
+                    Elimina
+                  </button>
+                )}
               </div>
               <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--text-secondary)]">
                 {d.testo.length > 400 ? d.testo.slice(0, 400) + "…" : d.testo}

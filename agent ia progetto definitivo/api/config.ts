@@ -73,12 +73,26 @@ export default {
 
       if (corpo.richiesta) return await creaRichiesta(corpo, request);
       if (corpo.qualifica) return await rispondiQualifica(corpo);
-      if (typeof corpo.az === "string") return await areaAzienda(corpo, request);
+      // ⚠️ Rete di sicurezza: un id malformato (un UUID non valido, un campo
+      // storto) fa alzare un'eccezione al database. Senza questo, il browser
+      // riceverebbe un 500 nudo di Vercel; così riceve un errore pulito e
+      // l'area non «si rompe» sotto le mani di chi la usa.
+      if (typeof corpo.az === "string") {
+        try {
+          return await areaAzienda(corpo, request);
+        } catch {
+          return json({ error: "Qualcosa non ha funzionato. Riprova." }, 500);
+        }
+      }
       return json({ error: "Non so cosa vuoi fare." }, 400);
     }
 
     if (request.method === "GET" && url.searchParams.get("az")) {
-      return await leggiAzienda(request, url);
+      try {
+        return await leggiAzienda(request, url);
+      } catch {
+        return json({ error: "Qualcosa non ha funzionato. Riprova." }, 500);
+      }
     }
 
     if (request.method === "GET" && url.searchParams.get("stato")) {
@@ -401,8 +415,63 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       if (!titolare) return soloTitolare();
       return json({ cruscotto: await az.cruscotto(chi.azienda) }, 200);
 
+    case "riepilogo":
+      if (!titolare) return soloTitolare();
+      return await riepilogoGiornata(chi);
+
     default:
       return json({ error: "Non trovato." }, 404);
+  }
+}
+
+/**
+ * L'IA che guarda tutta l'azienda insieme e racconta com'è andata.
+ *
+ * ⚠️ Passa i numeri VERI del cruscotto al modello e basta. Non ha accesso a
+ * fatturato o spedizioni, quindi non può inventarli: gli si dà solo ciò che è
+ * contato, e le istruzioni gli vietano di aggiungere il resto.
+ */
+async function riepilogoGiornata(chi: az.Persona): Promise<Response> {
+  const dati = await az.cruscotto(chi.azienda);
+  const chiave = process.env.OPENROUTER_API_KEY;
+  if (!chiave) {
+    return json(
+      { testo: "L'agente di direzione è momentaneamente spento. Riprova più tardi." },
+      200
+    );
+  }
+  const nome = (chi.nome || "").split(" ")[0];
+  try {
+    const r = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${chiave}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://corpagent.vercel.app",
+        "X-Title": "CorpAgent · Speed Trasporti",
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        max_tokens: 260,
+        temperature: 0.5,
+        messages: [
+          { role: "system", content: az.istruzioniRiepilogo(nome) },
+          // ⚠️ I numeri già in italiano, non il JSON grezzo: così «1038
+          // millisecondi» non diventa «1.038 ore».
+          { role: "user", content: "I numeri di oggi e della settimana:\n" + az.riassuntoDati(dati) },
+        ],
+      }),
+      signal: AbortSignal.timeout(25_000),
+    });
+    const body = (await r.json()) as { choices?: { message?: { content?: string } }[] };
+    const testo = body.choices?.[0]?.message?.content?.trim();
+    if (!testo) throw new Error("vuoto");
+    return json({ testo }, 200);
+  } catch {
+    return json(
+      { testo: "Non riesco a fare il punto in questo momento. I numeri qui sotto sono comunque aggiornati." },
+      200
+    );
   }
 }
 
@@ -445,6 +514,20 @@ async function areaAzienda(
   if (!chi) return json({ error: "sessione" }, 401);
   const titolare = chi.ruolo_vero === "titolare";
 
+  // ⚠️ I PERMESSI DI SCRITTURA, e vivono QUI perché le funzioni SQL eseguono
+  // per chiunque le chiami. Senza queste righe un «osservatore» — quello che si
+  // presenta come «guardo, non tocco» — potrebbe cancellare tutti i clienti, e
+  // un operatore qualsiasi svuotare la memoria dell'agente. Due soglie:
+  //   • scrivente: chiunque tranne l'osservatore (può gestire i clienti)
+  //   • gestore:   solo chi guida (titolare, amministrazione, capo) tocca la
+  //                memoria dell'agente — cancellare un documento gli toglie
+  //                quello che sa, ed è troppo per una postazione qualunque.
+  const scrivente = chi.ruolo_vero !== "osservatore";
+  const gestore = ["titolare", "amministratore", "capo"].includes(chi.ruolo_vero);
+  // Come per le sezioni riservate: a chi non ha il permesso si risponde «non
+  // trovato», non «vietato». Un «vietato» conferma che la cosa esiste.
+  const negato = () => json({ error: "Non trovato." }, 404);
+
   switch (cosa) {
     case "esci":
       await az.esci(String(corpo.t));
@@ -464,16 +547,19 @@ async function areaAzienda(
       return json({ ok: true }, 200);
 
     case "cliente": {
+      if (!scrivente) return negato();
       const id = await az.salvaCliente(chi.azienda, chi.persona, corpo.cliente as Record<string, unknown>);
       if (!id) return json({ error: "Non sono riuscito a salvare." }, 400);
       return json({ id }, 200);
     }
 
     case "cliente-elimina":
+      if (!scrivente) return negato();
       await az.eliminaCliente(chi.azienda, String(corpo.id));
       return json({ ok: true }, 200);
 
     case "documento":
+      if (!gestore) return negato();
       await az.salvaDocumento(
         chi.azienda,
         chi.persona,
@@ -483,6 +569,7 @@ async function areaAzienda(
       return json({ ok: true }, 200);
 
     case "documento-elimina":
+      if (!gestore) return negato();
       await az.eliminaDocumento(chi.azienda, String(corpo.id));
       return json({ ok: true }, 200);
 

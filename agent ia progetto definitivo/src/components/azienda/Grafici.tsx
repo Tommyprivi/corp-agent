@@ -196,7 +196,7 @@ export function Barre({
 export function Linea({
   punti,
   serie,
-  altezza = 180,
+  altezza = 300,
 }: {
   punti: { etichetta: string; sotto?: string; valori: number[] }[];
   serie: { nome: string; colore: string }[];
@@ -204,9 +204,14 @@ export function Linea({
 }) {
   const [sopra, setSopra] = useState<number | null>(null);
   const id = useId();
-  const L = 720;
+  // ⚠️ Il viewBox NON è largo e basso (era 720×200): a quel rapporto, su un
+  // telefono da 340px il testo degli assi si rimpicciolisce a ~5px, illeggibile.
+  // Con 360 di larghezza la scala sul telefono è quasi 1:1, e le scritte
+  // restano a ~10px. L'altezza segue la larghezza (rapporto del viewBox), con
+  // un tetto perché su schermo largo non diventi un lenzuolo.
+  const L = 360;
   const A = 200;
-  const bordo = { s: 34, d: 8, a: 12, b: 26 };
+  const bordo = { s: 30, d: 8, a: 12, b: 26 };
 
   const massimo = Math.max(1, ...punti.flatMap((p) => p.valori));
   const cima = arrotondaInSu(massimo);
@@ -224,7 +229,8 @@ export function Linea({
       <svg
         viewBox={`0 0 ${L} ${A}`}
         className="w-full"
-        style={{ height: altezza }}
+        style={{ aspectRatio: `${L} / ${A}`, maxHeight: altezza }}
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={serie.map((s) => s.nome).join(" e ")}
       >
@@ -390,11 +396,27 @@ export function Attesa({ da, altezza = 168 }: { da: string; altezza?: number }) 
 
 // ─────────────────────────────────────────────────────────────────────────
 
-/** 7 → 10, 43 → 50, 380 → 400. Perché la barra più alta non tocchi il bordo. */
+/**
+ * Il tetto della scala: un filo sopra il valore più alto, e **sempre pari**.
+ *
+ * ⚠️ Due cose che la versione di prima sbagliava:
+ *   1. su un massimo già rotondo (10, 20) restituiva sé stesso, e la barra più
+ *      alta toccava il bordo — qui si parte da n+1, così resta sempre un filo
+ *      d'aria e nessuna barra tocca la cima.
+ *   2. se il tetto era dispari, l'etichetta di mezzo (tetto/2) veniva
+ *      arrotondata e non coincideva più con la sua riga — qui il tetto è sempre
+ *      pari, così la metà è un intero esatto.
+ *
+ * 7 → 8, 10 → 12, 43 → 50, 380 → 400.
+ */
 function arrotondaInSu(n: number): number {
   if (n <= 4) return 4;
-  const scala = Math.pow(10, Math.floor(Math.log10(n)));
-  return Math.ceil(n / (scala / 2)) * (scala / 2);
+  const grezzo = n + 1;
+  const passo =
+    grezzo <= 20 ? 2 : grezzo <= 100 ? 10 : Math.pow(10, Math.floor(Math.log10(grezzo)));
+  let cima = Math.ceil(grezzo / passo) * passo;
+  if (cima % 2 !== 0) cima += passo;
+  return cima;
 }
 
 function corto(n: number): string {

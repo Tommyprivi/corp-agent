@@ -322,6 +322,87 @@ export async function cruscotto(azienda: string) {
   return r.rows[0]?.az_cruscotto ?? null;
 }
 
+/**
+ * Le istruzioni per il riepilogo della giornata — l'IA che guarda **tutta
+ * l'azienda insieme**, non una postazione sola.
+ *
+ * È la cosa che fa sentire l'IA dappertutto e non solo nella chat: il titolare
+ * apre il cruscotto e l'agente gli racconta com'è andata, come farebbe un
+ * direttore che ha girato tutti i reparti. Il documento di Tommaso la chiama
+ * «Agent Pulse» e «Daily Briefing».
+ *
+ * ⚠️ Stessa regola di ferro delle postazioni: **non inventa**. Parla solo dei
+ * numeri che ha davanti — quelli veri, contati. Non conosce fatturato né
+ * spedizioni (non ci sono i collegamenti), e non deve fingere di sì.
+ */
+/**
+ * I numeri del cruscotto tradotti in fatti italiani, per il riepilogo.
+ *
+ * ⚠️ **Non si dà il JSON grezzo al modello.** Un `attesa: 1038` (millisecondi)
+ * gli è già stato letto come «1.038 ore di attesa»: il numero da solo non porta
+ * la sua unità, e il modello indovina l'unità sbagliata. Qui ogni numero arriva
+ * con la sua parola accanto — «1,0 secondi», «2 richieste» — e non c'è niente da
+ * indovinare.
+ */
+export function riassuntoDati(dati: unknown): string {
+  const d = (dati ?? {}) as {
+    oggi?: { domande?: number; risposte?: number; passate?: number; attesa?: number | null };
+    per_postazione?: { p?: string; n?: number }[];
+    aspetta?: { testo?: string | null; chi?: string; postazione?: string }[];
+    totali?: { clienti?: number; documenti?: number; persone?: number };
+  };
+  const o = d.oggi ?? {};
+  const righe: string[] = [];
+  righe.push(
+    `OGGI: ${o.domande ?? 0} richieste all'agente, ` +
+      `${o.risposte ?? 0} risposte da solo, ` +
+      `${o.passate ?? 0} girate a una persona.`
+  );
+  if (o.attesa != null) {
+    righe.push(`Tempo medio di risposta dell'agente oggi: ${(o.attesa / 1000).toFixed(1)} secondi.`);
+  }
+  if (d.per_postazione?.length) {
+    righe.push(
+      "Richieste della settimana per postazione: " +
+        d.per_postazione.map((p) => `${p.p} ${p.n}`).join(", ") + "."
+    );
+  }
+  const aperte = (d.aspetta ?? []).filter((a) => a.testo);
+  if (aperte.length) {
+    righe.push(`Domande ancora aperte che aspettano una risposta (${aperte.length}):`);
+    for (const a of aperte.slice(0, 6)) {
+      righe.push(`- "${a.testo}"${a.chi ? ` (chiesta da ${a.chi})` : ""}`);
+    }
+  } else {
+    righe.push("Non c'è niente in sospeso: nessuna domanda aperta aspetta il titolare.");
+  }
+  const t = d.totali ?? {};
+  righe.push(
+    `In archivio: ${t.clienti ?? 0} clienti, ${t.documenti ?? 0} documenti nella memoria dell'agente.`
+  );
+  return righe.join("\n");
+}
+
+export function istruzioniRiepilogo(nome: string): string {
+  return [
+    "Sei l'assistente di direzione di Speed Trasporti, azienda di trasporti e",
+    "logistica di Torino. Stai parlando con il titolare" + (nome ? `, ${nome}` : "") + ".",
+    "",
+    "Ti do i numeri VERI di oggi e della settimana, contati dal sistema. Scrivi",
+    "un riepilogo di 3-4 frasi, in italiano, come lo direbbe un direttore sveglio:",
+    "prima come sta andando la giornata, poi — se c'è — cosa aspetta lui.",
+    "",
+    "REGOLE:",
+    "- Parla solo di questi numeri. Non conosci fatturato, spedizioni o magazzino:",
+    "  quei collegamenti non ci sono ancora, non inventarli e non nominarli come",
+    "  se li avessi.",
+    "- Se l'agente ha girato delle domande a una persona, dillo chiaro: sono le",
+    "  cose che aspettano lui.",
+    "- Niente elenchi puntati, niente titoli. Discorsivo e corto.",
+    "- Se oggi non è successo quasi niente, dillo con semplicità invece di gonfiarlo.",
+  ].join("\n");
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // LA CONVERSAZIONE
 // ─────────────────────────────────────────────────────────────────────────
