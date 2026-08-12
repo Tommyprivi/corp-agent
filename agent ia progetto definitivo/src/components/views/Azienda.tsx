@@ -13,6 +13,7 @@ import {
   type Messaggio,
   type Banchina,
   type Mezzo,
+  type Ufficio as UfficioDati,
   type PersonaElenco,
   type PersonaViva,
   type RepartoDati,
@@ -343,7 +344,15 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
             seScaduta={seScaduta}
           />
         )}
-        {sezioneVera === "chat" && postazione !== "magazzino" && (
+        {sezioneVera === "chat" && postazione === "traffico" && (
+          <Ufficio
+            postazione={postazioni.find((p) => p.id === "traffico") ?? postazioni[0]}
+            nome={(persona.nome || "").split(" ")[0]}
+            agenteVivo={agenteVivo}
+            seScaduta={seScaduta}
+          />
+        )}
+        {sezioneVera === "chat" && postazione !== "magazzino" && postazione !== "traffico" && (
           <Conversazione
             postazione={postazioni.find((p) => p.id === postazione) ?? postazioni[0]}
             nome={(persona.nome || "").split(" ")[0]}
@@ -402,11 +411,14 @@ function Conversazione({
   postazione,
   nome,
   agenteVivo,
+  testoIniziale,
   seScaduta,
 }: {
   postazione: PostazioneViva;
   nome?: string;
   agenteVivo: boolean;
+  /** Un inizio di frase già pronto (es. «Mi serve un preventivo per »). */
+  testoIniziale?: string;
   seScaduta: (e: unknown) => void;
 }) {
   const [messaggi, setMessaggi] = useState<Messaggio[] | null>(null);
@@ -419,6 +431,15 @@ function Conversazione({
   const inputRef = useRef<HTMLInputElement>(null);
   const dettatura = useRef<{ stop: () => void } | null>(null);
   const funzioni = FUNZIONI[postazione.id] ?? [];
+
+  // Il prefill dalle funzioni rapide dell'ufficio: arriva già mezzo scritto,
+  // si finisce la frase e si manda.
+  useEffect(() => {
+    if (testoIniziale) {
+      setTesto(testoIniziale);
+      inputRef.current?.focus();
+    }
+  }, [testoIniziale]);
 
   /** Dopo una registrazione, una conferma in chat: resta la traccia di cosa si è fatto. */
   function conferma(riga: string) {
@@ -704,7 +725,7 @@ interface SpeechRecognitionLike {
 // LE FUNZIONI RAPIDE DELLE POSTAZIONI
 // ─────────────────────────────────────────────────────────────────────────
 
-type TipoMovimento = "carico" | "scarico" | "differenza" | "problema";
+type TipoMovimento = "carico" | "scarico" | "differenza" | "problema" | "ritiro" | "reclamo";
 
 interface Funzione {
   etichetta: string;
@@ -733,6 +754,8 @@ const NOMI_MOVIMENTO: Record<TipoMovimento, string> = {
   scarico: "Registra uno scarico",
   differenza: "Differenza di conteggio",
   problema: "Segnala un problema",
+  ritiro: "Prenota un ritiro",
+  reclamo: "Reclamo o sollecito di un cliente",
 };
 
 /**
@@ -755,12 +778,14 @@ function FormMovimento({
   seScaduta: (e: unknown) => void;
 }) {
   const merci = tipo === "carico" || tipo === "scarico";
+  const conCliente = merci || tipo === "ritiro" || tipo === "reclamo";
   const [colli, setColli] = useState("");
   const [atteso, setAtteso] = useState("");
   const [contato, setContato] = useState("");
   const [controparte, setControparte] = useState("");
   const [mezzo, setMezzo] = useState("");
   const [testo, setTesto] = useState("");
+  const [quando, setQuando] = useState("");
   const [clienti, setClienti] = useState<Cliente[]>([]);
   const [mezzi, setMezzi] = useState<Mezzo[]>([]);
   const [inCorso, setInCorso] = useState(false);
@@ -768,15 +793,19 @@ function FormMovimento({
   useEffect(() => {
     // I clienti servono per «da chi/per chi», i mezzi per «su che mezzo».
     // Se non arrivano (rete), il campo resta scrivibile a mano: non si blocca.
-    if (merci) {
+    if (conCliente) {
       leggi<{ clienti: Cliente[] }>("clienti").then((r) => setClienti(r.clienti)).catch(() => {});
+    }
+    if (merci) {
       leggi<{ mezzi: Mezzo[] }>("mezzi").then((r) => setMezzi(r.mezzi)).catch(() => {});
     }
-  }, [merci]);
+  }, [merci, conCliente]);
 
   const pronto =
     (tipo === "carico" || tipo === "scarico") ? colli.trim() !== "" :
     tipo === "differenza" ? atteso.trim() !== "" && contato.trim() !== "" :
+    tipo === "ritiro" ? controparte.trim() !== "" :
+    tipo === "reclamo" ? controparte.trim() !== "" && testo.trim() !== "" :
     testo.trim() !== "";
 
   async function salva() {
@@ -787,12 +816,13 @@ function FormMovimento({
         az: "movimento",
         movimento: {
           tipo,
-          colli: merci ? colli : null,
+          colli: merci || tipo === "ritiro" ? colli : null,
           atteso: tipo === "differenza" ? atteso : null,
           contato: tipo === "differenza" ? contato : null,
           mezzo: merci ? mezzo : "",
-          controparte: merci ? controparte : "",
+          controparte: conCliente ? controparte : "",
           testo,
+          previsto: tipo === "ritiro" && quando ? new Date(quando).toISOString() : null,
         },
       });
       onFatto(rigaConferma());
@@ -806,6 +836,8 @@ function FormMovimento({
     if (tipo === "carico") return `✅ Carico registrato: ${colli} colli${controparte ? ` da ${controparte}` : ""}${mezzo ? ` · ${mezzo}` : ""}.`;
     if (tipo === "scarico") return `✅ Scarico registrato: ${colli} colli${controparte ? ` per ${controparte}` : ""}${mezzo ? ` · ${mezzo}` : ""}.`;
     if (tipo === "differenza") return `⚠️ Differenza segnalata: attesi ${atteso}, contati ${contato}. La vede il capo.`;
+    if (tipo === "ritiro") return `📋 Ritiro prenotato da ${controparte}${colli ? `, ${colli} colli` : ""}${quando ? ` — ${new Date(quando).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}. Lo vede anche il magazzino.`;
+    if (tipo === "reclamo") return `📣 Reclamo di ${controparte} registrato. Lo vede il capo e il titolare.`;
     return "🛠️ Problema segnalato. Lo vede il capo e il titolare.";
   }
 
@@ -901,6 +933,77 @@ function FormMovimento({
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:col-span-2 sm:text-[14px]"
               />
             </Campo>
+          </div>
+        )}
+
+        {tipo === "ritiro" && (
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <Campo etichetta="Da quale cliente *">
+              <input
+                list="clienti-lista"
+                value={controparte}
+                onChange={(e) => setControparte(e.target.value)}
+                placeholder="Scegli o scrivi il cliente"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+              />
+              <datalist id="clienti-lista">
+                {clienti.map((c) => (
+                  <option key={c.id} value={c.nome} />
+                ))}
+              </datalist>
+            </Campo>
+            <Campo etichetta="Quando">
+              <input
+                type="datetime-local"
+                value={quando}
+                onChange={(e) => setQuando(e.target.value)}
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+              />
+            </Campo>
+            <Campo etichetta="Quanti colli">
+              <input
+                type="number"
+                inputMode="numeric"
+                value={colli}
+                onChange={(e) => setColli(e.target.value)}
+                placeholder="es. 8"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+              />
+            </Campo>
+            <Campo etichetta="Dove / note">
+              <input
+                value={testo}
+                onChange={(e) => setTesto(e.target.value)}
+                placeholder="es. via Onorato 12, ore 9-12"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+              />
+            </Campo>
+          </div>
+        )}
+
+        {tipo === "reclamo" && (
+          <div className="grid gap-2.5">
+            <Campo etichetta="Quale cliente *">
+              <input
+                list="clienti-lista"
+                value={controparte}
+                onChange={(e) => setControparte(e.target.value)}
+                placeholder="Scegli o scrivi il cliente"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+              />
+              <datalist id="clienti-lista">
+                {clienti.map((c) => (
+                  <option key={c.id} value={c.nome} />
+                ))}
+              </datalist>
+            </Campo>
+            <textarea
+              value={testo}
+              onChange={(e) => setTesto(e.target.value)}
+              placeholder="Cosa lamenta — es. «Consegna di ieri mai arrivata, aspetta una chiamata»"
+              rows={3}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] leading-relaxed outline-none focus:border-[var(--accent)] sm:text-[14px]"
+            />
           </div>
         )}
 
@@ -2115,7 +2218,46 @@ function Banchina({
               )}
             </div>
 
-            {/* ── 4 · GLI SCANNER, QUANDO ARRIVANO ───────────────────── */}
+            {/* ── 4 · IN ARRIVO — i ritiri prenotati dal traffico ────── */}
+            {/* ⚠️ È il primo pezzo dei reparti che si parlano: il traffico
+                prenota, la banchina sa cosa arriva prima che arrivi. */}
+            {dati !== null && dati.ritiri.length > 0 && (
+              <div className="mt-6">
+                <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+                  In arrivo · prenotato dal traffico
+                </h2>
+                <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+                  {dati.ritiri.map((r, i) => (
+                    <div
+                      key={r.id}
+                      className={`flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-4 py-2.5 ${
+                        i > 0 ? "border-t border-[var(--border)]" : ""
+                      }`}
+                    >
+                      <span aria-hidden className="text-[15px]">🚚</span>
+                      <span className="min-w-0 flex-1 text-[13.5px]">
+                        {r.controparte}
+                        {r.colli ? ` · ${r.colli} colli` : ""}
+                        {r.testo ? ` · ${r.testo}` : ""}
+                      </span>
+                      <span className="shrink-0 text-[11.5px] text-[var(--text-secondary)]">
+                        {r.previsto
+                          ? new Date(r.previsto).toLocaleString("it-IT", {
+                              weekday: "short",
+                              day: "numeric",
+                              month: "short",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "senza orario"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── 5 · GLI SCANNER, QUANDO ARRIVANO ───────────────────── */}
             <div className="mt-6 rounded-xl border border-dashed border-[var(--border)] px-5 py-4">
               <p className="text-[13px] font-medium">Gli scanner passeranno di qui</p>
               <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
@@ -2124,6 +2266,245 @@ function Banchina({
                 automatici, differenze trovate al volo, zero doppia scrittura.
                 Fino ad allora, si registra da qui — e vale uguale.
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// L'UFFICIO — il posto di lavoro del traffico
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * La postazione Traffico, stessa filosofia della banchina: prima il lavoro,
+ * l'agente a un tocco. Le funzioni decise da Tommaso: prenota ritiro, reclamo,
+ * dov'è il carico, preventivo. Le ultime due sono domande, non registrazioni:
+ * aprono l'agente con la frase già iniziata. ⚠️ Sui prezzi l'agente segue la
+ * regola di ferro scritta nelle sue istruzioni: solo dal listino, se no passa.
+ */
+function Ufficio({
+  postazione,
+  nome,
+  agenteVivo,
+  seScaduta,
+}: {
+  postazione: PostazioneViva;
+  nome?: string;
+  agenteVivo: boolean;
+  seScaduta: (e: unknown) => void;
+}) {
+  const [scheda, setScheda] = useState<"lavoro" | "agente">("lavoro");
+  const [prefill, setPrefill] = useState<string | undefined>(undefined);
+  const [dati, setDati] = useState<UfficioDati | null>(null);
+  const [azione, setAzione] = useState<TipoMovimento | null>(null);
+  const [fatto, setFatto] = useState<string | null>(null);
+
+  const carica = useCallback(() => {
+    leggi<UfficioDati>("ufficio")
+      .then(setDati)
+      .catch((e) => seScaduta(e));
+  }, [seScaduta]);
+
+  useEffect(() => carica(), [carica]);
+
+  async function ritiroFatto(id: string) {
+    try {
+      await manda({ az: "ritiro-fatto", id });
+      carica();
+    } catch (e) {
+      seScaduta(e);
+    }
+  }
+
+  const num = dati?.traffico;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-3.5 md:px-8">
+        <div>
+          <h1 className="text-[15.5px] font-semibold tracking-[-0.01em]">{postazione.nome}</h1>
+          <p className="mt-0.5 text-[12.5px] text-[var(--text-secondary)]">{postazione.cosa}</p>
+        </div>
+        <div className="flex rounded-lg border border-[var(--border)] p-0.5">
+          {(
+            [
+              ["lavoro", "Ufficio"],
+              ["agente", "Agente"],
+            ] as const
+          ).map(([id, etichetta]) => (
+            <button
+              key={id}
+              onClick={() => setScheda(id)}
+              className={`cursor-pointer rounded-md px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
+                scheda === id
+                  ? "bg-[var(--accent-soft)] text-[var(--text-primary)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              {etichetta}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {scheda === "agente" ? (
+        <Conversazione
+          postazione={postazione}
+          nome={nome}
+          agenteVivo={agenteVivo}
+          testoIniziale={prefill}
+          seScaduta={seScaduta}
+        />
+      ) : (
+        <div className="flex-1 overflow-y-auto px-5 py-6 md:px-8">
+          <div className="mx-auto max-w-[900px]">
+            {/* ── 1 · LE AZIONI ──────────────────────────────────────── */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <button
+                onClick={() => {
+                  setAzione("ritiro");
+                  setFatto(null);
+                }}
+                className={`cursor-pointer rounded-xl border p-4 text-left transition-colors ${
+                  azione === "ritiro"
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                    : "border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--accent)]"
+                }`}
+              >
+                <span aria-hidden className="text-[26px] leading-none">📋</span>
+                <span className="mt-2 block text-[14.5px] font-semibold">Prenota ritiro</span>
+                <span className="block text-[11.5px] text-[var(--text-secondary)]">lo vede il magazzino</span>
+              </button>
+              <button
+                onClick={() => {
+                  setPrefill("Mi serve un preventivo per ");
+                  setScheda("agente");
+                }}
+                className="cursor-pointer rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 text-left transition-colors hover:border-[var(--accent)]"
+              >
+                <span aria-hidden className="text-[26px] leading-none">💶</span>
+                <span className="mt-2 block text-[14.5px] font-semibold">Preventivo</span>
+                <span className="block text-[11.5px] text-[var(--text-secondary)]">solo dal listino</span>
+              </button>
+              <button
+                onClick={() => {
+                  setPrefill("Dov'è il carico ");
+                  setScheda("agente");
+                }}
+                className="cursor-pointer rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 text-left transition-colors hover:border-[var(--accent)]"
+              >
+                <span aria-hidden className="text-[26px] leading-none">🔎</span>
+                <span className="mt-2 block text-[14.5px] font-semibold">Dov'è il carico</span>
+                <span className="block text-[11.5px] text-[var(--text-secondary)]">chiedi all'agente</span>
+              </button>
+              <button
+                onClick={() => {
+                  setAzione("reclamo");
+                  setFatto(null);
+                }}
+                className={`cursor-pointer rounded-xl border p-4 text-left transition-colors ${
+                  azione === "reclamo"
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                    : "border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--accent)]"
+                }`}
+              >
+                <span aria-hidden className="text-[26px] leading-none">📣</span>
+                <span className="mt-2 block text-[14.5px] font-semibold">Reclamo</span>
+                <span className="block text-[11.5px] text-[var(--text-secondary)]">va al capo e al titolare</span>
+              </button>
+            </div>
+
+            {azione && (
+              <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)]">
+                <FormMovimento
+                  tipo={azione}
+                  onChiudi={() => setAzione(null)}
+                  onFatto={(riga) => {
+                    setAzione(null);
+                    setFatto(riga);
+                    carica();
+                  }}
+                  seScaduta={seScaduta}
+                />
+              </div>
+            )}
+
+            {fatto && !azione && (
+              <p
+                className="mt-3 rounded-xl border-l-2 bg-[var(--fill-quiet)] px-4 py-3 text-[13.5px]"
+                style={{ borderColor: "var(--accent)" }}
+              >
+                {fatto}
+              </p>
+            )}
+
+            {/* ── 2 · I NUMERI ───────────────────────────────────────── */}
+            {num && (
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                <Numero valore={String(num.ritiri_prenotati)} titolo="Ritiri prenotati" sotto="oggi" />
+                <Numero valore={String(num.ritiri_aperti)} titolo="Ritiri da fare" sotto="in tutto" />
+                <Numero valore={String(num.reclami_aperti)} titolo="Reclami aperti" sotto="dal capo" />
+              </div>
+            )}
+
+            {/* ── 3 · I RITIRI DA FARE ───────────────────────────────── */}
+            <div className="mt-6">
+              <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+                Ritiri da fare
+              </h2>
+              {dati === null && (
+                <p className="mt-3 text-[13px] text-[var(--text-secondary)]">Leggo…</p>
+              )}
+              {dati !== null && dati.ritiri.length === 0 && (
+                <div className="mt-3 rounded-xl border border-dashed border-[var(--border)] p-6 text-center">
+                  <p className="text-[14px] font-medium">Nessun ritiro in coda</p>
+                  <p className="mx-auto mt-1.5 max-w-[44ch] text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+                    Quando prenoti un ritiro compare qui — e nella banchina del
+                    magazzino, così sanno cosa arriva.
+                  </p>
+                </div>
+              )}
+              {dati !== null && dati.ritiri.length > 0 && (
+                <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+                  {dati.ritiri.map((r, i) => (
+                    <div
+                      key={r.id}
+                      className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${
+                        i > 0 ? "border-t border-[var(--border)]" : ""
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13.5px] font-medium">
+                          {r.controparte}
+                          {r.colli ? ` · ${r.colli} colli` : ""}
+                        </p>
+                        <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">
+                          {r.previsto
+                            ? new Date(r.previsto).toLocaleString("it-IT", {
+                                weekday: "short",
+                                day: "numeric",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "senza orario"}
+                          {r.testo ? ` · ${r.testo}` : ""}
+                          {r.chi ? ` · prenotato da ${r.chi}` : ""}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => void ritiroFatto(r.id)}
+                        className="shrink-0 cursor-pointer rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12.5px] font-medium hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                      >
+                        Fatto
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

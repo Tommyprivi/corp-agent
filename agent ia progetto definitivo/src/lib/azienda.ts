@@ -135,7 +135,7 @@ export interface Magazzino {
 export interface Controllo {
   id: string;
   reparto: string;
-  tipo: "problema" | "differenza";
+  tipo: "problema" | "differenza" | "reclamo";
   testo: string;
   atteso: number | null;
   contato: number | null;
@@ -184,7 +184,7 @@ export interface RepartoDati {
 
 export interface Movimento {
   id: string;
-  tipo: "carico" | "scarico" | "differenza" | "problema";
+  tipo: "carico" | "scarico" | "differenza" | "problema" | "ritiro" | "reclamo";
   colli: number | null;
   atteso: number | null;
   contato: number | null;
@@ -196,7 +196,28 @@ export interface Movimento {
   creato: string;
 }
 
+export interface Ritiro {
+  id: string;
+  controparte: string;
+  testo: string;
+  colli: number | null;
+  previsto: string | null;
+  chi: string;
+  creato: string;
+}
+
 export interface Banchina {
   magazzino: Magazzino | null;
   movimenti: Movimento[];
+  ritiri: Ritiro[];
+}
+
+export interface Ufficio {
+  traffico: {
+    ritiri_prenotati: number;
+    ritiri_aperti: number;
+    reclami_aperti: number;
+  } | null;
+  movimenti: Movimento[];
+  ritiri: Ritiro[];
 }

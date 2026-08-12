@@ -419,14 +419,27 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       return json({ mezzi: await az.mezzi(chi.azienda) }, 200);
 
     case "banchina": {
-      // Il posto di lavoro del magazzino: i numeri di oggi e il registro dei
-      // movimenti. Lo vede chiunque sia dentro — è il dato operativo condiviso
-      // della banchina, non una chat. Le conversazioni restano private.
-      const [mag, movimenti] = await Promise.all([
+      // Il posto di lavoro del magazzino: i numeri di oggi, il registro dei
+      // movimenti e i ritiri in arrivo prenotati dal traffico. Lo vede chiunque
+      // sia dentro — è il dato operativo condiviso della banchina, non una
+      // chat. Le conversazioni restano private.
+      const [mag, movimenti, ritiri] = await Promise.all([
         az.magazzino(chi.azienda),
         az.movimentiOggi(chi.azienda, "Magazzino"),
+        az.ritiri(chi.azienda),
       ]);
-      return json({ magazzino: mag, movimenti }, 200);
+      return json({ magazzino: mag, movimenti, ritiri }, 200);
+    }
+
+    case "ufficio": {
+      // Il posto di lavoro del traffico: i numeri, il registro del giorno e i
+      // ritiri ancora da fare. Stessa filosofia della banchina.
+      const [num, movimenti, ritiri] = await Promise.all([
+        az.traffico(chi.azienda),
+        az.movimentiOggi(chi.azienda, "Traffico"),
+        az.ritiri(chi.azienda),
+      ]);
+      return json({ traffico: num, movimenti, ritiri }, 200);
     }
 
     case "reparto": {
@@ -621,10 +634,22 @@ async function areaAzienda(
       // lavori (non l'osservatore). Il reparto è quello della persona.
       if (!scrivente) return negato();
       const d = corpo.movimento as az.DatiMovimento;
-      if (!d || !["carico", "scarico", "differenza", "problema"].includes(d.tipo)) {
+      const tipiValidi = ["carico", "scarico", "differenza", "problema", "ritiro", "reclamo"];
+      if (!d || !tipiValidi.includes(d.tipo)) {
         return json({ error: "Movimento non valido." }, 400);
       }
-      const reparto = chi.reparto || "Magazzino";
+      // Il reparto è quello della persona; se non l'ha detto, si deduce dal
+      // tipo: ritiri e reclami nascono in Traffico, la merce in Magazzino.
+      const reparto =
+        chi.reparto ||
+        (d.tipo === "ritiro" || d.tipo === "reclamo" ? "Traffico" : "Magazzino");
+      // Il «quando» di un ritiro: una data vera o niente. Una data storta non
+      // deve far fallire la prenotazione — arriva senza data e si vede lo stesso.
+      let previsto: string | null = null;
+      if (d.tipo === "ritiro" && typeof d.previsto === "string" && d.previsto) {
+        const dt = new Date(d.previsto);
+        if (!Number.isNaN(dt.getTime())) previsto = dt.toISOString();
+      }
       await az.registraMovimento(chi.azienda, reparto, chi.persona, {
         tipo: d.tipo,
         colli: numero(d.colli),
@@ -633,13 +658,21 @@ async function areaAzienda(
         mezzo: String(d.mezzo ?? ""),
         controparte: String(d.controparte ?? ""),
         testo: String(d.testo ?? ""),
+        previsto,
       });
       // ⚠️ Se è una cosa da controllare (problema o differenza) si avvisa —
       // oggi solo il pallino nell'app, il WhatsApp arriva col numero. Senza
       // aspettare: l'avviso non deve rallentare chi ha appena registrato.
-      if (d.tipo === "problema" || d.tipo === "differenza") void az.avvisaSegnalazione();
+      if (["problema", "differenza", "reclamo"].includes(d.tipo)) void az.avvisaSegnalazione();
       return json({ ok: true }, 200);
     }
+
+    case "ritiro-fatto":
+      // Un ritiro lo chiude chi lo fa: operatore compreso. (I reclami no:
+      // quelli restano del capo, e questa porta chiude SOLO i ritiri.)
+      if (!scrivente) return negato();
+      await az.chiudiRitiro(chi.azienda, String(corpo.id));
+      return json({ ok: true }, 200);
 
     case "controllo-chiudi":
       // Segnare risolto un problema o una differenza: lo fa chi guida il reparto.

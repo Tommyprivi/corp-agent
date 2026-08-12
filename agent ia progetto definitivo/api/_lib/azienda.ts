@@ -47,7 +47,13 @@ export const AZIENDE: Record<string, { nome: string; postazioni: Postazione[] }>
         istruzioni:
           "Ti occupi del traffico: chi chiama per sapere dov'è un carico, chi chiede " +
           "un preventivo, chi vuole prenotare un ritiro. Rispondi come risponderebbe " +
-          "un capo traffico con vent'anni di mestiere: corto, concreto, senza giri.",
+          "un capo traffico con vent'anni di mestiere: corto, concreto, senza giri.\n" +
+          "SUI PREZZI, la regola è di ferro (decisa dal titolare): un preventivo si " +
+          "fa SOLO se il listino con quella tratta è scritto qui sotto nei documenti " +
+          "— e allora calcoli da lì e dici la cifra del listino, mai uno sconto, mai " +
+          "un arrotondamento a favore. Se la tratta o la merce non è nel listino, " +
+          "NON stimare mai un prezzo: comincia con [PASSO], raccogli tratta, colli, " +
+          "peso e quando serve, e di' che il preventivo arriva da una persona.",
       },
       {
         id: "magazzino",
@@ -362,13 +368,15 @@ export async function eliminaMezzo(azienda: string, id: string) {
 }
 
 export interface DatiMovimento {
-  tipo: "carico" | "scarico" | "differenza" | "problema";
+  tipo: "carico" | "scarico" | "differenza" | "problema" | "ritiro" | "reclamo";
   colli?: number | null;
   atteso?: number | null;
   contato?: number | null;
   mezzo?: string;
   controparte?: string;
   testo?: string;
+  /** Solo per i ritiri: quando è previsto. ISO, o null se non detto. */
+  previsto?: string | null;
 }
 
 export async function registraMovimento(
@@ -378,7 +386,7 @@ export async function registraMovimento(
   d: DatiMovimento
 ): Promise<bigint> {
   const r = await getPool().query<{ az_movimento: string }>(
-    "select public.az_movimento($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+    "select public.az_movimento($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
     [
       azienda,
       reparto || "Magazzino",
@@ -390,6 +398,7 @@ export async function registraMovimento(
       d.controparte ?? "",
       d.testo ?? "",
       persona,
+      d.previsto ?? null,
     ]
   );
   return BigInt(r.rows[0].az_movimento);
@@ -397,6 +406,11 @@ export async function registraMovimento(
 
 export async function chiudiControllo(azienda: string, id: string) {
   await getPool().query("select public.az_movimento_chiudi($1,$2)", [Number(id), azienda]);
+}
+
+/** Segna un ritiro come fatto. Porta separata: chiude SOLO i ritiri. */
+export async function chiudiRitiro(azienda: string, id: string) {
+  await getPool().query("select public.az_ritiro_fatto($1,$2)", [Number(id), azienda]);
 }
 
 export async function magazzino(azienda: string) {
@@ -428,6 +442,20 @@ export async function movimentiOggi(azienda: string, reparto: string | null) {
     reparto,
   ]);
   return r.rows;
+}
+
+/** I ritiri prenotati e non ancora fatti: li vede il traffico E il magazzino. */
+export async function ritiri(azienda: string) {
+  const r = await getPool().query("select * from public.az_ritiri($1)", [azienda]);
+  return r.rows;
+}
+
+export async function traffico(azienda: string) {
+  const r = await getPool().query<{ az_traffico: unknown }>(
+    "select public.az_traffico($1)",
+    [azienda]
+  );
+  return r.rows[0]?.az_traffico ?? null;
 }
 
 /**

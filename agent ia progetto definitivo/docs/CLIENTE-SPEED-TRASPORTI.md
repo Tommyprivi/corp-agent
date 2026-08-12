@@ -1302,3 +1302,19 @@ Tommaso ha mandato le foto dei dispositivi veri di Speed. Tre scoperte:
 Carico/Scarico — autofocus all'apertura, il lettore digita, salto automatico al
 campo colli. Va tarato sul suffisso reale di DataWedge (invio/tab), quindi si
 costruisce quando c'è uno Zebra vero da provare: mezz'ora, prima del sopralluogo.
+
+⚠️ **PRIORITÀ CORRETTA DA TOMMASO (12 ago, sera): le SCANNER-STAMPANTI, non le
+pistole.** A Speed interessa la multifunzione: la carta che passa dallo scanner
+(bolle, DDT, fatture) deve diventare dati letti dall'IA. L'ordine delle strade
+si ribalta:
+
+1. **La multifunzione → scan-to-email → Outlook → l'IA legge il documento**
+   (OCR): è il connettore scanner prioritario, e va a braccetto con Outlook già
+   scelto come primo connettore insieme a K-Master. Flusso: si appoggia la
+   bolla sul vetro → il PDF arriva nella casella dedicata → l'agente la legge,
+   estrae cliente/colli/numero bolla e la registra nel registro della banchina.
+2. Le pistole Zebra (DataWedge) restano pronte come seconda strada.
+3. QCSNET/K-Master resta il connettore dei dati di traffico.
+
+Al sopralluogo: **marca e modello della multifunzione**, e se lo scan-to-email
+è già configurato (di solito sì, verso le caselle interne).
