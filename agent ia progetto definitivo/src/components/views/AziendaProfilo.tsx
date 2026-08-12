@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { MARCHI } from "../../lib/marchio";
+import { manda, salvaGettone, type PersonaViva } from "../../lib/azienda";
 
 /**
  * L'ingresso in un'azienda cliente, e la creazione del proprio profilo.
@@ -22,7 +23,20 @@ import { MARCHI } from "../../lib/marchio";
  * assegna Salvatore dall'elenco delle persone, e finché non lo conferma la
  * postazione resta da operatore. Lasciare che uno si auto-assegni i permessi
  * sarebbe la falla più grossa di tutto il sistema — e la più facile da fare per
- * distrazione.
+ * distrazione. La difesa non è qui: è sul server, in `api/config.ts`.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ NON C'È UNA SCHERMATA DI REGISTRAZIONE, ED È VOLUTO
+ * ─────────────────────────────────────────────────────────────────────────
+ * Chi mette un'email che il sistema non conosce **si apre la postazione in quel
+ * momento**. Salvatore apre il link, scrive la sua email, ed è dentro con tutti
+ * i permessi senza che nessuno debba toccare il database: il primo che entra in
+ * un'azienda è il titolare, tutti gli altri sono operatori.
+ *
+ * Il rovescio va detto: oggi chiunque conosca il link può aprirsi una
+ * postazione da operatore. Va bene per una beta con un'azienda sola e un link
+ * che non è scritto da nessuna parte; prima delle 150 persone vere serve
+ * l'invito su elenco chiuso.
  */
 
 export interface ProfiloAziendale {
@@ -49,7 +63,7 @@ export default function AziendaProfilo({
   onFatto,
 }: {
   marchio?: string;
-  onFatto: (p: ProfiloAziendale) => void;
+  onFatto: (p: PersonaViva) => void;
 }) {
   const m = MARCHI[marchio];
   const [passo, setPasso] = useState<"entra" | "chisei">("entra");
@@ -87,7 +101,16 @@ export default function AziendaProfilo({
 
       <main className="flex flex-1 items-center justify-center px-5 py-8">
         {passo === "entra" ? (
-          <Entra onAvanti={() => setPasso("chisei")} />
+          <Entra
+            azienda={marchio}
+            onDentro={(p) => {
+              // ⚠️ Chi ha già un nome non rivede mai più «Chi sei». Rifare la
+              // scheda a ogni accesso è il modo più veloce per far chiudere
+              // l'app a qualcuno che l'aveva già compilata.
+              if (p.nome.trim()) onFatto(p);
+              else setPasso("chisei");
+            }}
+          />
         ) : (
           <ChiSei onFatto={onFatto} />
         )}
@@ -104,12 +127,44 @@ export default function AziendaProfilo({
 // 1 · ENTRA
 // ─────────────────────────────────────────────────────────────────────────
 
-function Entra({ onAvanti }: { onAvanti: () => void }) {
+function Entra({
+  azienda,
+  onDentro,
+}: {
+  azienda: string;
+  onDentro: (p: PersonaViva) => void;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [errore, setErrore] = useState<string | null>(null);
+  const [inCorso, setInCorso] = useState(false);
+
+  async function prova() {
+    setInCorso(true);
+    setErrore(null);
+    try {
+      const r = await manda<{ t: string; persona: PersonaViva }>({
+        az: "entra",
+        azienda,
+        email: email.trim(),
+        password,
+      });
+      salvaGettone(r.t);
+      onDentro(r.persona);
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : "Non riesco a entrare.");
+      setInCorso(false);
+    }
+  }
 
   return (
-    <div className="w-full max-w-[380px]">
+    <form
+      className="w-full max-w-[380px]"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!inCorso) void prova();
+      }}
+    >
       <h1 className="text-[22px] font-semibold tracking-[-0.02em]">Entra</h1>
       <p className="mt-1.5 text-[13.5px] leading-relaxed text-[var(--text-secondary)]">
         Una volta sola: il telefono ti riconosce e non te lo richiede più.
@@ -134,23 +189,36 @@ function Entra({ onAvanti }: { onAvanti: () => void }) {
         />
       </div>
 
+      {/* ⚠️ L'errore sta SOPRA il pulsante, non sotto: chi ha appena premuto
+          guarda il pulsante, e un messaggio sotto al piede della schermata su
+          un telefono finisce fuori dallo schermo. */}
+      {errore && (
+        <p
+          role="alert"
+          className="mt-3 rounded-lg border-l-2 bg-[var(--fill-quiet)] px-3 py-2 text-[12.5px] leading-relaxed"
+          style={{ borderColor: "var(--marchio-secondario)" }}
+        >
+          {errore}
+        </p>
+      )}
+
       <button
-        onClick={onAvanti}
-        disabled={!email.trim() || password.length < 4}
+        type="submit"
+        disabled={!email.trim() || password.length < 4 || inCorso}
         className="btn-grad mt-4 w-full cursor-pointer rounded-xl py-3.5 text-[15px] font-medium disabled:opacity-40"
       >
-        Entra
+        {inCorso ? "Un attimo…" : "Entra"}
       </button>
 
       {/* ⚠️ «Resta collegato» non è una casella da spuntare: è il
           comportamento normale. Un magazziniere che deve rifare l'accesso ogni
           mattina coi guanti addosso smette di usarlo entro la settimana. */}
       <p className="mt-3.5 text-center text-[12px] leading-relaxed text-[var(--text-secondary)]">
-        Resti collegato su questo telefono.
+        Resti collegato su questo telefono per tre mesi.
         <br />
-        Password dimenticata? Chiedi in ufficio: te la reimpostano.
+        Se la tua email non c'è ancora, la postazione si apre adesso.
       </p>
-    </div>
+    </form>
   );
 }
 
@@ -158,8 +226,10 @@ function Entra({ onAvanti }: { onAvanti: () => void }) {
 // 2 · CHI SEI
 // ─────────────────────────────────────────────────────────────────────────
 
-function ChiSei({ onFatto }: { onFatto: (p: ProfiloAziendale) => void }) {
+function ChiSei({ onFatto }: { onFatto: (p: PersonaViva) => void }) {
   const [nome, setNome] = useState("");
+  const [inCorso, setInCorso] = useState(false);
+  const [errore, setErrore] = useState<string | null>(null);
   const [ruolo, setRuolo] = useState<Ruolo>("operatore");
   const [reparto, setReparto] = useState("Traffico");
   const [foto, setFoto] = useState<string | null>(null);
@@ -317,12 +387,46 @@ function ChiSei({ onFatto }: { onFatto: (p: ProfiloAziendale) => void }) {
         </label>
       )}
 
+      {errore && (
+        <p role="alert" className="mt-4 text-[12.5px] text-[var(--text-secondary)]">
+          {errore}
+        </p>
+      )}
+
       <button
-        onClick={() => onFatto({ nome: nome.trim(), ruolo, reparto, foto })}
-        disabled={!pronto}
+        onClick={async () => {
+          setInCorso(true);
+          setErrore(null);
+          try {
+            await manda({
+              az: "profilo",
+              nome: nome.trim(),
+              ruolo,
+              reparto: ruolo === "capo" || ruolo === "operatore" ? reparto : "",
+              foto,
+            });
+            // ⚠️ Il ruolo che si riporta indietro NON è quello scelto: è
+            // «operatore», perché è quello che il server ha davvero
+            // assegnato. Riportare quello scelto farebbe comparire il
+            // cruscotto per un istante a chi non deve vederlo — e un istante
+            // basta per fare uno screenshot.
+            onFatto({
+              nome: nome.trim(),
+              email: "",
+              ruolo: "operatore",
+              ruoloScelto: ruolo,
+              reparto,
+              foto,
+            });
+          } catch (e) {
+            setErrore(e instanceof Error ? e.message : "Non sono riuscito a salvare.");
+            setInCorso(false);
+          }
+        }}
+        disabled={!pronto || inCorso}
         className="btn-grad mt-7 w-full cursor-pointer rounded-xl py-3.5 text-[15px] font-medium disabled:opacity-40"
       >
-        Entra in Speed Trasporti
+        {inCorso ? "Salvo…" : "Entra in Speed Trasporti"}
       </button>
 
       {/* ⚠️ Questa riga è la difesa contro la falla più grossa possibile: se il
