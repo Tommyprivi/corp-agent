@@ -156,6 +156,13 @@ export default {
   },
 };
 
+/** Un numero pulito, o null. Un «40» scritto a mano arriva come stringa. */
+function numero(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -407,6 +414,30 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
     case "documenti":
       return json({ documenti: await az.documenti(chi.azienda) }, 200);
 
+    case "mezzi":
+      // La lista dei mezzi serve a chiunque registra un carico: tutti la leggono.
+      return json({ mezzi: await az.mezzi(chi.azienda) }, 200);
+
+    case "reparto": {
+      // ⚠️ Il capo vede SOLO il suo reparto: la postazione è calcolata dal suo
+      // reparto, non presa dalla richiesta. Un capo del magazzino non può
+      // chiedere «fammi vedere il traffico» cambiando un parametro. Il titolare
+      // può guardarne uno qualsiasi (per il cruscotto generale).
+      const titolareVede = titolare && url.searchParams.get("reparto");
+      const reparto = titolareVede ? String(url.searchParams.get("reparto")) : chi.reparto;
+      if (chi.ruolo_vero !== "capo" && !titolare) return soloTitolare();
+      if (chi.ruolo_vero === "capo" && !chi.reparto) {
+        return json({ reparto: "", uso: [], magazzino: null, controlli: [] }, 200);
+      }
+      const postazione = az.postazioneDiReparto(reparto);
+      const [uso, controlli, mag] = await Promise.all([
+        postazione ? az.repartoUso(chi.azienda, postazione) : Promise.resolve([]),
+        az.daControllare(chi.azienda, reparto),
+        reparto === "Magazzino" ? az.magazzino(chi.azienda) : Promise.resolve(null),
+      ]);
+      return json({ reparto, uso, controlli, magazzino: mag }, 200);
+    }
+
     case "persone":
       if (!titolare) return soloTitolare();
       return json({ persone: await az.persone(chi.azienda) }, 200);
@@ -571,6 +602,55 @@ async function areaAzienda(
     case "documento-elimina":
       if (!gestore) return negato();
       await az.eliminaDocumento(chi.azienda, String(corpo.id));
+      return json({ ok: true }, 200);
+
+    // ── IL MAGAZZINO ─────────────────────────────────────────────────
+    case "movimento": {
+      // Registra un carico/scarico/differenza/problema. Lo può fare chiunque
+      // lavori (non l'osservatore). Il reparto è quello della persona.
+      if (!scrivente) return negato();
+      const d = corpo.movimento as az.DatiMovimento;
+      if (!d || !["carico", "scarico", "differenza", "problema"].includes(d.tipo)) {
+        return json({ error: "Movimento non valido." }, 400);
+      }
+      const reparto = chi.reparto || "Magazzino";
+      await az.registraMovimento(chi.azienda, reparto, chi.persona, {
+        tipo: d.tipo,
+        colli: numero(d.colli),
+        atteso: numero(d.atteso),
+        contato: numero(d.contato),
+        mezzo: String(d.mezzo ?? ""),
+        controparte: String(d.controparte ?? ""),
+        testo: String(d.testo ?? ""),
+      });
+      // ⚠️ Se è una cosa da controllare (problema o differenza) si avvisa —
+      // oggi solo il pallino nell'app, il WhatsApp arriva col numero. Senza
+      // aspettare: l'avviso non deve rallentare chi ha appena registrato.
+      if (d.tipo === "problema" || d.tipo === "differenza") void az.avvisaSegnalazione();
+      return json({ ok: true }, 200);
+    }
+
+    case "controllo-chiudi":
+      // Segnare risolto un problema o una differenza: lo fa chi guida il reparto.
+      if (!gestore) return negato();
+      await az.chiudiControllo(chi.azienda, String(corpo.id));
+      return json({ ok: true }, 200);
+
+    case "mezzo": {
+      // I mezzi li gestisce chi guida (titolare, amministrazione, capo).
+      if (!gestore) return negato();
+      const id = await az.salvaMezzo(
+        chi.azienda,
+        (corpo.id as string) || null,
+        String(corpo.nome ?? "").trim(),
+        String(corpo.targa ?? "").trim()
+      );
+      return json({ id }, 200);
+    }
+
+    case "mezzo-elimina":
+      if (!gestore) return negato();
+      await az.eliminaMezzo(chi.azienda, String(corpo.id));
       return json({ ok: true }, 200);
 
     case "ruolo": {

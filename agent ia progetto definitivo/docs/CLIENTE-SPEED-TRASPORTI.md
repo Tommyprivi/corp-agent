@@ -1196,3 +1196,74 @@ passano mai da un'email e non finiscono mai nel codice — ogni collegamento viv
 cifrato in `public.connections` (AES-256-GCM), intestato a chi l'ha collegato,
 come per tutti i connettori di CorpAgent. E ogni connettore **si prova prima di
 salvarlo**: una chiave rotta salvata è un agente muto e nessuno sa perché.
+
+## 12 Agosto (sera) — Il magazzino, e le decisioni per tutta l'azienda
+
+### Il magazzino ha le sue funzioni, non è più solo una chat
+
+Quattro funzioni rapide, ognuna scrive una **riga vera** nel database:
+
+- **Carico** e **Scarico** — colli, da chi / per chi (scelto dall'anagrafica
+  clienti), mezzo (dalla lista mezzi), numero bolla. Da qui la fascia
+  «Magazzino» del cruscotto conta numeri veri già oggi, senza aspettare gli
+  scanner: quando il connettore arriva, le sue righe si affiancano a queste.
+- **Differenza di conteggio** — «la bolla dice 40, contati 38». Non è solo un
+  numero: **diventa una segnalazione da controllare per il capo**, perché è il
+  momento esatto in cui si perdono i soldi.
+- **Segnala un problema** — muletto rotto, spazio finito. Va al **capo del
+  reparto + a Salvatore** in «Aspetta te».
+- **Dov'è un collo** — domanda all'agente (per ora risponde da quello che sa,
+  poi da K-Master).
+
+I **mezzi** si scelgono da una lista (targhe dal sopralluogo); un domani il
+mezzo si lega alla posizione di K-Master.
+
+### Il capo del reparto: quanto usano, non cosa scrivono
+
+Il capo del magazzino vede una sua area con: **l'uso della settimana persona
+per persona** (nome, quante richieste, ultimo accesso — **mai le chat**), i
+**movimenti del giorno**, e le **cose da controllare** (problemi + differenze)
+che può chiudere. Può scrivere nella memoria dell'agente del suo reparto.
+
+⚠️ È la linea dell'**articolo 4**: contare l'uso di uno strumento è lecito,
+leggere le chat dei dipendenti è sorveglianza. La query del capo non seleziona
+nemmeno la colonna del testo.
+
+### Le decisioni per tutta l'azienda (12 agosto)
+
+| Domanda | Decisione |
+|---|---|
+| **Come entrano le 150 persone** | **Un reparto alla volta.** Salvatore carica le email di un reparto, quelle entrano. Si parte dal magazzino. ⚠️ Chiude anche la falla dell'ingresso libero — da fare prima di allargare. |
+| **Primo connettore** | **K-Master / QCSNET** (spedizioni) **+ Outlook** — l'agente che risponde alle mail. Le API di K-Master esistono già (scheda API-TARIFFARI). |
+| **L'effetto wow del 30 novembre** | **L'agente risponde a un cliente vero su WhatsApp**, giusto sui dati di Speed, 24/7. È la promessa del prodotto. |
+| **Autisti e GPS** | Per ora: la posizione serve **i clienti** («dov'è il mio carico»), non il controllo degli autisti (articolo 4). Visione di Salvatore per il futuro: **un GPS CorpAgent con l'IA integrata** — segnato come idea da esplorare. |
+
+### Nuove domande per il sopralluogo (aggiunte oggi)
+
+- Le **targhe** dei mezzi e come li chiamano (nome/sigla).
+- Gli **scanner**: marca e con che programma parlano (K-Master o un WMS a parte).
+- **Outlook**: quale casella risponde alle mail dei clienti, e chi la gestisce.
+- Le **email**: quanti dei magazzinieri e autisti hanno una mail? (decide come
+  farli entrare).
+
+## Linea futura: i dispositivi CorpAgent (Fase 2+)
+
+Idea di Tommaso (12 ago): dispositivi a marchio CorpAgent — GPS, scanner,
+gadget — da vendere in più alle aziende.
+
+⚠️ **Regola d'oro: non li produciamo, li rimarchiamo.** Fabbricare hardware da
+zero è una fabbrica (capitale, certificazioni CE, resi): non è il nostro
+mestiere e non serve.
+
+- **GPS «CorpAgent»** = tracker OEM esistente (Teltonika / Concox) + nostra SIM
+  + nostro marchio + **l'agente che lo legge** («dov'è il carico della Rossi»).
+  La parte nostra è il software, non l'elettronica.
+- **Scanner** = terminale Android industriale (Zebra / Honeywell / Urovo) che fa
+  girare **la nostra web app**. Già pronti, ci scriviamo sopra.
+- **Dove sta il guadagno**: non nella scatola (venduta quasi a costo), ma nel
+  **canone mensile** legato — piano GPS, SIM dati, sync con K-Master. Ricorrente.
+
+**Sequenza:** prima il software funzionante e dimostrato (30 nov). L'hardware è
+un **upsell della Fase 2**, quando il cliente già si fida — mai prima, o ci si
+impantana nell'elettronica invece di consegnare. Vale doppio l'articolo 4 sul
+GPS degli autisti.

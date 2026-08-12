@@ -125,6 +125,24 @@ export interface Messaggio {
   creato: string;
 }
 
+export interface Magazzino {
+  entrati: number;
+  usciti: number;
+  differenze: number;
+  movimenti: number;
+}
+
+export interface Controllo {
+  id: string;
+  reparto: string;
+  tipo: "problema" | "differenza";
+  testo: string;
+  atteso: number | null;
+  contato: number | null;
+  chi: string;
+  creato: string;
+}
+
 export interface Cruscotto {
   oggi: { domande: number; risposte: number; passate: number; attesa: number | null };
   ore: { h: number; n: number }[];
@@ -138,4 +156,28 @@ export interface Cruscotto {
     documenti: number;
   };
   aspetta: { testo: string | null; chi: string; postazione: string; creato: string }[];
+  magazzino: Magazzino | null;
+  controlli: Controllo[];
+}
+
+export interface Mezzo {
+  id: string;
+  nome: string;
+  targa: string;
+  attivo: boolean;
+}
+
+export interface RepartoUso {
+  persona: string;
+  nome: string;
+  foto: string | null;
+  richieste: string;
+  ultimo: string | null;
+}
+
+export interface RepartoDati {
+  reparto: string;
+  uso: RepartoUso[];
+  controlli: Controllo[];
+  magazzino: Magazzino | null;
 }

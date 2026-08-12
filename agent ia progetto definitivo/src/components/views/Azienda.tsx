@@ -11,8 +11,10 @@ import {
   type Cruscotto as DatiCruscotto,
   type Documento,
   type Messaggio,
+  type Mezzo,
   type PersonaElenco,
   type PersonaViva,
+  type RepartoDati,
 } from "../../lib/azienda";
 import { Attesa, Barre, Cornice, Linea, Sdraiate } from "../azienda/Grafici";
 
@@ -39,7 +41,7 @@ import { Attesa, Barre, Cornice, Linea, Sdraiate } from "../azienda/Grafici";
  * voce di menu, per non dire a nessuno che esiste una parte riservata.
  */
 
-type Sezione = "chat" | "cruscotto" | "clienti" | "persone" | "documenti";
+type Sezione = "chat" | "cruscotto" | "reparto" | "clienti" | "persone" | "documenti" | "mezzi";
 
 interface PostazioneViva {
   id: string;
@@ -68,6 +70,8 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
   const [controllo, setControllo] = useState(() => Boolean(gettone()));
   const [postazioni, setPostazioni] = useState<PostazioneViva[]>(POSTAZIONI);
   const [agenteVivo, setAgenteVivo] = useState(true);
+  /** Quante cose «da controllare» per il capo: il pallino di avviso sul menu. */
+  const [avvisi, setAvvisi] = useState(0);
 
   useEffect(() => {
     applicaMarchio(marchio);
@@ -106,6 +110,16 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
     }
     if (gettone()) caricaStato();
   }, [caricaStato]);
+
+  // Il pallino di avviso del capo: quante cose aspettano nel suo reparto. Si
+  // chiede appena si sa chi è, e la vista del reparto lo aggiorna quando chiude
+  // qualcosa.
+  useEffect(() => {
+    if (persona?.ruolo !== "capo") return;
+    leggi<{ controlli: unknown[] }>("reparto")
+      .then((r) => setAvvisi(r.controlli?.length ?? 0))
+      .catch(() => {});
+  }, [persona?.ruolo]);
 
   /** Torna all'ingresso, avvisando il server se possibile. */
   const esci = useCallback(() => {
@@ -155,7 +169,23 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
   // database: finché Salvatore non promuove qualcuno dall'elenco delle
   // persone, chiunque entra è un operatore — anche se si è dichiarato titolare.
   const vedeTutto = persona.ruolo === "titolare";
-  const sezioneVera: Sezione = sezione === "chat" && vedeTutto && !toccato ? "cruscotto" : sezione;
+  const isCapo = persona.ruolo === "capo";
+  const isGestore = ["titolare", "amministratore", "capo"].includes(persona.ruolo);
+
+  // Le voci del menu, per ruolo. Il vero cancello resta sul server: qui si
+  // decide solo cosa vale la pena mostrare a ciascuno.
+  const voci: [Sezione, string, boolean, number][] = [
+    ["cruscotto", "Cruscotto", vedeTutto, 0],
+    ["reparto", "Il reparto", isCapo, avvisi],
+    ["clienti", "Clienti", true, 0],
+    ["mezzi", "Mezzi", isGestore, 0],
+    ["persone", "Persone", vedeTutto, 0],
+    ["documenti", "Documenti", true, 0],
+  ];
+  // Il titolare atterra sul cruscotto, il capo sulla sua area di reparto, gli
+  // altri sulla chat: ognuno apre l'app su quello che gli serve per primo.
+  const atterraggio: Sezione = vedeTutto ? "cruscotto" : isCapo ? "reparto" : "chat";
+  const sezioneVera: Sezione = sezione === "chat" && !toccato ? atterraggio : sezione;
 
   return (
     <div className="flex min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]">
@@ -213,16 +243,9 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
                 affatto, invece di disegnarle e negare l'accesso: una voce di
                 menu che c'è e non funziona dice a chiunque che esiste una parte
                 riservata, e invita a provarci. Il vero cancello è sul server. */}
-            {(
-              [
-                ["cruscotto", "Cruscotto"],
-                ["clienti", "Clienti"],
-                ["persone", "Persone"],
-                ["documenti", "Documenti"],
-              ] as [Sezione, string][]
-            )
-              .filter(([id]) => vedeTutto || id === "documenti" || id === "clienti")
-              .map(([id, nome]) => (
+            {voci
+              .filter(([, , mostra]) => mostra)
+              .map(([id, nome, , badge]) => (
                 <button
                   key={id}
                   onClick={() => {
@@ -230,13 +253,20 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
                     setToccato(true);
                     setMenuAperto(false);
                   }}
-                  className={`mb-0.5 block w-full cursor-pointer rounded-lg px-2.5 py-2 text-left text-[13.5px] transition-colors ${
+                  className={`mb-0.5 flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13.5px] transition-colors ${
                     sezioneVera === id
                       ? "bg-[var(--accent-soft)] font-medium text-[var(--text-primary)]"
                       : "text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)]"
                   }`}
                 >
-                  {nome}
+                  <span className="flex-1">{nome}</span>
+                  {/* Il pallino di avviso: quante cose aspettano il capo. Rosso
+                      perché è l'unico posto dell'app dove serve gridare. */}
+                  {badge > 0 && (
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#D92D20] px-1.5 text-[11px] font-semibold text-white">
+                      {badge}
+                    </span>
+                  )}
                 </button>
               ))}
           </nav>
@@ -317,6 +347,10 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
         {sezioneVera === "clienti" && (
           <Clienti ruolo={persona.ruolo} seScaduta={seScaduta} />
         )}
+        {sezioneVera === "reparto" && isCapo && (
+          <Reparto nome={persona.reparto} onAvvisi={setAvvisi} seScaduta={seScaduta} />
+        )}
+        {sezioneVera === "mezzi" && isGestore && <Mezzi seScaduta={seScaduta} />}
         {sezioneVera === "persone" && vedeTutto && (
           <Persone mieEmail={persona.email} seScaduta={seScaduta} />
         )}
@@ -365,8 +399,20 @@ function Conversazione({
   const [testo, setTesto] = useState("");
   const [inCorso, setInCorso] = useState(false);
   const [ascolto, setAscolto] = useState(false);
+  /** Quale funzione rapida è aperta (solo magazzino), o null. */
+  const [azione, setAzione] = useState<TipoMovimento | null>(null);
   const fondo = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const dettatura = useRef<{ stop: () => void } | null>(null);
+  const funzioni = FUNZIONI[postazione.id] ?? [];
+
+  /** Dopo una registrazione, una conferma in chat: resta la traccia di cosa si è fatto. */
+  function conferma(riga: string) {
+    setMessaggi((prima) => [
+      ...(prima ?? []),
+      { id: `c${Date.now()}`, ruolo: "agente", testo: riga, passato: false, creato: "" },
+    ]);
+  }
 
   useEffect(() => {
     // ⚠️ Guardia anti-sorpasso: se si cambia postazione mentre la richiesta
@@ -541,6 +587,45 @@ function Conversazione({
         </div>
       </div>
 
+      {/* ── Le funzioni rapide della postazione ─────────────────────────
+          Solo dove ci sono (oggi il magazzino). Ognuna apre la cosa giusta:
+          un carico si registra, «dov'è» si chiede all'agente. */}
+      {funzioni.length > 0 && (
+        <div className="border-t border-[var(--border)] px-5 pt-3 md:px-8">
+          <div className="mx-auto flex w-full max-w-[620px] flex-wrap gap-2">
+            {funzioni.map((f) => (
+              <button
+                key={f.etichetta}
+                onClick={() => {
+                  if (f.tipo) setAzione(f.tipo);
+                  else {
+                    // «Dov'è…» non è una registrazione: è una domanda all'agente.
+                    setTesto(f.prefisso ?? "");
+                    inputRef.current?.focus();
+                  }
+                }}
+                className="flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-card)] px-3 py-1.5 text-[12.5px] font-medium transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
+              >
+                <span aria-hidden>{f.icona}</span>
+                {f.etichetta}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {azione && (
+        <FormMovimento
+          tipo={azione}
+          onChiudi={() => setAzione(null)}
+          onFatto={(riga) => {
+            setAzione(null);
+            conferma(riga);
+          }}
+          seScaduta={seScaduta}
+        />
+      )}
+
       <div className="border-t border-[var(--border)] px-5 py-4 md:px-8">
         <div className="mx-auto w-full max-w-[620px]">
           {!agenteVivo && (
@@ -557,6 +642,7 @@ function Conversazione({
             }}
           >
             <input
+              ref={inputRef}
               value={testo}
               onChange={(e) => setTesto(e.target.value)}
               placeholder={ascolto ? "Ti ascolto…" : "Scrivi, oppure premi il microfono…"}
@@ -598,6 +684,250 @@ interface SpeechRecognitionLike {
   onerror: () => void;
   start: () => void;
   stop: () => void;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LE FUNZIONI RAPIDE DELLE POSTAZIONI
+// ─────────────────────────────────────────────────────────────────────────
+
+type TipoMovimento = "carico" | "scarico" | "differenza" | "problema";
+
+interface Funzione {
+  etichetta: string;
+  icona: string;
+  /** Se c'è, apre il form di registrazione. Se no, prefiltra la chat. */
+  tipo?: TipoMovimento;
+  prefisso?: string;
+}
+
+/**
+ * ⚠️ Oggi solo il magazzino, per decisione di Tommaso: si parte da lì, il
+ * traffico è il prossimo. Aggiungere un reparto è aggiungere una riga qui.
+ */
+const FUNZIONI: Record<string, Funzione[]> = {
+  magazzino: [
+    { etichetta: "Carico", icona: "📥", tipo: "carico" },
+    { etichetta: "Scarico", icona: "📤", tipo: "scarico" },
+    { etichetta: "Differenza", icona: "⚠️", tipo: "differenza" },
+    { etichetta: "Dov'è…", icona: "🔎", prefisso: "Dov'è " },
+    { etichetta: "Problema", icona: "🛠️", tipo: "problema" },
+  ],
+};
+
+const NOMI_MOVIMENTO: Record<TipoMovimento, string> = {
+  carico: "Registra un carico",
+  scarico: "Registra uno scarico",
+  differenza: "Differenza di conteggio",
+  problema: "Segnala un problema",
+};
+
+/**
+ * Il form di una funzione del magazzino.
+ *
+ * ⚠️ È **deterministico**: non passa dal modello, scrive una riga e basta.
+ * Carico e scarico sono fatti (colli, mezzo, cliente); la differenza e il
+ * problema diventano una cosa «da controllare» per il capo. Niente
+ * allucinazioni possibili — questo è un registro, non una chiacchierata.
+ */
+function FormMovimento({
+  tipo,
+  onChiudi,
+  onFatto,
+  seScaduta,
+}: {
+  tipo: TipoMovimento;
+  onChiudi: () => void;
+  onFatto: (riga: string) => void;
+  seScaduta: (e: unknown) => void;
+}) {
+  const merci = tipo === "carico" || tipo === "scarico";
+  const [colli, setColli] = useState("");
+  const [atteso, setAtteso] = useState("");
+  const [contato, setContato] = useState("");
+  const [controparte, setControparte] = useState("");
+  const [mezzo, setMezzo] = useState("");
+  const [testo, setTesto] = useState("");
+  const [clienti, setClienti] = useState<Cliente[]>([]);
+  const [mezzi, setMezzi] = useState<Mezzo[]>([]);
+  const [inCorso, setInCorso] = useState(false);
+
+  useEffect(() => {
+    // I clienti servono per «da chi/per chi», i mezzi per «su che mezzo».
+    // Se non arrivano (rete), il campo resta scrivibile a mano: non si blocca.
+    if (merci) {
+      leggi<{ clienti: Cliente[] }>("clienti").then((r) => setClienti(r.clienti)).catch(() => {});
+      leggi<{ mezzi: Mezzo[] }>("mezzi").then((r) => setMezzi(r.mezzi)).catch(() => {});
+    }
+  }, [merci]);
+
+  const pronto =
+    (tipo === "carico" || tipo === "scarico") ? colli.trim() !== "" :
+    tipo === "differenza" ? atteso.trim() !== "" && contato.trim() !== "" :
+    testo.trim() !== "";
+
+  async function salva() {
+    if (!pronto || inCorso) return;
+    setInCorso(true);
+    try {
+      await manda({
+        az: "movimento",
+        movimento: {
+          tipo,
+          colli: merci ? colli : null,
+          atteso: tipo === "differenza" ? atteso : null,
+          contato: tipo === "differenza" ? contato : null,
+          mezzo: merci ? mezzo : "",
+          controparte: merci ? controparte : "",
+          testo,
+        },
+      });
+      onFatto(rigaConferma());
+    } catch (e) {
+      seScaduta(e);
+      setInCorso(false);
+    }
+  }
+
+  function rigaConferma(): string {
+    if (tipo === "carico") return `✅ Carico registrato: ${colli} colli${controparte ? ` da ${controparte}` : ""}${mezzo ? ` · ${mezzo}` : ""}.`;
+    if (tipo === "scarico") return `✅ Scarico registrato: ${colli} colli${controparte ? ` per ${controparte}` : ""}${mezzo ? ` · ${mezzo}` : ""}.`;
+    if (tipo === "differenza") return `⚠️ Differenza segnalata: attesi ${atteso}, contati ${contato}. La vede il capo.`;
+    return "🛠️ Problema segnalato. Lo vede il capo e il titolare.";
+  }
+
+  return (
+    <div className="border-t border-[var(--border)] bg-[var(--fill-quiet)] px-5 py-4 md:px-8">
+      <form
+        className="mx-auto w-full max-w-[620px]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void salva();
+        }}
+      >
+        <p className="mb-3 text-[13.5px] font-medium">{NOMI_MOVIMENTO[tipo]}</p>
+
+        {merci && (
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <Campo etichetta="Quanti colli *">
+              <input
+                type="number"
+                inputMode="numeric"
+                value={colli}
+                onChange={(e) => setColli(e.target.value)}
+                placeholder="es. 24"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+              />
+            </Campo>
+            <Campo etichetta={tipo === "carico" ? "Da chi" : "Per chi"}>
+              <input
+                list="clienti-lista"
+                value={controparte}
+                onChange={(e) => setControparte(e.target.value)}
+                placeholder="Scegli o scrivi il cliente"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+              />
+              <datalist id="clienti-lista">
+                {clienti.map((c) => (
+                  <option key={c.id} value={c.nome} />
+                ))}
+              </datalist>
+            </Campo>
+            <Campo etichetta="Su che mezzo">
+              <input
+                list="mezzi-lista"
+                value={mezzo}
+                onChange={(e) => setMezzo(e.target.value)}
+                placeholder={mezzi.length ? "Scegli il mezzo" : "Targa o nome"}
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+              />
+              <datalist id="mezzi-lista">
+                {mezzi.map((m) => (
+                  <option key={m.id} value={[m.nome, m.targa].filter(Boolean).join(" ")} />
+                ))}
+              </datalist>
+            </Campo>
+            <Campo etichetta="Numero bolla / DDT">
+              <input
+                value={testo}
+                onChange={(e) => setTesto(e.target.value)}
+                placeholder="es. 2026/0451"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+              />
+            </Campo>
+          </div>
+        )}
+
+        {tipo === "differenza" && (
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <Campo etichetta="Attesi (dalla bolla) *">
+              <input
+                type="number"
+                inputMode="numeric"
+                value={atteso}
+                onChange={(e) => setAtteso(e.target.value)}
+                placeholder="es. 40"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+              />
+            </Campo>
+            <Campo etichetta="Contati (davvero) *">
+              <input
+                type="number"
+                inputMode="numeric"
+                value={contato}
+                onChange={(e) => setContato(e.target.value)}
+                placeholder="es. 38"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+              />
+            </Campo>
+            <Campo etichetta="Cosa e di chi (facoltativo)">
+              <input
+                value={testo}
+                onChange={(e) => setTesto(e.target.value)}
+                placeholder="es. pallet Rossi, bolla 0451"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:col-span-2 sm:text-[14px]"
+              />
+            </Campo>
+          </div>
+        )}
+
+        {tipo === "problema" && (
+          <textarea
+            value={testo}
+            onChange={(e) => setTesto(e.target.value)}
+            placeholder="Cosa non va — es. «Muletto 2 non parte» o «Spazio finito in baia 3»"
+            rows={3}
+            className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] leading-relaxed outline-none focus:border-[var(--accent)] sm:text-[14px]"
+          />
+        )}
+
+        <div className="mt-3 flex gap-2">
+          <button
+            type="submit"
+            disabled={!pronto || inCorso}
+            className="btn-grad cursor-pointer rounded-lg px-4 py-2 text-[13px] font-medium disabled:opacity-40"
+          >
+            {inCorso ? "Registro…" : "Registra"}
+          </button>
+          <button
+            type="button"
+            onClick={onChiudi}
+            className="cursor-pointer rounded-lg px-3 py-2 text-[13px] text-[var(--text-secondary)] hover:bg-[var(--bg-card)]"
+          >
+            Annulla
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Campo({ etichetta, children }: { etichetta: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-[12px] text-[var(--text-secondary)]">{etichetta}</span>
+      <div className="mt-1">{children}</div>
+    </label>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -735,8 +1065,30 @@ function Cruscotto({
               )}
             </div>
 
-            {/* ── 1 · OGGI, IN QUATTRO NUMERI ─────────────────────────── */}
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* ── 1 · I GUADAGNI — la prima cosa che un titolare guarda ── */}
+            {/* ⚠️ Oggi/mese/anno. I numeri veri arrivano dal gestionale delle
+                fatture: finché non è collegato, ogni riquadro dice DA DOVE
+                verrà, non uno zero. Uno zero al posto del fatturato sembra un
+                dato letto — e fa credere all'imprenditore di non aver guadagnato
+                niente. La struttura c'è, si riempie nel momento del
+                collegamento. */}
+            <div className="mt-6 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+                Guadagni
+              </h2>
+              <span className="text-[11.5px] text-[var(--text-secondary)] opacity-70">
+                dal gestionale fatture — in attesa del collegamento
+              </span>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <Soldi periodo="Oggi" />
+              <Soldi periodo="Questo mese" />
+              <Soldi periodo="Quest'anno" />
+            </div>
+
+            {/* ── 2 · OGGI, IN QUATTRO NUMERI ─────────────────────────── */}
+            <Fascia titolo="L'agente, oggi" sotto="questi li misuriamo noi: sono veri dal primo giorno" />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Numero
                 valore={String(dati.oggi.domande)}
                 titolo="Richieste all'agente"
@@ -829,12 +1181,33 @@ function Cruscotto({
               <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
                 Aspetta te
               </h2>
-              {dati.aspetta.length ? (
+              {dati.aspetta.length || dati.controlli.length ? (
                 <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+                  {/* Prima le segnalazioni operative (problemi, differenze):
+                      sono soldi e mezzi fermi, più urgenti di una domanda. */}
+                  {dati.controlli.map((c, i) => (
+                    <div
+                      key={`c${c.id}`}
+                      className={`px-4 py-3 ${i > 0 ? "border-t border-[var(--border)]" : ""}`}
+                    >
+                      <p className="text-[13.5px] leading-relaxed">
+                        <span aria-hidden>{c.tipo === "problema" ? "🛠️ " : "⚠️ "}</span>
+                        {c.tipo === "differenza"
+                          ? `Differenza al ${c.reparto.toLowerCase()}: attesi ${c.atteso}, contati ${c.contato}${c.testo ? ` — ${c.testo}` : ""}`
+                          : c.testo || "(segnalazione)"}
+                      </p>
+                      <p className="mt-1 text-[11.5px] text-[var(--text-secondary)]">
+                        {c.chi ? `${c.chi} · ` : ""}
+                        {c.reparto} · {quando(c.creato)}
+                      </p>
+                    </div>
+                  ))}
                   {dati.aspetta.map((a, i) => (
                     <div
-                      key={i}
-                      className={`px-4 py-3 ${i > 0 ? "border-t border-[var(--border)]" : ""}`}
+                      key={`a${i}`}
+                      className={`px-4 py-3 ${
+                        i > 0 || dati.controlli.length ? "border-t border-[var(--border)]" : ""
+                      }`}
                     >
                       <p className="text-[13.5px] leading-relaxed">
                         {a.testo ?? "(domanda non registrata)"}
@@ -857,7 +1230,32 @@ function Cruscotto({
               )}
             </div>
 
-            {/* ── 5 · QUELLO CHE ARRIVERÀ COI COLLEGAMENTI ────────────── */}
+            {/* ── 5 · IL MAGAZZINO — già vero, dalle registrazioni dei suoi ── */}
+            {/* ⚠️ Questa fascia non aspetta più gli scanner: i magazzinieri
+                registrano carichi e scarichi a mano, e questi numeri sono
+                contati da quelle righe. Quando arriva il connettore, si
+                affianca. Se oggi non c'è ancora nessun movimento, resta la
+                cornice d'attesa: uno zero sarebbe una bugia. */}
+            {dati.magazzino && dati.magazzino.movimenti + dati.magazzino.differenze > 0 ? (
+              <>
+                <div className="mt-9 mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+                    Magazzino
+                  </h2>
+                  <span className="text-[11.5px] text-[var(--text-secondary)] opacity-70">
+                    registrato dai magazzinieri, oggi
+                  </span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Numero valore={String(dati.magazzino.entrati)} titolo="Colli entrati" sotto="oggi" />
+                  <Numero valore={String(dati.magazzino.usciti)} titolo="Colli usciti" sotto="oggi" />
+                  <Numero valore={String(dati.magazzino.movimenti)} titolo="Movimenti" sotto="carichi e scarichi" />
+                  <Numero valore={String(dati.magazzino.differenze)} titolo="Differenze" sotto="da controllare" />
+                </div>
+              </>
+            ) : null}
+
+            {/* ── 6 · QUELLO CHE ARRIVERÀ COI COLLEGAMENTI ────────────── */}
             {/* ⚠️ Cornici da grafico con gli assi disegnati e NESSUNA barra:
                 si vede che il posto è pronto e cosa lo riempirà, senza mostrare
                 uno zero che sembrerebbe un dato letto. */}
@@ -871,15 +1269,12 @@ function Cruscotto({
                 style={{ background: "var(--marchio-secondario)" }}
               />
             </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <Cornice titolo="I soldi" sotto="fatturato, incassi, fornitori">
-                <Attesa da="il gestionale delle fatture" altezza={140} />
-              </Cornice>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
               <Cornice titolo="Il lavoro" sotto="spedizioni, consegne, ritardi">
                 <Attesa da="K-Master e QCSNET" altezza={140} />
               </Cornice>
-              <Cornice titolo="Magazzino" sotto="colli, conteggi, bolle">
-                <Attesa da="gli scanner del magazzino" altezza={140} />
+              <Cornice titolo="Le mail dei clienti" sotto="risposte, solleciti, fornitori">
+                <Attesa da="Outlook, appena collegato" altezza={140} />
               </Cornice>
             </div>
 
@@ -915,6 +1310,41 @@ function Numero({ valore, titolo, sotto }: { valore: string; titolo: string; sot
       </p>
       <p className="mt-2 text-[13px] font-medium">{titolo}</p>
       <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">{sotto}</p>
+    </div>
+  );
+}
+
+/** L'intestazione di una fascia del cruscotto, col «da dove». */
+function Fascia({ titolo, sotto }: { titolo: string; sotto: string }) {
+  return (
+    <div className="mt-9 mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+        {titolo}
+      </h2>
+      <span className="text-[11.5px] text-[var(--text-secondary)] opacity-70">{sotto}</span>
+    </div>
+  );
+}
+
+/**
+ * Un riquadro dei guadagni per un periodo.
+ *
+ * ⚠️ Mostra un trattino, non uno zero: il fatturato lo tiene il gestionale
+ * delle fatture, e finché non lo colleghiamo non lo sappiamo. Un «0 €» qui
+ * direbbe a Salvatore che oggi non ha incassato niente — una bugia. Un trattino
+ * dice la verità: non lo sappiamo ancora. Il giorno del collegamento questo
+ * riquadro mostra la cifra vera senza toccare altro.
+ */
+function Soldi({ periodo }: { periodo: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-[var(--border)] p-4">
+      <p className="text-[30px] font-semibold leading-none tracking-[-0.02em] text-[var(--text-secondary)]">
+        —
+      </p>
+      <p className="mt-2 text-[13px] font-medium">{periodo}</p>
+      <p className="mt-0.5 text-[12px] text-[var(--text-secondary)] opacity-70">
+        in attesa del gestionale
+      </p>
     </div>
   );
 }
@@ -1453,6 +1883,298 @@ function Documenti({
               <p className="mt-2 text-[11.5px] text-[var(--text-secondary)] opacity-70">
                 {quando(d.creato)}
               </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Pagina>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// IL REPARTO — la vista del capo: quanto usano, cosa aspetta
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ Il capo vede QUANTO usano lo strumento, non COSA scrivono. Nessuna chat,
+ * nessun testo di conversazione: solo il numero di richieste per persona e le
+ * cose da controllare. È la linea dell'articolo 4, tenuta anche qui
+ * nell'interfaccia oltre che nel database.
+ */
+function Reparto({
+  nome,
+  onAvvisi,
+  seScaduta,
+}: {
+  nome: string;
+  onAvvisi: (n: number) => void;
+  seScaduta: (e: unknown) => void;
+}) {
+  const [dati, setDati] = useState<RepartoDati | null>(null);
+
+  const carica = useCallback(() => {
+    leggi<RepartoDati>("reparto")
+      .then((r) => {
+        setDati(r);
+        onAvvisi(r.controlli?.length ?? 0);
+      })
+      .catch((e) => seScaduta(e));
+  }, [onAvvisi, seScaduta]);
+
+  useEffect(() => carica(), [carica]);
+
+  async function chiudi(id: string) {
+    try {
+      await manda({ az: "controllo-chiudi", id });
+      carica();
+    } catch (e) {
+      seScaduta(e);
+    }
+  }
+
+  const mag = dati?.magazzino;
+
+  return (
+    <div className="flex-1 overflow-y-auto px-5 py-7 md:px-8">
+      <div className="mx-auto max-w-[900px]">
+        <h1 className="text-[22px] font-semibold tracking-[-0.02em]">
+          Il reparto{nome ? ` · ${nome}` : ""}
+        </h1>
+        <p className="mt-1 text-[13.5px] text-[var(--text-secondary)]">
+          Quanto usano lo strumento e cosa aspetta te. Le conversazioni restano
+          private: qui vedi i numeri, non le chat.
+        </p>
+
+        {!dati && <p className="mt-6 text-[13px] text-[var(--text-secondary)]">Leggo…</p>}
+
+        {dati && (
+          <>
+            {/* I numeri del magazzino di oggi, se è il reparto magazzino. */}
+            {mag && (
+              <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Numero valore={String(mag.entrati)} titolo="Colli entrati" sotto="oggi" />
+                <Numero valore={String(mag.usciti)} titolo="Colli usciti" sotto="oggi" />
+                <Numero valore={String(mag.movimenti)} titolo="Movimenti" sotto="carichi e scarichi" />
+                <Numero valore={String(mag.differenze)} titolo="Differenze" sotto="da controllare" />
+              </div>
+            )}
+
+            {/* ── Le cose da controllare ─────────────────────────────── */}
+            <div className="mt-9">
+              <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+                Aspetta te
+              </h2>
+              {dati.controlli.length ? (
+                <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+                  {dati.controlli.map((c, i) => (
+                    <div
+                      key={c.id}
+                      className={`flex flex-wrap items-start justify-between gap-3 px-4 py-3 ${
+                        i > 0 ? "border-t border-[var(--border)]" : ""
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13.5px] leading-relaxed">
+                          <span aria-hidden>{c.tipo === "problema" ? "🛠️ " : "⚠️ "}</span>
+                          {c.tipo === "differenza"
+                            ? `Differenza: attesi ${c.atteso}, contati ${c.contato}${c.testo ? ` — ${c.testo}` : ""}`
+                            : c.testo || "(segnalazione senza testo)"}
+                        </p>
+                        <p className="mt-1 text-[11.5px] text-[var(--text-secondary)]">
+                          {c.chi ? `${c.chi} · ` : ""}
+                          {quando(c.creato)}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => void chiudi(c.id)}
+                        className="shrink-0 cursor-pointer rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12.5px] font-medium hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                      >
+                        Risolto
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-3 rounded-xl border border-dashed border-[var(--border)] p-6 text-center">
+                  <p className="text-[14px] font-medium">Non c'è niente in sospeso</p>
+                  <p className="mx-auto mt-1.5 max-w-[42ch] text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+                    Qui arrivano i problemi segnalati dai tuoi e le differenze di
+                    conteggio, appena succedono.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* ── Quanto usano, persona per persona ──────────────────── */}
+            <div className="mt-9">
+              <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+                Chi lo usa · questa settimana
+              </h2>
+              {dati.uso.length ? (
+                <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+                  {dati.uso.map((u, i) => (
+                    <div
+                      key={u.persona}
+                      className={`flex items-center gap-3 px-4 py-3 ${
+                        i > 0 ? "border-t border-[var(--border)]" : ""
+                      }`}
+                    >
+                      {u.foto ? (
+                        <img src={u.foto} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
+                      ) : (
+                        <span
+                          aria-hidden
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--fill-quiet)] text-[12px] font-medium text-[var(--text-secondary)]"
+                        >
+                          {(u.nome || "?").slice(0, 1).toUpperCase()}
+                        </span>
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[14px] font-medium">
+                          {u.nome || "Senza nome"}
+                        </span>
+                        <span className="block text-[12px] text-[var(--text-secondary)]">
+                          {u.ultimo ? `ultima volta ${quando(u.ultimo)}` : "mai entrato"}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="block text-[18px] font-semibold tabular-nums leading-none">
+                          {u.richieste}
+                        </span>
+                        <span className="text-[11px] text-[var(--text-secondary)]">richieste</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-[13px] text-[var(--text-secondary)]">
+                  Ancora nessuno ha usato l'agente in questo reparto.
+                </p>
+              )}
+              <p className="mt-3 text-[12px] leading-relaxed text-[var(--text-secondary)]">
+                Vedi quante volte ognuno ha chiesto qualcosa all'agente, non cosa
+                ha chiesto: le conversazioni sono sue.
+              </p>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// I MEZZI — l'elenco dei camion, per legarci i carichi
+// ─────────────────────────────────────────────────────────────────────────
+
+function Mezzi({ seScaduta }: { seScaduta: (e: unknown) => void }) {
+  const [elenco, setElenco] = useState<Mezzo[] | null>(null);
+  const [nome, setNome] = useState("");
+  const [targa, setTarga] = useState("");
+  const [inCorso, setInCorso] = useState(false);
+
+  const carica = useCallback(() => {
+    leggi<{ mezzi: Mezzo[] }>("mezzi")
+      .then((r) => setElenco(r.mezzi))
+      .catch((e) => {
+        seScaduta(e);
+        setElenco([]);
+      });
+  }, [seScaduta]);
+
+  useEffect(() => carica(), [carica]);
+
+  async function aggiungi() {
+    if ((!nome.trim() && !targa.trim()) || inCorso) return;
+    setInCorso(true);
+    try {
+      await manda({ az: "mezzo", nome: nome.trim(), targa: targa.trim() });
+      setNome("");
+      setTarga("");
+      carica();
+    } catch (e) {
+      seScaduta(e);
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  return (
+    <Pagina
+      titolo="Mezzi"
+      sotto="I camion e i furgoni di Speed. Da qui il magazziniere li sceglie quando registra un carico, invece di scrivere la targa a mano."
+    >
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void aggiungi();
+        }}
+      >
+        <label className="min-w-0 flex-1">
+          <span className="text-[12px] text-[var(--text-secondary)]">Nome / sigla</span>
+          <input
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            placeholder="es. Iveco Daily"
+            className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[14px]"
+          />
+        </label>
+        <label className="min-w-0 flex-1">
+          <span className="text-[12px] text-[var(--text-secondary)]">Targa</span>
+          <input
+            value={targa}
+            onChange={(e) => setTarga(e.target.value)}
+            placeholder="es. GA123BC"
+            className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5 text-[16px] uppercase outline-none focus:border-[var(--accent)] sm:text-[14px]"
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={(!nome.trim() && !targa.trim()) || inCorso}
+          className="btn-grad shrink-0 cursor-pointer rounded-lg px-4 py-2.5 text-[13.5px] font-medium disabled:opacity-40"
+        >
+          Aggiungi
+        </button>
+      </form>
+
+      {elenco === null && <p className="mt-6 text-[13px] text-[var(--text-secondary)]">Leggo…</p>}
+
+      {elenco !== null && elenco.length === 0 && (
+        <Vuoto
+          titolo="Nessun mezzo, ancora"
+          testo="Aggiungi i camion e i furgoni: le targhe le prendiamo al sopralluogo. Un domani il mezzo si lega alla sua posizione su K-Master."
+        />
+      )}
+
+      {elenco !== null && elenco.length > 0 && (
+        <div className="mt-5 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+          {elenco.map((mz, i) => (
+            <div
+              key={mz.id}
+              className={`flex items-center justify-between gap-3 px-4 py-3 ${
+                i > 0 ? "border-t border-[var(--border)]" : ""
+              }`}
+            >
+              <div>
+                <p className="text-[14px] font-medium">{mz.nome || mz.targa || "Senza nome"}</p>
+                {mz.nome && mz.targa && (
+                  <p className="text-[12.5px] text-[var(--text-secondary)]">{mz.targa}</p>
+                )}
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    await manda({ az: "mezzo-elimina", id: mz.id });
+                    carica();
+                  } catch (e) {
+                    seScaduta(e);
+                  }
+                }}
+                className="cursor-pointer rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+              >
+                Togli
+              </button>
             </div>
           ))}
         </div>

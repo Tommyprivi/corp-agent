@@ -315,11 +315,140 @@ export async function eliminaDocumento(azienda: string, id: string): Promise<voi
 }
 
 export async function cruscotto(azienda: string) {
-  const r = await getPool().query<{ az_cruscotto: unknown }>(
-    "select public.az_cruscotto($1)",
+  const [base, mag, controlli] = await Promise.all([
+    getPool().query<{ az_cruscotto: unknown }>("select public.az_cruscotto($1)", [azienda]),
+    getPool().query<{ az_magazzino: unknown }>("select public.az_magazzino($1)", [azienda]),
+    getPool().query("select * from public.az_da_controllare($1, null)", [azienda]),
+  ]);
+  const dati = (base.rows[0]?.az_cruscotto ?? {}) as Record<string, unknown>;
+  // ⚠️ Il magazzino e le cose da controllare si innestano qui, invece di
+  // riscrivere la grande funzione az_cruscotto: una funzione sola che fa tutto
+  // è una funzione che si rompe tutta insieme.
+  dati.magazzino = mag.rows[0]?.az_magazzino ?? null;
+  dati.controlli = controlli.rows;
+  return dati;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// IL MAGAZZINO — mezzi, movimenti, e la vista del capo
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Da nome di reparto (come lo dichiara la persona) a id di postazione. */
+export function postazioneDiReparto(reparto: string): string {
+  const m: Record<string, string> = {
+    Traffico: "traffico",
+    Magazzino: "magazzino",
+    Autisti: "autisti",
+    Amministrazione: "ammin",
+  };
+  return m[reparto] ?? "";
+}
+
+export async function mezzi(azienda: string) {
+  const r = await getPool().query("select * from public.az_mezzi($1)", [azienda]);
+  return r.rows as { id: string; nome: string; targa: string; attivo: boolean }[];
+}
+
+export async function salvaMezzo(azienda: string, id: string | null, nome: string, targa: string) {
+  const r = await getPool().query<{ az_mezzo_salva: string }>(
+    "select public.az_mezzo_salva($1,$2,$3,$4)",
+    [id, azienda, nome, targa]
+  );
+  return r.rows[0]?.az_mezzo_salva ?? null;
+}
+
+export async function eliminaMezzo(azienda: string, id: string) {
+  await getPool().query("select public.az_mezzo_elimina($1,$2)", [id, azienda]);
+}
+
+export interface DatiMovimento {
+  tipo: "carico" | "scarico" | "differenza" | "problema";
+  colli?: number | null;
+  atteso?: number | null;
+  contato?: number | null;
+  mezzo?: string;
+  controparte?: string;
+  testo?: string;
+}
+
+export async function registraMovimento(
+  azienda: string,
+  reparto: string,
+  persona: string,
+  d: DatiMovimento
+): Promise<bigint> {
+  const r = await getPool().query<{ az_movimento: string }>(
+    "select public.az_movimento($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+    [
+      azienda,
+      reparto || "Magazzino",
+      d.tipo,
+      d.colli ?? null,
+      d.atteso ?? null,
+      d.contato ?? null,
+      d.mezzo ?? "",
+      d.controparte ?? "",
+      d.testo ?? "",
+      persona,
+    ]
+  );
+  return BigInt(r.rows[0].az_movimento);
+}
+
+export async function chiudiControllo(azienda: string, id: string) {
+  await getPool().query("select public.az_movimento_chiudi($1,$2)", [Number(id), azienda]);
+}
+
+export async function magazzino(azienda: string) {
+  const r = await getPool().query<{ az_magazzino: unknown }>(
+    "select public.az_magazzino($1)",
     [azienda]
   );
-  return r.rows[0]?.az_cruscotto ?? null;
+  return r.rows[0]?.az_magazzino ?? null;
+}
+
+export async function daControllare(azienda: string, reparto: string | null) {
+  const r = await getPool().query("select * from public.az_da_controllare($1,$2)", [
+    azienda,
+    reparto,
+  ]);
+  return r.rows;
+}
+
+/**
+ * Quanto usano lo strumento, persona per persona — la vista del capo.
+ *
+ * ⚠️ Non esce nessun testo di chat, per costruzione: la funzione SQL non
+ * seleziona la colonna del testo. Il capo vede QUANTO, mai COSA. È la riga che
+ * tiene il prodotto dalla parte giusta dell'articolo 4.
+ */
+export async function repartoUso(azienda: string, postazione: string) {
+  const r = await getPool().query("select * from public.az_reparto_uso($1,$2)", [
+    azienda,
+    postazione,
+  ]);
+  return r.rows as {
+    persona: string;
+    nome: string;
+    foto: string | null;
+    richieste: string;
+    ultimo: string | null;
+  }[];
+}
+
+/**
+ * Avvisa il capo di reparto e il titolare di una segnalazione.
+ *
+ * ⚠️ Oggi è predisposto ma **non parte davvero**: il numero WhatsApp aziendale
+ * arriva alla fine (serve la P.IVA per il gettone Meta). Fino ad allora la
+ * segnalazione vive nel pallino dell'app — che è già abbastanza. Questa
+ * funzione non lancia mai un errore: un avviso che fallisce non deve mai far
+ * fallire la registrazione del problema.
+ */
+export async function avvisaSegnalazione(): Promise<void> {
+  if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID) return;
+  // Il numero del capo non è ancora raccolto: quando ci sarà, qui si manda il
+  // template. Per ora si esce in silenzio — il pallino nell'app ha già avvisato.
 }
 
 /**
