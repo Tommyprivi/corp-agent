@@ -3,6 +3,7 @@ import Landing from "./components/views/Landing";
 import Richiesta from "./components/views/Richiesta";
 import StatoRichiesta from "./components/views/StatoRichiesta";
 import Legale from "./components/views/Legale";
+import Azienda from "./components/views/Azienda";
 import Auth from "./components/Auth";
 import MasterChat from "./components/MasterChat";
 import Advanced from "./components/views/Advanced";
@@ -119,6 +120,19 @@ export default function App() {
 
   // Finché non si sa chi è l'utente non si mostra niente: senza questa attesa,
   // chi è già entrato vedrebbe comparire per un istante la vetrina pubblica.
+  // ─────────────────────────────────────────────────────────────────────
+  // L'AREA DI UN'AZIENDA CLIENTE — la prima è Speed Trasporti
+  // ─────────────────────────────────────────────────────────────────────
+  // ⚠️ Sta PRIMA di ogni controllo sulla sessione, ed è una scelta consapevole:
+  // oggi qui dentro non c'è NESSUN DATO — è il guscio del prodotto, quello che
+  // Salvatore vedrà. Il giorno in cui ci finiranno dentro i suoi clienti e il
+  // suo fatturato, queste righe vanno spostate dopo il controllo e diventa
+  // un'area riservata. **Scritto qui perché non si dimentichi**: un guscio
+  // vuoto è innocuo, un guscio pieno di dati veri no.
+  if (percorso === "/speed") {
+    return <Azienda marchio="speed" />;
+  }
+
   if (isPending || (session && !profileLoaded)) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-[var(--bg-app)]">
