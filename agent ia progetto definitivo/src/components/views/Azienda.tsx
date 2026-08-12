@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { applicaMarchio, MARCHI } from "../../lib/marchio";
+import AziendaProfilo, { RUOLI, type ProfiloAziendale } from "./AziendaProfilo";
 
 /**
  * L'area di un'azienda cliente — la prima è Speed Trasporti.
@@ -35,11 +36,32 @@ const POSTAZIONI = [
   { id: "ammin", nome: "Amministrazione", persone: 0, cosa: "Solleciti, fatture fornitori" },
 ];
 
+const CHIAVE_PROFILO = "corpagent.azienda.profilo";
+
 export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
   const m = MARCHI[marchio];
   const [sezione, setSezione] = useState<Sezione>("chat");
   const [postazione, setPostazione] = useState("traffico");
   const [menuAperto, setMenuAperto] = useState(false);
+
+  /**
+   * Il profilo di chi è entrato.
+   *
+   * ⚠️ Oggi vive nel browser, e va detto: **è il guscio**, non il prodotto
+   * finito. Quando l'area di Speed Trasporti avrà il suo spazio nel database, il
+   * profilo si sposterà lì e questa riga diventerà una lettura dal server. Il
+   * resto del componente non cambierà di una virgola — è per questo che sta in
+   * un posto solo.
+   */
+  const [profilo, setProfilo] = useState<ProfiloAziendale | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const salvato = window.localStorage.getItem(CHIAVE_PROFILO);
+      return salvato ? (JSON.parse(salvato) as ProfiloAziendale) : null;
+    } catch {
+      return null;
+    }
+  });
 
   useEffect(() => {
     applicaMarchio(marchio);
@@ -49,6 +71,31 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
   }, [marchio]);
 
   if (!m) return null;
+
+  // Primo ingresso: si entra e si dice chi si è. Una volta sola nella vita.
+  if (!profilo) {
+    return (
+      <AziendaProfilo
+        marchio={marchio}
+        onFatto={(p) => {
+          try {
+            window.localStorage.setItem(CHIAVE_PROFILO, JSON.stringify(p));
+          } catch {
+            // Spazio esaurito o navigazione privata: si prosegue lo stesso, e
+            // al prossimo ingresso lo si richiede. Meglio che bloccare qui.
+          }
+          setProfilo(p);
+        }}
+      />
+    );
+  }
+
+  // ⚠️ IL RUOLO DICHIARATO NON È IL RUOLO OTTENUTO. Finché Salvatore non lo
+  // conferma dall'elenco delle persone, chiunque entra è un operatore. Se
+  // questa riga sparisse, chiunque fra le 150 persone potrebbe dichiararsi
+  // titolare e vedere il fatturato.
+  const ruoloVero = profilo.ruolo === "titolare" ? "titolare" : "operatore";
+  const vedeTutto = ruoloVero === "titolare";
 
   return (
     <div className="flex min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]">
@@ -104,6 +151,10 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
 
             <div className="my-3 border-t border-[var(--border)]" />
 
+            {/* ⚠️ Le sezioni che un operatore non deve vedere NON SI DISEGNANO
+                affatto, invece di disegnarle e negare l'accesso: una voce di
+                menu che c'è e non funziona dice a chiunque che esiste una parte
+                riservata, e invita a provarci. */}
             {(
               [
                 ["cruscotto", "Cruscotto"],
@@ -111,7 +162,9 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
                 ["persone", "Persone"],
                 ["documenti", "Documenti"],
               ] as [Sezione, string][]
-            ).map(([id, nome]) => (
+            )
+              .filter(([id]) => vedeTutto || id === "documenti")
+              .map(([id, nome]) => (
               <button
                 key={id}
                 onClick={() => {
@@ -126,13 +179,27 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
               >
                 {nome}
               </button>
-            ))}
+              ))}
           </nav>
 
-          <div className="border-t border-[var(--border)] px-4 py-3">
-            <p className="text-[11px] leading-relaxed text-[var(--text-secondary)]">
-              Salvatore · titolare
-            </p>
+          <div className="flex items-center gap-2.5 border-t border-[var(--border)] px-4 py-3">
+            {profilo.foto ? (
+              <img src={profilo.foto} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
+            ) : (
+              <span
+                aria-hidden
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--fill-quiet)] text-[12px] font-medium text-[var(--text-secondary)]"
+              >
+                {profilo.nome.slice(0, 1).toUpperCase()}
+              </span>
+            )}
+            <span className="min-w-0">
+              <span className="block truncate text-[13px] font-medium">{profilo.nome}</span>
+              <span className="block truncate text-[11px] text-[var(--text-secondary)]">
+                {RUOLI.find((r) => r.id === profilo.ruolo)?.nome}
+                {profilo.reparto && ruoloVero !== "titolare" ? ` · ${profilo.reparto}` : ""}
+              </span>
+            </span>
           </div>
         </div>
       </aside>
@@ -159,11 +226,14 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
         </header>
 
         {sezione === "chat" && (
-          <Conversazione postazione={POSTAZIONI.find((p) => p.id === postazione)!} />
+          <Conversazione
+            postazione={POSTAZIONI.find((p) => p.id === postazione)!}
+            nome={profilo.nome.split(" ")[0]}
+          />
         )}
-        {sezione === "cruscotto" && <Cruscotto />}
-        {sezione === "clienti" && <Clienti />}
-        {sezione === "persone" && <Persone />}
+        {sezione === "cruscotto" && vedeTutto && <Cruscotto />}
+        {sezione === "clienti" && vedeTutto && <Clienti />}
+        {sezione === "persone" && vedeTutto && <Persone />}
         {sezione === "documenti" && <Documenti />}
       </main>
     </div>
@@ -206,8 +276,10 @@ function Marchio({ nome, compatto }: { nome: string; compatto?: boolean }) {
 
 function Conversazione({
   postazione,
+  nome,
 }: {
   postazione: { nome: string; cosa: string; persone: number };
+  nome?: string;
 }) {
   return (
     <div className="flex flex-1 flex-col">
@@ -219,7 +291,8 @@ function Conversazione({
       <div className="flex flex-1 flex-col justify-end px-5 py-6 md:px-8">
         <div className="mx-auto w-full max-w-[620px] space-y-3">
           <div className="rounded-2xl rounded-bl-md bg-[var(--fill-quiet)] px-4 py-3 text-[14.5px] leading-relaxed">
-            Buongiorno. Sono l'agente del {postazione.nome.toLowerCase()}.
+            Buongiorno{nome ? ` ${nome}` : ""}. Sono l'agente del{" "}
+            {postazione.nome.toLowerCase()}.
             <br />
             Chiedimi quello che ti serve — anche a voce.
           </div>
