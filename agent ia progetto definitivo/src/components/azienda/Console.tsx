@@ -55,7 +55,8 @@ type IconaNome =
   | "occhio"
   | "occhioNo"
   | "sole"
-  | "luna";
+  | "luna"
+  | "barcode";
 
 const TRATTI: Record<IconaNome, ReactNode> = {
   cruscotto: (
@@ -233,6 +234,11 @@ const TRATTI: Record<IconaNome, ReactNode> = {
     </>
   ),
   luna: <path d="M20 14.5A8 8 0 0 1 9.5 4a7 7 0 1 0 10.5 10.5z" />,
+  barcode: (
+    <>
+      <path d="M4 6v12M7 6v12M10 6v12M13.5 6v12M17 6v12M20 6v12" />
+    </>
+  ),
 };
 
 export function Icona({

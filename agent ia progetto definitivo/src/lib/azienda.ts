@@ -243,3 +243,12 @@ export interface Avviso {
   testo: string;
   quando: string;
 }
+
+export interface Lettura {
+  id: string;
+  barcode: string;
+  tipo: string;
+  dispositivo: string;
+  abbinato: boolean;
+  quando: string;
+}

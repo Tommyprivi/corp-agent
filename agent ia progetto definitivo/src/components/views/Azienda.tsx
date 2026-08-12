@@ -11,6 +11,7 @@ import {
   type Cliente,
   type Cruscotto as DatiCruscotto,
   type Documento,
+  type Lettura,
   type Messaggio,
   type Attivita as AttivitaRiga,
   type Avviso,
@@ -432,6 +433,7 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
             nome={(persona.nome || "").split(" ")[0]}
             agenteVivo={agenteVivo}
             ordine={sito.toolMagazzino}
+            titolare={vedeTutto}
             seScaduta={seScaduta}
           />
         )}
@@ -2209,12 +2211,14 @@ function Banchina({
   nome,
   agenteVivo,
   ordine,
+  titolare,
   seScaduta,
 }: {
   postazione: PostazioneViva;
   nome?: string;
   agenteVivo: boolean;
   ordine?: string[];
+  titolare?: boolean;
   seScaduta: (e: unknown) => void;
 }) {
   // ⚠️ Si apre sull'AGENTE, non sul registro: Tommaso vuole poca manualità
@@ -2238,6 +2242,7 @@ function Banchina({
   // da scoprire. «Molti tool da imparare» — Tommaso.
   const strumenti: Strumento[] = ordinaTool(ordine, [
     { id: "registro", nome: "Registro", icona: "magazzino" },
+    { id: "scansioni", nome: "Scansioni", icona: "barcode" },
     { id: "carico", nome: "Carico", icona: "carico" },
     { id: "scarico", nome: "Scarico", icona: "scarico" },
     { id: "differenza", nome: "Differenza", icona: "differenza" },
@@ -2266,6 +2271,10 @@ function Banchina({
           agenteVivo={agenteVivo}
           seScaduta={seScaduta}
         />
+      )}
+
+      {strumento === "scansioni" && (
+        <Scansioni titolare={!!titolare} seScaduta={seScaduta} />
       )}
 
       {formAperto && (
@@ -4083,6 +4092,206 @@ function Amministrazione({
             </Cornice>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SCANSIONI — le letture che arrivano dritte dagli scanner
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ È la porta che rende vero «le bolle scannerizzate importate direttamente
+ * su CorpAgent» (deciso al sopralluogo: QCSNET non dà le API). Il feed si
+ * aggiorna da solo; il titolare vede in cima il gettone da mettere nei palmari
+ * Zebra, con l'indirizzo dove sparano.
+ */
+function Scansioni({
+  titolare,
+  seScaduta,
+}: {
+  titolare: boolean;
+  seScaduta: (e: unknown) => void;
+}) {
+  const [letture, setLetture] = useState<Lettura[] | null>(null);
+  const [chiave, setChiave] = useState<string | null>(null);
+  const [inCorso, setInCorso] = useState(false);
+  const [copiato, setCopiato] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    const tira = () => {
+      leggi<{ letture: Lettura[] }>("letture")
+        .then((r) => {
+          if (vivo) setLetture(r.letture);
+        })
+        .catch((e) => seScaduta(e));
+    };
+    tira();
+    // Ogni 12s: uno scanner che spara in banchina deve comparire quasi subito.
+    const t = setInterval(tira, 12_000);
+    return () => {
+      vivo = false;
+      clearInterval(t);
+    };
+  }, [seScaduta]);
+
+  useEffect(() => {
+    if (!titolare) return;
+    leggi<{ chiave: string | null }>("ingresso")
+      .then((r) => setChiave(r.chiave))
+      .catch((e) => seScaduta(e));
+  }, [titolare, seScaduta]);
+
+  async function genera() {
+    setInCorso(true);
+    try {
+      const r = await manda<{ chiave: string }>({ az: "ingresso-genera" });
+      setChiave(r.chiave);
+    } catch (e) {
+      seScaduta(e);
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  const url =
+    typeof window !== "undefined" ? `${window.location.origin}/api/config` : "/api/config";
+
+  return (
+    <div className="flex-1 overflow-y-auto px-5 py-5 md:px-8">
+      <div className="mx-auto max-w-[900px]">
+        {/* ── Il gettone, solo per il titolare ─────────────────────────── */}
+        {titolare && (
+          <div className="mb-5 rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-4">
+            <div className="flex items-center gap-2">
+              <Icona nome="barcode" size={18} className="text-[var(--text-secondary)]" />
+              <h3 className="text-[13.5px] font-semibold">Collegare gli scanner</h3>
+            </div>
+            <p className="mt-1.5 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+              I palmari Zebra sparano il barcode dritto qui dentro. Nel palmare
+              (DataWedge → output HTTP) si mette questo indirizzo e questo
+              gettone; il barcode arriva nel campo «barcode».
+            </p>
+
+            <div className="mt-3 space-y-2">
+              <Riga2 etichetta="Indirizzo" valore={url} />
+              {chiave ? (
+                <Riga2
+                  etichetta="Gettone"
+                  valore={chiave}
+                  segreto
+                  onCopia={() => {
+                    navigator.clipboard?.writeText(chiave);
+                    setCopiato(true);
+                    setTimeout(() => setCopiato(false), 1500);
+                  }}
+                  copiato={copiato}
+                />
+              ) : (
+                <p className="text-[12.5px] text-[var(--text-secondary)]">
+                  Ancora nessun gettone. Generane uno e mettilo nei palmari.
+                </p>
+              )}
+            </div>
+
+            <button
+              onClick={() => void genera()}
+              disabled={inCorso}
+              className="mt-3 cursor-pointer rounded-md border border-[var(--border)] px-3.5 py-2 text-[12.5px] font-medium hover:border-[var(--accent)] disabled:opacity-50"
+            >
+              {inCorso ? "Genero…" : chiave ? "Rigenera (il vecchio smette)" : "Genera gettone"}
+            </button>
+            {chiave && (
+              <p className="mt-2 text-[11.5px] leading-relaxed text-[var(--text-secondary)]">
+                ⚠️ Il gettone permette solo di MANDARE letture in questa azienda,
+                niente altro. Se lo rigeneri, i palmari vanno riconfigurati col nuovo.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── Il feed delle letture ────────────────────────────────────── */}
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+            Ultime scansioni
+          </h2>
+          <span className="text-[11px] text-[var(--text-secondary)]">si aggiorna da solo</span>
+        </div>
+
+        {letture === null && <p className="text-[13px] text-[var(--text-secondary)]">Leggo…</p>}
+        {letture !== null && letture.length === 0 && (
+          <Niente
+            titolo="Ancora nessuna scansione"
+            testo="Appena un palmare spara un codice, o la multifunzione manda una bolla, compare qui in tempo reale — con codice, ora e dispositivo."
+          />
+        )}
+        {letture !== null && letture.length > 0 && (
+          <Tabella
+            colonne={[
+              { nome: "", larghezza: "34px" },
+              { nome: "Codice" },
+              { nome: "Tipo", larghezza: "110px" },
+              { nome: "Abbinato", larghezza: "90px" },
+              { nome: "Dispositivo · ora", larghezza: "200px", destra: true },
+            ]}
+          >
+            {letture.map((l) => (
+              <Riga key={l.id}>
+                <Cella>
+                  <Icona nome="barcode" size={16} className="text-[var(--text-secondary)]" />
+                </Cella>
+                <Cella>
+                  <span className="font-mono text-[12.5px]">{l.barcode}</span>
+                </Cella>
+                <Cella tenue>{l.tipo}</Cella>
+                <Cella tenue>{l.abbinato ? "sì" : "—"}</Cella>
+                <Cella destra tenue>
+                  {l.dispositivo ? `${l.dispositivo} · ` : ""}
+                  {new Date(l.quando).toLocaleTimeString("it-IT", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </Cella>
+              </Riga>
+            ))}
+          </Tabella>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Una riga «etichetta: valore» copiabile, per indirizzo e gettone. */
+function Riga2({
+  etichetta,
+  valore,
+  segreto,
+  onCopia,
+  copiato,
+}: {
+  etichetta: string;
+  valore: string;
+  segreto?: boolean;
+  onCopia?: () => void;
+  copiato?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2">
+      <span className="w-[70px] shrink-0 text-[11.5px] text-[var(--text-secondary)]">{etichetta}</span>
+      <span
+        className={`min-w-0 flex-1 truncate font-mono text-[12px] ${segreto ? "tracking-tight" : ""}`}
+      >
+        {valore}
+      </span>
+      {onCopia && (
+        <button
+          onClick={onCopia}
+          className="shrink-0 cursor-pointer rounded border border-[var(--border)] px-2 py-1 text-[11px] font-medium hover:border-[var(--accent)]"
+        >
+          {copiato ? "Copiato ✓" : "Copia"}
+        </button>
       )}
     </div>
   );

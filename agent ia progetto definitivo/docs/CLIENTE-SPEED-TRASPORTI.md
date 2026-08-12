@@ -1318,3 +1318,27 @@ si ribalta:
 
 Al sopralluogo: **marca e modello della multifunzione**, e se lo scan-to-email
 è già configurato (di solito sì, verso le caselle interne).
+
+## Dopo il sopralluogo (Tommaso c'è andato) — la strategia cambia
+
+Quattro cose decise sul posto, e la più importante ribalta il piano dati:
+
+1. **⚠️ QCSNET/K-Master: vicolo cieco.** «Non si tocca / da capire» — niente API
+   dal gestionale, almeno per ora. Quindi NON contiamo su di lui per i dati.
+2. **🔑 LA STRADA DEI DATI SONO GLI SCANNER.** Parole di Tommaso: *«il magazzino
+   e le bolle saranno scannerizzate e importate direttamente su CorpAgent»*.
+   Non più «leggiamo da Assistant»: è CorpAgent che **riceve le scansioni**
+   (barcode dai palmari Zebra, bolle dalla multifunzione) e diventa lui il
+   registro. Il database gigante (trasp_letture, trasp_colli) è già la presa.
+3. **GPS: fermo per ora.** Quando servirà, vale la regola dell'Articolo 4:
+   aiuto all'autista sì, sorveglianza no senza accordo.
+4. **Multifunzione: scan-to-email da configurare.** Non è ancora attivo: va
+   impostato (loro tecnico o Salvatore) perché mandi le scansioni a una casella
+   che l'agente legge.
+
+### Cosa costruiamo di conseguenza
+- **La porta d'ingresso degli scanner** (endpoint di import con token per
+  azienda): i palmari Zebra, via DataWedge, mandano il barcode dritto dentro
+  → compare vivo in banchina. È il pezzo che rende vera la frase di Tommaso.
+- Poi: le bolle di carta dalla multifunzione via email → OCR → stesso registro.
+- La prova con persone vere parte dal **magazzino** (è lì che si scannerizza).

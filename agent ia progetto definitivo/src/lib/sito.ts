@@ -56,6 +56,7 @@ export const NOMI_BLOCCO: Record<string, string> = {
  */
 export const TOOL_MAGAZZINO_DEF = [
   "agente",
+  "scansioni",
   "registro",
   "carico",
   "scarico",

@@ -485,6 +485,16 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       // ogni persona il modo in cui il titolare ha disposto le cose.
       return json({ config: await az.config(chi.azienda) }, 200);
 
+    case "letture":
+      // Le scansioni arrivate dagli scanner: le vede chi è in azienda.
+      return json({ letture: await az.letture(chi.azienda) }, 200);
+
+    case "ingresso":
+      // Il gettone d'ingresso degli scanner: SOLO il titolare (è un segreto di
+      // scrittura, e lo configura lui sui palmari).
+      if (!titolare) return soloTitolare();
+      return json({ chiave: await az.ingressoChiave(chi.azienda) }, 200);
+
     case "cerca": {
       const q = (url.searchParams.get("q") ?? "").trim();
       if (q.length < 2) return json({ risultati: [] }, 200);
@@ -583,6 +593,25 @@ async function areaAzienda(
   request: Request
 ): Promise<Response> {
   const cosa = corpo.az as string;
+
+  // ── Una lettura da uno scanner: dispositivo, non persona ────────────
+  // ⚠️ Nessuna sessione: il gettone d'ingresso identifica l'azienda. È la porta
+  // che rende vero «le bolle scannerizzate importate direttamente su CorpAgent».
+  if (cosa === "lettura") {
+    const chiave = String(corpo.chiave ?? "");
+    const barcode = String(corpo.barcode ?? "").trim();
+    if (!chiave || !barcode) return json({ error: "Serve chiave e barcode." }, 400);
+    const esito = await az.riceviLettura(chiave, {
+      barcode,
+      tipo: typeof corpo.tipo === "string" ? corpo.tipo : "lettura",
+      dispositivo: typeof corpo.dispositivo === "string" ? corpo.dispositivo : "",
+      postazione: typeof corpo.postazione === "string" ? corpo.postazione : "Magazzino",
+    });
+    // Stesso «non trovato» per gettone sbagliato e assente: non si conferma
+    // quali gettoni esistono a chi prova a indovinarli.
+    if (!esito) return json({ error: "Gettone non valido." }, 401);
+    return json({ ok: true }, 200);
+  }
 
   // ── Entrare è l'unica cosa che si fa senza essere già nessuno ────────
   if (cosa === "entra") {
@@ -778,6 +807,15 @@ async function areaAzienda(
       );
       return json({ ok: true }, 200);
     }
+
+    case "ingresso-genera":
+      // Rigenera il gettone: il vecchio muore. Solo il titolare.
+      if (!titolare) return negato();
+      {
+        const nuova = await az.ingressoGenera(chi.azienda);
+        az.segnaAttivita(chi.azienda, chi.persona, "gettone-scanner");
+        return json({ chiave: nuova }, 200);
+      }
 
     case "config-salva":
       // ⚠️ Solo il titolare cambia il sito: è LUI che decide come lo vedono

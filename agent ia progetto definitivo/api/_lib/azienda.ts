@@ -786,3 +786,65 @@ export async function scriviAlSupporto(
     // Volutamente muto.
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// LA PORTA D'INGRESSO DEGLI SCANNER
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Il gettone attuale (per mostrarlo al titolare). Null se non generato. */
+export async function ingressoChiave(azienda: string): Promise<string | null> {
+  const r = await getPool().query<{ az_ingresso: string | null }>(
+    "select public.az_ingresso($1)",
+    [azienda]
+  );
+  return r.rows[0]?.az_ingresso ?? null;
+}
+
+/** Genera (o rigenera) il gettone. Il vecchio muore all'istante. */
+export async function ingressoGenera(azienda: string): Promise<string> {
+  const r = await getPool().query<{ az_ingresso_genera: string }>(
+    "select public.az_ingresso_genera($1)",
+    [azienda]
+  );
+  return r.rows[0].az_ingresso_genera;
+}
+
+/**
+ * Riceve una lettura da un dispositivo. Il gettone identifica l'azienda; non
+ * c'è utente. Torna null se il gettone non vale, così l'endpoint rifiuta.
+ *
+ * ⚠️ Scrive nella zona d'atterraggio grezza (trasp_letture) e, se il barcode è
+ * già un collo noto, ne aggiorna lo stato — la stessa porta del database
+ * gigante (migrazione 0027). Nessuna lettura si perde, nemmeno se non sappiamo
+ * ancora a quale spedizione appartiene.
+ */
+export async function riceviLettura(
+  chiave: string,
+  d: { barcode: string; tipo?: string; dispositivo?: string; postazione?: string }
+): Promise<{ azienda: string } | null> {
+  const pool = getPool();
+  const chi = await pool.query<{ az_ingresso_chi: string | null }>(
+    "select public.az_ingresso_chi($1)",
+    [chiave]
+  );
+  const azienda = chi.rows[0]?.az_ingresso_chi ?? null;
+  if (!azienda) return null;
+
+  await pool.query("select public.trasp_lettura_ingresso($1,$2,$3,$4,$5,$6)", [
+    azienda,
+    String(d.barcode).slice(0, 80),
+    d.postazione ?? "Magazzino",
+    null,
+    d.tipo ?? "lettura",
+    d.dispositivo ?? "",
+  ]);
+  return { azienda };
+}
+
+/** Le ultime letture arrivate dagli scanner, per la banchina. */
+export async function letture(azienda: string) {
+  // ⚠️ Dalla PORTA, non con una SELECT diretta: trasp_letture ha la sicurezza
+  // per riga accesa e una lettura diretta tornerebbe zero righe (migrazione 0029).
+  const r = await getPool().query("select * from public.az_letture($1)", [azienda]);
+  return r.rows;
+}
