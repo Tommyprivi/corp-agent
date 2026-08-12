@@ -444,14 +444,31 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
             seScaduta={seScaduta}
           />
         )}
-        {sezioneVera === "chat" && postazione !== "magazzino" && postazione !== "traffico" && (
-          <Conversazione
-            postazione={postazioni.find((p) => p.id === postazione) ?? postazioni[0]}
+        {sezioneVera === "chat" && postazione === "autisti" && (
+          <Autisti
+            postazione={postazioni.find((p) => p.id === "autisti") ?? postazioni[0]}
             nome={(persona.nome || "").split(" ")[0]}
             agenteVivo={agenteVivo}
             seScaduta={seScaduta}
           />
         )}
+        {sezioneVera === "chat" && postazione === "ammin" && (
+          <Amministrazione
+            postazione={postazioni.find((p) => p.id === "ammin") ?? postazioni[0]}
+            nome={(persona.nome || "").split(" ")[0]}
+            agenteVivo={agenteVivo}
+            seScaduta={seScaduta}
+          />
+        )}
+        {sezioneVera === "chat" &&
+          !["magazzino", "traffico", "autisti", "ammin"].includes(postazione) && (
+            <Conversazione
+              postazione={postazioni.find((p) => p.id === postazione) ?? postazioni[0]}
+              nome={(persona.nome || "").split(" ")[0]}
+              agenteVivo={agenteVivo}
+              seScaduta={seScaduta}
+            />
+          )}
         {sezioneVera === "cruscotto" && vedeTutto && (
           <Cruscotto
             nome={(persona.nome || "").split(" ")[0]}
@@ -3895,5 +3912,178 @@ function LevettaTema() {
     >
       <Icona nome={scuro ? "sole" : "luna"} size={18} />
     </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AUTISTI — pensata per chi guida: prima la voce, poca lettura
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ Chi la usa sta guidando: agente per primo (voce), niente da compilare.
+ * Le consegne del giorno arrivano da K-Master — finché non è collegato, la
+ * cornice lo dice invece di mostrare una lista finta. L'unica cosa manuale è
+ * segnalare un intoppo in strada, e si fa a voce.
+ */
+function Autisti({
+  postazione,
+  nome,
+  agenteVivo,
+  seScaduta,
+}: {
+  postazione: PostazioneViva;
+  nome?: string;
+  agenteVivo: boolean;
+  seScaduta: (e: unknown) => void;
+}) {
+  const [strumento, setStrumento] = useState("agente");
+  const [fatto, setFatto] = useState<string | null>(null);
+  const strumenti: Strumento[] = [
+    { id: "agente", nome: "Agente", icona: "agente" },
+    { id: "consegne", nome: "Consegne di oggi", icona: "ritiro" },
+    { id: "problema", nome: "Segnala", icona: "problema" },
+  ];
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="border-b border-[var(--border)] bg-[var(--bg-card)]">
+        <div className="flex items-baseline gap-3 px-5 pt-3 md:px-8">
+          <h1 className="text-[15px] font-semibold tracking-[-0.01em]">{postazione.nome}</h1>
+          <p className="truncate text-[12px] text-[var(--text-secondary)]">{postazione.cosa}</p>
+        </div>
+        <div className="mt-1 px-3 md:px-6">
+          <BarraStrumenti strumenti={strumenti} attivo={strumento} onScegli={setStrumento} />
+        </div>
+      </div>
+
+      {strumento === "agente" && (
+        <Conversazione postazione={postazione} nome={nome} agenteVivo={agenteVivo} seScaduta={seScaduta} />
+      )}
+
+      {strumento === "consegne" && (
+        <div className="flex-1 overflow-y-auto px-5 py-5 md:px-8">
+          <div className="mx-auto max-w-[760px]">
+            <p className="mb-3 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+              Il giro di oggi — chi, dove, in che ordine. Chiedi all'agente
+              «qual è la prossima?» o «quanto manca a…»: quello risponde già,
+              anche a voce, mentre guidi.
+            </p>
+            <div className="rounded-md border border-dashed border-[var(--border)] px-5 py-8 text-center">
+              <p className="text-[13.5px] font-medium">Il giro arriva da K-Master</p>
+              <p className="mx-auto mt-1.5 max-w-[46ch] text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+                Appena colleghiamo il gestionale, qui compare l'elenco delle
+                consegne del giorno, in ordine, con indirizzo e note. Fino ad
+                allora l'agente conosce già le distanze e i tempi.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {strumento === "problema" && (
+        <div className="flex-1 overflow-y-auto px-5 py-5 md:px-8">
+          <div className="mx-auto max-w-[560px] overflow-hidden rounded-md border border-[var(--border)]">
+            <FormMovimento
+              tipo="problema"
+              onChiudi={() => setStrumento("agente")}
+              onFatto={(riga) => {
+                setFatto(riga);
+                setStrumento("agente");
+              }}
+              seScaduta={seScaduta}
+            />
+          </div>
+          {fatto && (
+            <p
+              className="mx-auto mt-3 max-w-[560px] rounded-md border-l-2 bg-[var(--fill-quiet)] px-4 py-3 text-[13.5px]"
+              style={{ borderColor: "var(--accent)" }}
+            >
+              {fatto}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AMMINISTRAZIONE — soldi e scadenze: quasi tutto arriva dal gestionale
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ Poca manualità: fatture e incassi vivono nel gestionale, non si riscrivono
+ * a mano qui. La postazione è l'agente (per chiedere «quanto ci deve la Rossi?»,
+ * «cosa scade questa settimana?») più i quadri onesti che si accendono al
+ * collegamento. Niente numeri finti nel frattempo.
+ */
+function Amministrazione({
+  postazione,
+  nome,
+  agenteVivo,
+  seScaduta,
+}: {
+  postazione: PostazioneViva;
+  nome?: string;
+  agenteVivo: boolean;
+  seScaduta: (e: unknown) => void;
+}) {
+  const [strumento, setStrumento] = useState("agente");
+  const strumenti: Strumento[] = [
+    { id: "agente", nome: "Agente", icona: "agente" },
+    { id: "soldi", nome: "Da incassare", icona: "cruscotto" },
+    { id: "fornitori", nome: "Fornitori", icona: "documenti" },
+  ];
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="border-b border-[var(--border)] bg-[var(--bg-card)]">
+        <div className="flex items-baseline gap-3 px-5 pt-3 md:px-8">
+          <h1 className="text-[15px] font-semibold tracking-[-0.01em]">{postazione.nome}</h1>
+          <p className="truncate text-[12px] text-[var(--text-secondary)]">{postazione.cosa}</p>
+        </div>
+        <div className="mt-1 px-3 md:px-6">
+          <BarraStrumenti strumenti={strumenti} attivo={strumento} onScegli={setStrumento} />
+        </div>
+      </div>
+
+      {strumento === "agente" && (
+        <Conversazione postazione={postazione} nome={nome} agenteVivo={agenteVivo} seScaduta={seScaduta} />
+      )}
+
+      {strumento === "soldi" && (
+        <div className="flex-1 overflow-y-auto px-5 py-5 md:px-8">
+          <div className="mx-auto max-w-[900px]">
+            <p className="mb-3 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+              Quanto c'è da incassare e cosa scade. Arriva dal gestionale delle
+              fatture: l'agente incrocia poi gli incassi in banca per spuntarle
+              da sole.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Cornice titolo="Da incassare" sotto="fatture emesse non ancora pagate">
+                <Attesa da="il gestionale fatture" altezza={140} />
+              </Cornice>
+              <Cornice titolo="Scadenze" sotto="cosa scade questa settimana">
+                <Attesa da="il gestionale fatture" altezza={140} />
+              </Cornice>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {strumento === "fornitori" && (
+        <div className="flex-1 overflow-y-auto px-5 py-5 md:px-8">
+          <div className="mx-auto max-w-[900px]">
+            <p className="mb-3 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+              Le fatture dei fornitori da controllare e pagare. Con Outlook
+              collegato, l'agente le raccoglie dalle email appena arrivano.
+            </p>
+            <Cornice titolo="Fatture fornitori" sotto="da controllare e mettere in scadenzario">
+              <Attesa da="Outlook e il gestionale" altezza={160} />
+            </Cornice>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
