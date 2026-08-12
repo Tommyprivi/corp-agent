@@ -1267,3 +1267,33 @@ mestiere e non serve.
 un **upsell della Fase 2**, quando il cliente già si fida — mai prima, o ci si
 impantana nell'elettronica invece di consegnare. Vale doppio l'articolo 4 sul
 GPS degli autisti.
+
+## 12 Agosto — Gli scanner, visti in foto: il piano si accorcia
+
+Tommaso ha mandato le foto dei dispositivi veri di Speed. Tre scoperte:
+
+1. **I palmari sono Zebra serie TC** (TC21/TC26): telefoni Android industriali
+   col lettore di codici. **Ci gira già Assistant Evolution come web app** —
+   quindi ci gira anche CorpAgent, oggi stesso, senza comprare niente.
+2. **Le letture finiscono già in QCSNET** (visto l'«Archivio bordereaux»,
+   8.992 pagine): il vero connettore scanner È il connettore K-Master/QCSNET.
+3. C'è anche una **fotocopiatrice multifunzione** (documenti di carta) e una
+   **stampante etichette Zebra** (per dopo).
+
+### Le tre strade, in ordine
+
+| # | Strada | Quando | Come |
+|---|---|---|---|
+| 1 | **CorpAgent sul palmare** | Subito, al sopralluogo | Aprire corpagent.vercel.app/speed sul Zebra: la banchina è fatta apposta (bottoni grossi). Il lettore si aggancia con **DataWedge** (servizio già presente su ogni Zebra): profilo con uscita «keystroke» → il grilletto digita il codice nel campo bolla del form Carico. ~mezz'ora di configurazione. |
+| 2 | **Le letture da QCSNET** | Col connettore K-Master | Le sparate finiscono già nei bordereaux di QCSNET: con le API, il registro della banchina si riempie da solo e l'IA analizza — conteggi automatici, differenze al volo. Convive con la strada 1. |
+| 3 | **La fotocopiatrice → Outlook** | Col connettore Outlook (già deciso) | Scan-to-email verso una casella dedicata; l'agente legge la scansione (bolle, DDT, fatture) e la registra. Carta dentro, dati fuori. |
+
+### Domande per il sopralluogo — aggiornate
+
+- ~~Che scanner sono~~ → **sono Zebra TC Android.** Nuova domanda: **chi
+  gestisce i palmari** (MDM? a mano?) e si può aggiungere un'icona/preferito?
+- Il contatto **QCSNET per le API** (bordereaux, tariffari — la scheda
+  «API-TARIFFARI» di Salvatore dice che esistono).
+- La **fotocopiatrice**: marca/modello e se ha già lo scan-to-email attivo.
+- La **stampante etichette Zebra**: modello (per la stampa etichette da
+  CorpAgent, fase 2).
