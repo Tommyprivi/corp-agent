@@ -1125,3 +1125,32 @@ numero non serve prima.
 | **Novembre** | Numero WhatsApp · magazzino · rifiniture |
 | **30 novembre** | **Dimostrazione e consegna**, con i suoi dati dentro |
 
+
+## 12 Agosto — l'area funziona davvero
+
+Il guscio è diventato prodotto. Su **corpagent.vercel.app/speed** oggi:
+
+- **L'accesso è vero.** Email e password (protetta con scrypt), sessione che
+  dura 90 giorni. Il primo che entra diventa titolare — cioè Salvatore apre il
+  link e ha già tutti i permessi senza che nessuno tocchi il database. Chi entra
+  dopo è operatore finché lui non lo promuove dall'elenco delle persone.
+- **La chat parla col modello e tutto si salva.** L'agente risponde da quello
+  che c'è nella sezione Documenti; quando non sa, lo ammette, la passa a una
+  persona e la domanda compare in «Aspetta te» sul cruscotto. Provato in
+  produzione: sa a che ora chiude il magazzino (era nei documenti), non inventa
+  lo stato di una spedizione (non ha ancora K-Master).
+- **Il cruscotto è una dashboard coi grafici** — barre ora per ora, andamento
+  settimanale, richieste per postazione — nello stile del gestionale che
+  Salvatore guarda già, ma ogni numero è un conteggio di righe vere. Fatturato,
+  spedizioni e magazzino restano cornici che dicono da dove arriveranno.
+- **Clienti e Documenti** si salvano nel database e l'agente li conosce dal
+  messaggio dopo. C'è la dettatura vocale dove il browser la offre.
+
+⚠️ **Le due cose rimandate di proposito** (decise da Tommaso, «dopo, non è
+urgente») — da fare **prima** di dare il link alle 150 persone:
+
+1. **L'ingresso su invito**: oggi chiunque conosca il link può aprirsi una
+   postazione da operatore. Va bene finché il link non è scritto da nessuna
+   parte; non va bene con 150 persone che se lo passano.
+2. **Il limite di frequenza sull'accesso**: senza, una password si può provare
+   all'infinito. Stessa migrazione, mezz'ora di lavoro, va solo decisa.
