@@ -19,6 +19,7 @@ import {
   type RepartoDati,
 } from "../../lib/azienda";
 import { Attesa, Barre, Cornice, Linea, Sdraiate } from "../azienda/Grafici";
+import { Icona, type IconaNome } from "../azienda/Console";
 
 /**
  * L'area di un'azienda cliente — la prima è Speed Trasporti.
@@ -174,163 +175,161 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
   const isCapo = persona.ruolo === "capo";
   const isGestore = ["titolare", "amministratore", "capo"].includes(persona.ruolo);
 
-  // Le voci del menu, per ruolo. Il vero cancello resta sul server: qui si
-  // decide solo cosa vale la pena mostrare a ciascuno.
-  const voci: [Sezione, string, boolean, number][] = [
-    ["cruscotto", "Cruscotto", vedeTutto, 0],
-    ["reparto", "Il reparto", isCapo, avvisi],
-    ["clienti", "Clienti", true, 0],
-    ["mezzi", "Mezzi", isGestore, 0],
-    ["persone", "Persone", vedeTutto, 0],
-    ["documenti", "Documenti", true, 0],
-  ];
   // Il titolare atterra sul cruscotto, il capo sulla sua area di reparto, gli
   // altri sulla chat: ognuno apre l'app su quello che gli serve per primo.
   const atterraggio: Sezione = vedeTutto ? "cruscotto" : isCapo ? "reparto" : "chat";
   const sezioneVera: Sezione = sezione === "chat" && !toccato ? atterraggio : sezione;
 
-  return (
-    <div className="flex min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]">
-      {/* ── La barra: l'azienda ──────────────────────────────────────── */}
-      {/* ⚠️ Fuori schermo sotto i 1024px e richiamabile: su un telefono una
-          barra fissa da 240px si mangia metà larghezza, e questa app la
-          apriranno in banchina e in cabina, non solo alla scrivania. */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-40 w-[248px] shrink-0 border-r border-[var(--border)] bg-[var(--bg-card)] transition-transform lg:static lg:translate-x-0 ${
-          menuAperto ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="flex h-full flex-col">
-          <div className="border-b border-[var(--border)] px-4 py-4">
-            <Marchio nome={m.nome} />
-          </div>
+  // Le destinazioni della barra: postazioni + sezioni, ognuna con la sua
+  // icona. È l'impianto di Assistant: una fila di strumenti, non una colonna.
+  const postIcona: Record<string, IconaNome> = {
+    traffico: "traffico",
+    magazzino: "magazzino",
+    autisti: "autisti",
+    ammin: "ammin",
+  };
+  type Voce = { chiave: string; nome: string; icona: IconaNome; badge?: number; vai: () => void; on: boolean };
+  const vaiPostazione = (id: string) => () => {
+    setPostazione(id);
+    setSezione("chat");
+    setToccato(true);
+    setMenuAperto(false);
+  };
+  const vaiSezione = (id: Sezione) => () => {
+    setSezione(id);
+    setToccato(true);
+    setMenuAperto(false);
+  };
+  const destinazioni: Voce[] = [
+    ...(vedeTutto
+      ? [{ chiave: "cruscotto", nome: "Cruscotto", icona: "cruscotto" as IconaNome, vai: vaiSezione("cruscotto"), on: sezioneVera === "cruscotto" }]
+      : []),
+    ...postazioni.map((p) => ({
+      chiave: `post:${p.id}`,
+      nome: p.nome,
+      icona: postIcona[p.id] ?? ("agente" as IconaNome),
+      vai: vaiPostazione(p.id),
+      on: sezioneVera === "chat" && postazione === p.id,
+    })),
+    ...(isCapo
+      ? [{ chiave: "reparto", nome: "Il reparto", icona: "cruscotto" as IconaNome, badge: avvisi, vai: vaiSezione("reparto"), on: sezioneVera === "reparto" }]
+      : []),
+    { chiave: "clienti", nome: "Clienti", icona: "clienti" as IconaNome, vai: vaiSezione("clienti"), on: sezioneVera === "clienti" },
+    ...(isGestore
+      ? [{ chiave: "mezzi", nome: "Mezzi", icona: "mezzi" as IconaNome, vai: vaiSezione("mezzi"), on: sezioneVera === "mezzi" }]
+      : []),
+    ...(vedeTutto
+      ? [{ chiave: "persone", nome: "Persone", icona: "persone" as IconaNome, vai: vaiSezione("persone"), on: sezioneVera === "persone" }]
+      : []),
+    { chiave: "documenti", nome: "Documenti", icona: "documenti" as IconaNome, vai: vaiSezione("documenti"), on: sezioneVera === "documenti" },
+  ];
 
-          <nav className="flex-1 overflow-y-auto p-3">
-            <p className="px-2 pb-2 text-[10.5px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
-              Postazioni
-            </p>
-            {postazioni.map((p) => (
+  const ruoloNome = RUOLI.find((r) => r.id === persona.ruolo)?.nome ?? persona.ruolo;
+
+  return (
+    <div className="flex min-h-screen flex-col bg-[var(--bg-app)] text-[var(--text-primary)]">
+      {/* ── LA TESTATA — come «Assistant Evolution ... Tenant: SPEED» ──── */}
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-card)] px-3 md:px-5">
+        <button
+          onClick={() => setMenuAperto((v) => !v)}
+          aria-label="Menu"
+          className="cursor-pointer rounded-md p-1.5 text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] lg:hidden"
+        >
+          <Icona nome="menu" size={20} />
+        </button>
+        <Marchio nome={m.nome} compatto />
+        <span className="hidden text-[12px] text-[var(--text-secondary)] sm:inline">
+          · Logistica · con CorpAgent
+        </span>
+        <div className="ml-auto flex items-center gap-2.5">
+          <span className="hidden text-right sm:block">
+            <span className="block text-[12.5px] font-medium leading-tight">
+              {persona.nome || persona.email}
+            </span>
+            <span className="block text-[10.5px] text-[var(--text-secondary)]">
+              {ruoloNome}
+              {persona.reparto && !vedeTutto ? ` · ${persona.reparto}` : ""}
+            </span>
+          </span>
+          {persona.foto ? (
+            <img src={persona.foto} alt="" className="h-8 w-8 rounded-full object-cover" />
+          ) : (
+            <span
+              aria-hidden
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--fill-quiet)] text-[12px] font-medium text-[var(--text-secondary)]"
+            >
+              {(persona.nome || persona.email).slice(0, 1).toUpperCase()}
+            </span>
+          )}
+          <button
+            onClick={esci}
+            title="Esci"
+            className="cursor-pointer rounded-md p-1.5 text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+          >
+            <Icona nome="esci" size={18} />
+          </button>
+        </div>
+      </header>
+
+      {/* ── LA BARRA STRUMENTI — la fila di destinazioni ───────────────── */}
+      {/* Su desktop è orizzontale come il gestionale; sotto i 1024px si apre
+          come pannello a scomparsa, perché dieci voci in fila non ci stanno. */}
+      <nav className="hidden shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[var(--border)] bg-[var(--bg-card)] px-3 lg:flex">
+        {destinazioni.map((v) => (
+          <button
+            key={v.chiave}
+            onClick={v.vai}
+            className={`relative flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-[12.5px] font-medium transition-colors ${
+              v.on
+                ? "border-[var(--accent)] text-[var(--text-primary)]"
+                : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            }`}
+          >
+            <Icona nome={v.icona} size={16} />
+            <span className="whitespace-nowrap">{v.nome}</span>
+            {v.badge ? (
+              <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#D92D20] px-1 text-[10px] font-semibold text-white">
+                {v.badge}
+              </span>
+            ) : null}
+          </button>
+        ))}
+      </nav>
+
+      {/* Il pannello mobile */}
+      {menuAperto && (
+        <>
+          <button
+            aria-label="Chiudi"
+            onClick={() => setMenuAperto(false)}
+            className="fixed inset-0 z-30 bg-black/25 lg:hidden"
+          />
+          <nav className="fixed inset-x-0 top-14 z-40 border-b border-[var(--border)] bg-[var(--bg-card)] p-2 shadow-lg lg:hidden">
+            {destinazioni.map((v) => (
               <button
-                key={p.id}
-                onClick={() => {
-                  setPostazione(p.id);
-                  setSezione("chat");
-                  setToccato(true);
-                  setMenuAperto(false);
-                }}
-                className={`mb-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] transition-colors ${
-                  sezioneVera === "chat" && postazione === p.id
+                key={v.chiave}
+                onClick={v.vai}
+                className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-[13.5px] transition-colors ${
+                  v.on
                     ? "bg-[var(--accent-soft)] font-medium text-[var(--text-primary)]"
                     : "text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)]"
                 }`}
               >
-                {/* ⚠️ Lo stato è una FORMA, non un colore: il verde qui è il
-                    marchio, e un pallino verde non direbbe più «attivo». */}
-                <span
-                  aria-hidden
-                  className="h-2 w-2 shrink-0 rounded-full border"
-                  style={
-                    agenteVivo
-                      ? { background: "var(--accent)", borderColor: "var(--accent)" }
-                      : { borderColor: "var(--border-strong)" }
-                  }
-                />
-                <span className="flex-1">{p.nome}</span>
+                <Icona nome={v.icona} size={18} />
+                <span className="flex-1">{v.nome}</span>
+                {v.badge ? (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#D92D20] px-1.5 text-[11px] font-semibold text-white">
+                    {v.badge}
+                  </span>
+                ) : null}
               </button>
             ))}
-
-            <div className="my-3 border-t border-[var(--border)]" />
-
-            {/* ⚠️ Le sezioni che un operatore non deve vedere NON SI DISEGNANO
-                affatto, invece di disegnarle e negare l'accesso: una voce di
-                menu che c'è e non funziona dice a chiunque che esiste una parte
-                riservata, e invita a provarci. Il vero cancello è sul server. */}
-            {voci
-              .filter(([, , mostra]) => mostra)
-              .map(([id, nome, , badge]) => (
-                <button
-                  key={id}
-                  onClick={() => {
-                    setSezione(id);
-                    setToccato(true);
-                    setMenuAperto(false);
-                  }}
-                  className={`mb-0.5 flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13.5px] transition-colors ${
-                    sezioneVera === id
-                      ? "bg-[var(--accent-soft)] font-medium text-[var(--text-primary)]"
-                      : "text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)]"
-                  }`}
-                >
-                  <span className="flex-1">{nome}</span>
-                  {/* Il pallino di avviso: quante cose aspettano il capo. Rosso
-                      perché è l'unico posto dell'app dove serve gridare. */}
-                  {badge > 0 && (
-                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#D92D20] px-1.5 text-[11px] font-semibold text-white">
-                      {badge}
-                    </span>
-                  )}
-                </button>
-              ))}
           </nav>
-
-          <div className="border-t border-[var(--border)] px-4 py-3">
-            <div className="flex items-center gap-2.5">
-              {persona.foto ? (
-                <img
-                  src={persona.foto}
-                  alt=""
-                  className="h-8 w-8 shrink-0 rounded-full object-cover"
-                />
-              ) : (
-                <span
-                  aria-hidden
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--fill-quiet)] text-[12px] font-medium text-[var(--text-secondary)]"
-                >
-                  {(persona.nome || persona.email).slice(0, 1).toUpperCase()}
-                </span>
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium">
-                  {persona.nome || persona.email}
-                </span>
-                <span className="block truncate text-[11px] text-[var(--text-secondary)]">
-                  {RUOLI.find((r) => r.id === persona.ruolo)?.nome ?? persona.ruolo}
-                  {persona.reparto && !vedeTutto ? ` · ${persona.reparto}` : ""}
-                </span>
-              </span>
-              <button
-                onClick={esci}
-                className="shrink-0 cursor-pointer rounded-md px-1.5 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
-                title="Esci da questa postazione"
-              >
-                Esci
-              </button>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      {menuAperto && (
-        <button
-          aria-label="Chiudi il menu"
-          onClick={() => setMenuAperto(false)}
-          className="fixed inset-0 z-30 bg-black/25 lg:hidden"
-        />
+        </>
       )}
 
-      {/* ── Il centro ────────────────────────────────────────────────── */}
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 lg:hidden">
-          <button
-            onClick={() => setMenuAperto(true)}
-            aria-label="Apri il menu"
-            className="cursor-pointer rounded-lg p-1.5 text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)]"
-          >
-            ☰
-          </button>
-          <Marchio nome={m.nome} compatto />
-        </header>
-
+      {/* ── IL CENTRO ──────────────────────────────────────────────────── */}
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* ⚠️ Il magazzino NON è una chat: è un posto di lavoro (voluto da
             Tommaso: «un'interfaccia più bella, non solo chat — tipo quella del
             capo»). Numeri del giorno, bottoni grossi, il registro dei
