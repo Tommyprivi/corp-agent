@@ -47,7 +47,13 @@ type IconaNome =
   | "micro"
   | "campanella"
   | "attivita"
-  | "esporta";
+  | "esporta"
+  | "impostazioni"
+  | "supporto"
+  | "su"
+  | "giu"
+  | "occhio"
+  | "occhioNo";
 
 const TRATTI: Record<IconaNome, ReactNode> = {
   cruscotto: (
@@ -191,6 +197,31 @@ const TRATTI: Record<IconaNome, ReactNode> = {
     <>
       <path d="M12 3v10m0 0l-3.5-3.5M12 13l3.5-3.5" />
       <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
+    </>
+  ),
+  impostazioni: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" />
+    </>
+  ),
+  supporto: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.8-1.1 1.8M12 17v.2" />
+    </>
+  ),
+  su: <path d="M12 19V5M6 11l6-6 6 6" />,
+  giu: <path d="M12 5v14M6 13l6 6 6-6" />,
+  occhio: (
+    <>
+      <path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" />
+      <circle cx="12" cy="12" r="2.5" />
+    </>
+  ),
+  occhioNo: (
+    <>
+      <path d="M4 4l16 16M9.5 9.5a2.5 2.5 0 0 0 3 3M6.5 6.7C3.9 8.2 2 12 2 12s3.5 6.5 10 6.5c1.6 0 3-.4 4.2-1M12 5.5c6 0 10 6.5 10 6.5s-.8 1.5-2.3 3" />
     </>
   ),
 };
@@ -417,6 +448,10 @@ export function Tasto({
   return (
     <button
       onClick={onClick}
+      // ⚠️ `data-tasto` è l'aggancio del minimal «tasti grossi solo su
+      // telefono»: il CSS in index.css su desktop abbassa questi tasti a righe
+      // sobrie. Senza il marcatore, quell'impostazione non avrebbe presa.
+      data-tasto
       className={`flex min-h-[76px] cursor-pointer flex-col items-start justify-center gap-1 rounded-md border px-4 py-3 text-left transition-colors ${
         attivo
           ? "border-[var(--accent)] bg-[var(--accent-soft)]"
@@ -425,7 +460,11 @@ export function Tasto({
     >
       <Icona nome={icona} size={22} className="text-[var(--text-primary)]" />
       <span className="mt-1 text-[14px] font-semibold leading-tight">{nome}</span>
-      {sotto && <span className="text-[11.5px] text-[var(--text-secondary)]">{sotto}</span>}
+      {sotto && (
+        <span data-tasto-sotto className="text-[11.5px] text-[var(--text-secondary)]">
+          {sotto}
+        </span>
+      )}
     </button>
   );
 }

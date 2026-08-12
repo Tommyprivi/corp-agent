@@ -23,6 +23,15 @@ import {
 } from "../../lib/azienda";
 import { Attesa, Barre, Cornice, Linea, Sdraiate } from "../azienda/Grafici";
 import {
+  applicaSito,
+  NOMI_BLOCCO,
+  sposta,
+  TEMPLATE,
+  unisci,
+  type Minimal,
+  type Sito,
+} from "../../lib/sito";
+import {
   BarraStrumenti,
   Cella,
   Icona,
@@ -58,7 +67,7 @@ import {
  * voce di menu, per non dire a nessuno che esiste una parte riservata.
  */
 
-type Sezione = "chat" | "cruscotto" | "reparto" | "clienti" | "persone" | "documenti" | "mezzi" | "attivita";
+type Sezione = "chat" | "cruscotto" | "reparto" | "clienti" | "persone" | "documenti" | "mezzi" | "attivita" | "impostazioni" | "supporto";
 
 interface PostazioneViva {
   id: string;
@@ -89,6 +98,8 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
   const [agenteVivo, setAgenteVivo] = useState(true);
   /** Quante cose «da controllare» per il capo: il pallino di avviso sul menu. */
   const [avvisi, setAvvisi] = useState(0);
+  /** Come il titolare ha disposto il sito. Applicato a tutti. */
+  const [sito, setSito] = useState<Sito>(() => unisci(null));
 
   useEffect(() => {
     applicaMarchio(marchio);
@@ -108,13 +119,39 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
         // ⚠️ Si torna all'ingresso SOLO se la sessione è davvero morta. Un
         // intoppo di rete — il wifi del magazzino a una tacca, un 500
         // momentaneo — NON deve cancellare un gettone valido tre mesi e
-        // rispedire al login: è esattamente la cosa che il gettone lungo serve
-        // a evitare. `leggi` cancella già il gettone e lancia SessioneScaduta
-        // quando il server dice 401; su tutto il resto si tiene il gettone e si
-        // riproverà al prossimo giro.
+        // rispedire al login.
         if (e instanceof SessioneScaduta) setPersona(null);
       })
       .finally(() => setControllo(false));
+  }, []);
+
+  // ⚠️ Le impostazioni del sito le legge chiunque entra, e le applica: la
+  // densità e il minimal cambiano l'aspetto per tutti, non solo per il capo che
+  // le ha scelte. Se il server non risponde, resta il default: il sito non si
+  // rompe mai per colpa di una preferenza.
+  const caricaSito = useCallback(() => {
+    leggi<{ config: Partial<Sito> }>("config")
+      .then((r) => {
+        const s = unisci(r.config);
+        setSito(s);
+        applicaSito(s);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    applicaSito(sito);
+  }, [sito]);
+
+  useEffect(() => {
+    // La radice torna pulita uscendo: senza, il pannello CorpAgent erediterebbe
+    // la densità di Speed.
+    return () => {
+      if (typeof document !== "undefined") {
+        document.documentElement.removeAttribute("data-densita");
+        document.documentElement.removeAttribute("data-minimal");
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -125,8 +162,11 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
     } catch {
       /* niente localStorage, niente da pulire */
     }
-    if (gettone()) caricaStato();
-  }, [caricaStato]);
+    if (gettone()) {
+      caricaStato();
+      caricaSito();
+    }
+  }, [caricaStato, caricaSito]);
 
   // Il pallino di avviso del capo: quante cose aspettano nel suo reparto. Si
   // chiede appena si sa chi è, e la vista del reparto lo aggiorna quando chiude
@@ -177,6 +217,7 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
           // Il profilo appena creato non porta con sé postazioni e stato del
           // modello: si chiedono al server subito dopo.
           caricaStato();
+          caricaSito();
         }}
       />
     );
@@ -241,6 +282,28 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
     { chiave: "documenti", nome: "Documenti", icona: "documenti" as IconaNome, vai: vaiSezione("documenti"), on: sezioneVera === "documenti" },
   ];
 
+  // ⚠️ L'ordine e la visibilità delle voci li decide il titolare (sito.voci /
+  // sito.vociNascoste). La chiave del sito è il nome nudo — «traffico», non
+  // «post:traffico» — quindi si toglie il prefisso per confrontare. Le voci che
+  // il sito non conosce (o le meta come Impostazioni) restano dove sono.
+  const chiaveSito = (c: string) => (c.startsWith("post:") ? c.slice(5) : c);
+  const ordinate = destinazioni
+    .filter((d) => !sito.vociNascoste.includes(chiaveSito(d.chiave)))
+    .sort((a, b) => {
+      const ia = sito.voci.indexOf(chiaveSito(a.chiave));
+      const ib = sito.voci.indexOf(chiaveSito(b.chiave));
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+    });
+
+  // Le meta in coda, sempre: Supporto per tutti, Impostazioni per il titolare.
+  const metaVoci: Voce[] = [
+    { chiave: "supporto", nome: "Supporto", icona: "supporto" as IconaNome, vai: vaiSezione("supporto"), on: sezioneVera === "supporto" },
+    ...(vedeTutto
+      ? [{ chiave: "impostazioni", nome: "Impostazioni", icona: "impostazioni" as IconaNome, vai: vaiSezione("impostazioni"), on: sezioneVera === "impostazioni" }]
+      : []),
+  ];
+  const barra = [...ordinate, ...metaVoci];
+
   const ruoloNome = RUOLI.find((r) => r.id === persona.ruolo)?.nome ?? persona.ruolo;
 
   return (
@@ -301,7 +364,7 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
       {/* Su desktop è orizzontale come il gestionale; sotto i 1024px si apre
           come pannello a scomparsa, perché dieci voci in fila non ci stanno. */}
       <nav className="hidden shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[var(--border)] bg-[var(--bg-card)] px-3 lg:flex">
-        {destinazioni.map((v) => (
+        {barra.map((v) => (
           <button
             key={v.chiave}
             onClick={v.vai}
@@ -331,7 +394,7 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
             className="fixed inset-0 z-30 bg-black/25 lg:hidden"
           />
           <nav className="fixed inset-x-0 top-14 z-40 border-b border-[var(--border)] bg-[var(--bg-card)] p-2 shadow-lg lg:hidden">
-            {destinazioni.map((v) => (
+            {barra.map((v) => (
               <button
                 key={v.chiave}
                 onClick={v.vai}
@@ -366,6 +429,7 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
             postazione={postazioni.find((p) => p.id === "magazzino") ?? postazioni[0]}
             nome={(persona.nome || "").split(" ")[0]}
             agenteVivo={agenteVivo}
+            ordine={sito.toolMagazzino}
             seScaduta={seScaduta}
           />
         )}
@@ -374,6 +438,7 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
             postazione={postazioni.find((p) => p.id === "traffico") ?? postazioni[0]}
             nome={(persona.nome || "").split(" ")[0]}
             agenteVivo={agenteVivo}
+            ordine={sito.toolTraffico}
             seScaduta={seScaduta}
           />
         )}
@@ -389,6 +454,7 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
           <Cruscotto
             nome={(persona.nome || "").split(" ")[0]}
             postazioni={postazioni}
+            sito={sito}
             seScaduta={seScaduta}
           />
         )}
@@ -406,6 +472,17 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
           <Documenti ruolo={persona.ruolo} seScaduta={seScaduta} />
         )}
         {sezioneVera === "attivita" && vedeTutto && <Attivita seScaduta={seScaduta} />}
+        {sezioneVera === "supporto" && <Supporto persona={persona} seScaduta={seScaduta} />}
+        {sezioneVera === "impostazioni" && vedeTutto && (
+          <Impostazioni
+            sito={sito}
+            onSalva={(nuovo) => {
+              setSito(nuovo);
+              applicaSito(nuovo);
+            }}
+            seScaduta={seScaduta}
+          />
+        )}
       </main>
     </div>
   );
@@ -1096,12 +1173,22 @@ const GRIGIO = "#6B7280";
 function Cruscotto({
   nome,
   postazioni,
+  sito,
   seScaduta,
 }: {
   nome?: string;
   postazioni: PostazioneViva[];
+  sito: Sito;
   seScaduta: (e: unknown) => void;
 }) {
+  // L'ordine e la visibilità dei blocchi li decide il titolare (sito.blocchi /
+  // sito.blocchiNascosti). Si applicano con `order` su un contenitore flex e
+  // la classe `hidden`: nessun blocco si sposta nel codice, solo nel CSS.
+  const ordBlocco = (k: string) => {
+    const i = sito.blocchi.indexOf(k);
+    return i < 0 ? 50 : i;
+  };
+  const nascosto = (k: string) => sito.blocchiNascosti.includes(k);
   const [dati, setDati] = useState<DatiCruscotto | null>(null);
   const [errore, setErrore] = useState(false);
   const [riepilogo, setRiepilogo] = useState<string | null>(null);
@@ -1131,21 +1218,34 @@ function Cruscotto({
   const ora = new Date().getHours();
   const saluto = ora < 12 ? "Buongiorno" : ora < 18 ? "Buon pomeriggio" : "Buonasera";
   const nomePostazione = (id: string) => postazioni.find((p) => p.id === id)?.nome ?? id;
+  // «Via i saluti»: al posto di «Buongiorno Salvatore» un titolo asciutto.
+  const senzaSaluti = sito.minimal.includes("saluti");
 
   return (
     <div className="flex-1 overflow-y-auto px-5 py-7 md:px-8">
       <div className="mx-auto max-w-[1060px]">
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em]">
-          {saluto}
-          {nome ? ` ${nome}` : ""}
-        </h1>
-        <p className="mt-1 text-[13.5px] text-[var(--text-secondary)]">
-          {new Date().toLocaleDateString("it-IT", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-          })}
-        </p>
+        {senzaSaluti ? (
+          <div className="flex items-baseline justify-between gap-3">
+            <h1 className="text-[17px] font-semibold tracking-[-0.01em]">Cruscotto</h1>
+            <span className="text-[12.5px] text-[var(--text-secondary)]">
+              {new Date().toLocaleDateString("it-IT", { day: "numeric", month: "long" })}
+            </span>
+          </div>
+        ) : (
+          <>
+            <h1 className="text-[22px] font-semibold tracking-[-0.02em]">
+              {saluto}
+              {nome ? ` ${nome}` : ""}
+            </h1>
+            <p className="mt-1 text-[13.5px] text-[var(--text-secondary)]">
+              {new Date().toLocaleDateString("it-IT", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+              })}
+            </p>
+          </>
+        )}
 
         {errore && (
           <p className="mt-6 text-[13.5px] text-[var(--text-secondary)]">
@@ -1158,7 +1258,8 @@ function Cruscotto({
         )}
 
         {dati && (
-          <>
+          <div className="flex flex-col">
+            <div style={{ order: ordBlocco("direzione") }} className={nascosto("direzione") ? "hidden" : undefined}>
             {/* ── 0 · L'AGENTE CHE GUARDA TUTTA L'AZIENDA ──────────────── */}
             {/* ⚠️ È la cosa che fa sentire l'IA in TUTTA l'azienda e non solo
                 nella chat: un agente di direzione che legge i numeri veri di
@@ -1209,6 +1310,8 @@ function Cruscotto({
               )}
             </div>
 
+            </div>
+            <div style={{ order: ordBlocco("guadagni") }} className={nascosto("guadagni") ? "hidden" : undefined}>
             {/* ── 1 · I GUADAGNI — la prima cosa che un titolare guarda ── */}
             {/* ⚠️ Oggi/mese/anno. I numeri veri arrivano dal gestionale delle
                 fatture: finché non è collegato, ogni riquadro dice DA DOVE
@@ -1230,6 +1333,8 @@ function Cruscotto({
               <Soldi periodo="Quest'anno" />
             </div>
 
+            </div>
+            <div style={{ order: ordBlocco("oggi") }} className={nascosto("oggi") ? "hidden" : undefined}>
             {/* ── 2 · OGGI, IN QUATTRO NUMERI ─────────────────────────── */}
             <Fascia titolo="L'agente, oggi" sotto="questi li misuriamo noi: sono veri dal primo giorno" />
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1255,6 +1360,8 @@ function Cruscotto({
               />
             </div>
 
+            </div>
+            <div style={{ order: ordBlocco("giornata") }} className={nascosto("giornata") ? "hidden" : undefined}>
             {/* ── 2 · LA GIORNATA, ORA PER ORA ────────────────────────── */}
             <div className="mt-3">
               <Cornice
@@ -1272,6 +1379,8 @@ function Cruscotto({
               </Cornice>
             </div>
 
+            </div>
+            <div style={{ order: ordBlocco("settimana") }} className={nascosto("settimana") ? "hidden" : undefined}>
             {/* ── 3 · LA SETTIMANA E LE POSTAZIONI ────────────────────── */}
             <div className="mt-3 grid gap-3 lg:grid-cols-3">
               <div className="lg:col-span-2">
@@ -1316,6 +1425,8 @@ function Cruscotto({
               </Cornice>
             </div>
 
+            </div>
+            <div style={{ order: ordBlocco("aspetta") }} className={nascosto("aspetta") ? "hidden" : undefined}>
             {/* ── 4 · ASPETTA TE ──────────────────────────────────────── */}
             {/* ⚠️ Questa sezione è la ragione per cui un titolare torna ogni
                 giorno. Un cruscotto che mostra solo numeri si guarda per una
@@ -1374,6 +1485,8 @@ function Cruscotto({
               )}
             </div>
 
+            </div>
+            <div style={{ order: ordBlocco("magazzino") }} className={nascosto("magazzino") ? "hidden" : undefined}>
             {/* ── 5 · IL MAGAZZINO — già vero, dalle registrazioni dei suoi ── */}
             {/* ⚠️ Questa fascia non aspetta più gli scanner: i magazzinieri
                 registrano carichi e scarichi a mano, e questi numeri sono
@@ -1399,6 +1512,8 @@ function Cruscotto({
               </>
             ) : null}
 
+            </div>
+            <div style={{ order: ordBlocco("attesa") }} className={nascosto("attesa") ? "hidden" : undefined}>
             {/* ── 6 · QUELLO CHE ARRIVERÀ COI COLLEGAMENTI ────────────── */}
             {/* ⚠️ Cornici da grafico con gli assi disegnati e NESSUNA barra:
                 si vede che il posto è pronto e cosa lo riempirà, senza mostrare
@@ -1423,8 +1538,10 @@ function Cruscotto({
             </div>
 
             {/* ── 6 · LA SPIEGAZIONE ONESTA ───────────────────────────── */}
+            {/* `az-spiega`: col minimal «spiegazioni nascoste» questo testo lungo
+                sparisce. È esattamente la cosa che il capo asciuga per primo. */}
             <div
-              className="mt-9 rounded-xl border-l-2 bg-[var(--fill-quiet)] px-5 py-4"
+              className="az-spiega mt-9 rounded-xl border-l-2 bg-[var(--fill-quiet)] px-5 py-4"
               style={{ borderColor: "var(--accent)" }}
             >
               <p className="text-[13.5px] font-medium">
@@ -1438,7 +1555,8 @@ function Cruscotto({
                 vostri programmi, e non prima.
               </p>
             </div>
-          </>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -2056,15 +2174,25 @@ function Documenti({
  * letture entreranno in questo stesso registro e l'IA le analizzerà qui. La
  * cornice in fondo lo dice.
  */
+/** Riordina la barra dei tool secondo la scelta del capo, accodando i nuovi. */
+function ordinaTool(ordine: string[] | undefined, def: Strumento[]): Strumento[] {
+  if (!ordine || ordine.length === 0) return def;
+  const trovati = ordine.map((id) => def.find((s) => s.id === id)).filter(Boolean) as Strumento[];
+  const mancanti = def.filter((s) => !ordine.includes(s.id));
+  return [...trovati, ...mancanti];
+}
+
 function Banchina({
   postazione,
   nome,
   agenteVivo,
+  ordine,
   seScaduta,
 }: {
   postazione: PostazioneViva;
   nome?: string;
   agenteVivo: boolean;
+  ordine?: string[];
   seScaduta: (e: unknown) => void;
 }) {
   const [strumento, setStrumento] = useState("registro");
@@ -2084,7 +2212,7 @@ function Banchina({
   // ⚠️ La fila di strumenti in cima, come le barre del gestionale: ogni cosa
   // che si può fare in banchina è UNA VOCE CON LA SUA ICONA, non un percorso
   // da scoprire. «Molti tool da imparare» — Tommaso.
-  const strumenti: Strumento[] = [
+  const strumenti: Strumento[] = ordinaTool(ordine, [
     { id: "registro", nome: "Registro", icona: "magazzino" },
     { id: "carico", nome: "Carico", icona: "carico" },
     { id: "scarico", nome: "Scarico", icona: "scarico" },
@@ -2092,7 +2220,7 @@ function Banchina({
     { id: "problema", nome: "Problema", icona: "problema" },
     { id: "arrivi", nome: "In arrivo", icona: "traffico", badge: dati?.ritiri.length || 0 },
     { id: "agente", nome: "Agente", icona: "agente" },
-  ];
+  ]);
   const formAperto = ["carico", "scarico", "differenza", "problema"].includes(strumento);
 
   return (
@@ -2360,11 +2488,13 @@ function Ufficio({
   postazione,
   nome,
   agenteVivo,
+  ordine,
   seScaduta,
 }: {
   postazione: PostazioneViva;
   nome?: string;
   agenteVivo: boolean;
+  ordine?: string[];
   seScaduta: (e: unknown) => void;
 }) {
   const [strumento, setStrumento] = useState("ritiri");
@@ -2390,7 +2520,7 @@ function Ufficio({
   }
 
   const num = dati?.traffico;
-  const strumenti: Strumento[] = [
+  const strumenti: Strumento[] = ordinaTool(ordine, [
     { id: "ritiri", nome: "Ritiri", icona: "ritiro", badge: dati?.ritiri.length || 0 },
     { id: "prenota", nome: "Prenota", icona: "piu" },
     { id: "reclamo", nome: "Reclamo", icona: "reclamo" },
@@ -2398,7 +2528,7 @@ function Ufficio({
     { id: "dove", nome: "Dov'è il carico", icona: "cerca" },
     { id: "preventivo", nome: "Preventivo", icona: "agente" },
     { id: "agente", nome: "Agente", icona: "agente" },
-  ];
+  ]);
 
   // «Dov'è» e «Preventivo» non sono pannelli: sono domande. Aprono l'agente
   // con la frase già iniziata — e sui prezzi vale la regola di ferro del
@@ -3219,4 +3349,518 @@ function scaricaCsv(nomeFile: string, intestazioni: string[], righe: string[][])
   a.download = nomeFile;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SUPPORTO — la guida per ruolo e il modulo «scrivi al supporto»
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ La guida cambia col ruolo: al magazziniere non serve sapere come si
+ * promuove una persona, al titolare sì. Mostrare a ognuno solo quello che può
+ * fare è metà del «professionale»: l'altra metà è non annegarlo in cose che
+ * non lo riguardano.
+ */
+const GUIDA: Record<string, { titolo: string; punti: string[] }[]> = {
+  operatore: [
+    {
+      titolo: "In magazzino",
+      punti: [
+        "Apri Magazzino dalla barra in alto.",
+        "Premi Carico o Scarico, metti i colli e chi, e salva: la riga compare nel registro con la tua ora.",
+        "Se il conto non torna, premi Differenza: la vede il capo.",
+      ],
+    },
+    {
+      titolo: "Chiedere all'agente",
+      punti: [
+        "In ogni postazione c'è la scheda Agente.",
+        "Chiedi come parleresti a un collega: «quanti colli oggi?», «quanto dista Milano?».",
+        "Se non sa, lo dice e gira la domanda a una persona — non inventa mai.",
+      ],
+    },
+  ],
+  capo: [
+    {
+      titolo: "Il tuo reparto",
+      punti: [
+        "«Il reparto» mostra quanto usano lo strumento e le cose da controllare.",
+        "Vedi quante richieste fa ognuno, mai cosa scrive: è la legge, ed è giusto.",
+        "Le differenze e i reclami aperti li chiudi col bottone «Risolto».",
+      ],
+    },
+  ],
+  titolare: [
+    {
+      titolo: "Le persone",
+      punti: [
+        "In «Persone» promuovi chi entra: da operatore a capo, amministrazione, titolare.",
+        "Chi entra la prima volta è sempre operatore, qualunque cosa dichiari.",
+        "Puoi chiudere una postazione e riaprirla quando vuoi.",
+      ],
+    },
+    {
+      titolo: "Il sito su misura",
+      punti: [
+        "In «Impostazioni» scegli un template e poi sposti tutto come vuoi.",
+        "Ordini le voci in alto, i blocchi del cruscotto e i tool di ogni postazione.",
+        "Con «più minimal» asciughi spiegazioni e saluti: resta il software puro.",
+      ],
+    },
+    {
+      titolo: "I collegamenti",
+      punti: [
+        "Le fasce vuote (fatturato, spedizioni) aspettano i vostri programmi.",
+        "Appena colleghiamo K-Master, gli scanner o il gestionale, si accendono da sole.",
+        "Nel frattempo l'agente usa già le distanze (Maps) e tutto quello che registrate.",
+      ],
+    },
+  ],
+};
+
+function Supporto({
+  persona,
+  seScaduta,
+}: {
+  persona: PersonaViva;
+  seScaduta: (e: unknown) => void;
+}) {
+  const [testo, setTesto] = useState("");
+  const [inviato, setInviato] = useState(false);
+  const [inCorso, setInCorso] = useState(false);
+
+  const guida = [
+    ...(GUIDA[persona.ruolo] ?? GUIDA.operatore),
+    ...(persona.ruolo !== "operatore" ? GUIDA.operatore : []),
+  ];
+
+  async function invia() {
+    if (testo.trim().length < 3 || inCorso) return;
+    setInCorso(true);
+    try {
+      await manda({ az: "supporto", testo: testo.trim() });
+      setInviato(true);
+      setTesto("");
+    } catch (e) {
+      seScaduta(e);
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  return (
+    <Pagina
+      titolo="Supporto"
+      sotto="Come si usa, per il tuo ruolo. E se qualcosa non va, scrivici: rispondiamo noi."
+    >
+      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+        {/* ── La guida ─────────────────────────────────────────────── */}
+        <div className="space-y-5">
+          {guida.map((g, i) => (
+            <div key={i}>
+              <h3 className="text-[13.5px] font-semibold">{g.titolo}</h3>
+              <ul className="mt-2 space-y-1.5">
+                {g.punti.map((p, j) => (
+                  <li key={j} className="flex gap-2 text-[13px] leading-relaxed text-[var(--text-secondary)]">
+                    <span aria-hidden style={{ color: "var(--accent)" }}>
+                      —
+                    </span>
+                    <span>{p}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Scrivi al supporto ───────────────────────────────────── */}
+        <div className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-4 h-fit">
+          <div className="flex items-center gap-2">
+            <Icona nome="supporto" size={18} className="text-[var(--text-secondary)]" />
+            <h3 className="text-[13.5px] font-semibold">Scrivi al supporto</h3>
+          </div>
+          {inviato ? (
+            <p className="mt-3 text-[13px] leading-relaxed text-[var(--text-secondary)]">
+              Ricevuto. Ti rispondiamo il prima possibile — di solito in giornata.
+              <button
+                onClick={() => setInviato(false)}
+                className="mt-2 block cursor-pointer text-[12.5px] underline-offset-2 hover:underline"
+                style={{ color: "var(--accent)" }}
+              >
+                Scrivi un'altra cosa
+              </button>
+            </p>
+          ) : (
+            <>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+                Un problema, una cosa che non torna, un'idea. Arriva a noi con il tuo
+                nome già dentro.
+              </p>
+              <textarea
+                value={testo}
+                onChange={(e) => setTesto(e.target.value)}
+                placeholder="Cosa succede, o cosa ti serve…"
+                rows={5}
+                className="mt-2.5 w-full rounded-md border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-[16px] leading-relaxed outline-none focus:border-[var(--accent)] sm:text-[13.5px]"
+              />
+              <button
+                onClick={() => void invia()}
+                disabled={testo.trim().length < 3 || inCorso}
+                className="btn-grad mt-2.5 w-full cursor-pointer rounded-md py-2.5 text-[13.5px] font-medium disabled:opacity-40"
+              >
+                {inCorso ? "Invio…" : "Invia al supporto"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </Pagina>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// IMPOSTAZIONI — il capo decide come vogliono tutti il sito (Fase C2)
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ Quello che si cambia qui vale per TUTTI, non solo per il titolare: è lui
+ * che decide come l'azienda vede il sito. In cima la levetta Modifica ⟷
+ * Anteprima (voluta da Tommaso): in Anteprima le impostazioni della bozza si
+ * applicano davvero alla radice, così vedi il sito cambiare mentre scegli —
+ * e tornando a Modifica si rimette com'era finché non premi Salva.
+ */
+function Impostazioni({
+  sito,
+  onSalva,
+  seScaduta,
+}: {
+  sito: Sito;
+  onSalva: (s: Sito) => void;
+  seScaduta: (e: unknown) => void;
+}) {
+  const [bozza, setBozza] = useState<Sito>(sito);
+  const [salvato, setSalvato] = useState(false);
+  const [inCorso, setInCorso] = useState(false);
+  const [modo, setModo] = useState<"modifica" | "anteprima">("modifica");
+
+  const cambia = (patch: Partial<Sito>) => {
+    setBozza((b) => ({ ...b, ...patch }));
+    setSalvato(false);
+  };
+
+  // In anteprima si applica la bozza; tornando a modifica (o uscendo) si
+  // rimette quello che è salvato davvero, per non lasciare il sito «sporcato»
+  // di una scelta non confermata.
+  useEffect(() => {
+    if (modo === "anteprima") applicaSito(bozza);
+    else applicaSito(sito);
+  }, [modo, bozza, sito]);
+  useEffect(() => () => applicaSito(sito), [sito]);
+
+  const applicaTemplate = (id: string) => {
+    const t = TEMPLATE[id];
+    if (!t) return;
+    cambia(unisci({ ...bozza, ...t.sito }));
+  };
+  const toggleMinimal = (mm: Minimal) => {
+    const ha = bozza.minimal.includes(mm);
+    cambia({ minimal: ha ? bozza.minimal.filter((x) => x !== mm) : [...bozza.minimal, mm] });
+  };
+  async function salva() {
+    setInCorso(true);
+    try {
+      await manda({ az: "config-salva", impostazioni: bozza });
+      onSalva(bozza);
+      setSalvato(true);
+      setModo("modifica");
+    } catch (e) {
+      seScaduta(e);
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  const MINIMAL_NOMI: { id: Minimal; nome: string; sotto: string }[] = [
+    { id: "saluti", nome: "Via i saluti", sotto: "niente «Buongiorno», si apre e ci sono i numeri" },
+    { id: "spiegazioni", nome: "Spiegazioni nascoste", sotto: "i testi lunghi vanno dietro un piccolo segno" },
+    { id: "fitto", nome: "Righe più fitte", sotto: "densità da gestionale, più roba sullo schermo" },
+    { id: "tastiSoloMobile", nome: "Tasti grossi solo su telefono", sotto: "su PC solo la barra tool" },
+  ];
+  const salvaBtn = inCorso ? "Salvo…" : salvato ? "Salvato ✓" : "Salva per tutti";
+  const anteprima = modo === "anteprima";
+
+  return (
+    <div className="flex-1 overflow-y-auto px-5 py-7 md:px-8">
+      <div className="mx-auto max-w-[820px]">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-[19px] font-semibold tracking-[-0.02em]">Impostazioni del sito</h1>
+            <p className="mt-1 text-[13px] text-[var(--text-secondary)]">
+              Come lo vede tutta l'azienda. Metti in Anteprima per vederlo cambiare, poi Salva.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* La levetta Modifica ⟷ Anteprima */}
+            <div className="flex rounded-md border border-[var(--border)] p-0.5">
+              {(
+                [
+                  ["modifica", "Modifica"],
+                  ["anteprima", "Anteprima"],
+                ] as const
+              ).map(([id, et]) => (
+                <button
+                  key={id}
+                  onClick={() => setModo(id)}
+                  className={`flex cursor-pointer items-center gap-1.5 rounded px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
+                    modo === id
+                      ? "bg-[var(--accent-soft)] text-[var(--text-primary)]"
+                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  <Icona nome={id === "modifica" ? "impostazioni" : "occhio"} size={15} />
+                  {et}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => void salva()}
+              disabled={inCorso}
+              className="btn-grad shrink-0 cursor-pointer rounded-md px-5 py-2.5 text-[13.5px] font-medium disabled:opacity-50"
+            >
+              {salvaBtn}
+            </button>
+          </div>
+        </div>
+
+        {anteprima && (
+          <p
+            className="mt-4 rounded-md border-l-2 bg-[var(--fill-quiet)] px-4 py-2.5 text-[12.5px]"
+            style={{ borderColor: "var(--accent)" }}
+          >
+            Stai vedendo l'anteprima: densità e minimal sono già applicati a questa
+            pagina. Gira le altre sezioni per vedere l'effetto, poi torna qui e Salva.
+          </p>
+        )}
+
+        <Sez titolo="Parti da un template" sotto="Un punto di partenza. Poi sposti quello che vuoi.">
+          <div className="grid gap-2.5 sm:grid-cols-3">
+            {Object.entries(TEMPLATE).map(([id, t]) => (
+              <button
+                key={id}
+                onClick={() => applicaTemplate(id)}
+                className={`cursor-pointer rounded-md border p-3.5 text-left transition-colors ${
+                  bozza.template === id
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                    : "border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--accent)]"
+                }`}
+              >
+                <p className="text-[14px] font-semibold">{t.nome}</p>
+                <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">{t.sotto}</p>
+              </button>
+            ))}
+          </div>
+        </Sez>
+
+        <Sez titolo="Densità" sotto="Compatto per la scrivania, comodo per il telefono.">
+          <div className="flex gap-2">
+            {(
+              [
+                ["comodo", "Comodo", "più aria, tocchi grandi"],
+                ["compatto", "Compatto", "righe fitte, tutto in vista"],
+              ] as const
+            ).map(([id, nm, st]) => (
+              <button
+                key={id}
+                onClick={() => cambia({ densita: id })}
+                className={`flex-1 cursor-pointer rounded-md border p-3 text-left transition-colors ${
+                  bozza.densita === id
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                    : "border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--accent)]"
+                }`}
+              >
+                <p className="text-[13.5px] font-semibold">{nm}</p>
+                <p className="text-[12px] text-[var(--text-secondary)]">{st}</p>
+              </button>
+            ))}
+          </div>
+        </Sez>
+
+        <Sez titolo="Più minimal, più professionale" sotto="Asciuga quello che non ti serve.">
+          <div className="space-y-1.5">
+            {MINIMAL_NOMI.map((mm) => {
+              const on = bozza.minimal.includes(mm.id);
+              return (
+                <button
+                  key={mm.id}
+                  onClick={() => toggleMinimal(mm.id)}
+                  className="flex w-full items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--bg-card)] px-3.5 py-2.5 text-left hover:border-[var(--accent)]"
+                >
+                  <span
+                    aria-hidden
+                    className="flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors"
+                    style={{ background: on ? "var(--accent)" : "var(--border-strong)" }}
+                  >
+                    <span
+                      className="h-4 w-4 rounded-full bg-white transition-transform"
+                      style={{ transform: on ? "translateX(16px)" : "none" }}
+                    />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[13.5px] font-medium">{mm.nome}</span>
+                    <span className="block text-[12px] text-[var(--text-secondary)]">{mm.sotto}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Sez>
+
+        <Ordina
+          titolo="Le voci in alto"
+          sotto="Sposta e nascondi le voci della barra. Impostazioni e Supporto restano in fondo."
+          elenco={bozza.voci}
+          nascosti={bozza.vociNascoste}
+          nome={(k) => NOMI_VOCE[k] ?? k}
+          onOrdine={(voci) => cambia({ voci })}
+          onNascondi={(vociNascoste) => cambia({ vociNascoste })}
+        />
+        <Ordina
+          titolo="I blocchi del cruscotto"
+          sotto="Cosa vedi per primo aprendo il cruscotto, e cosa non vedi affatto."
+          elenco={bozza.blocchi}
+          nascosti={bozza.blocchiNascosti}
+          nome={(k) => NOMI_BLOCCO[k] ?? k}
+          onOrdine={(blocchi) => cambia({ blocchi })}
+          onNascondi={(blocchiNascosti) => cambia({ blocchiNascosti })}
+        />
+        <Ordina
+          titolo="I tool del magazzino"
+          sotto="La barra della banchina, nell'ordine che vuoi."
+          elenco={bozza.toolMagazzino}
+          nascosti={[]}
+          nome={(k) => NOMI_TOOL[k] ?? k}
+          onOrdine={(toolMagazzino) => cambia({ toolMagazzino })}
+        />
+        <Ordina
+          titolo="I tool del traffico"
+          sotto="La barra dell'ufficio, nell'ordine che vuoi."
+          elenco={bozza.toolTraffico}
+          nascosti={[]}
+          nome={(k) => NOMI_TOOL[k] ?? k}
+          onOrdine={(toolTraffico) => cambia({ toolTraffico })}
+        />
+
+        <div className="mt-8 flex justify-end">
+          <button
+            onClick={() => void salva()}
+            disabled={inCorso}
+            className="btn-grad cursor-pointer rounded-md px-5 py-2.5 text-[13.5px] font-medium disabled:opacity-50"
+          >
+            {salvaBtn}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const NOMI_VOCE: Record<string, string> = {
+  cruscotto: "Cruscotto",
+  traffico: "Traffico",
+  magazzino: "Magazzino",
+  autisti: "Autisti",
+  ammin: "Amministrazione",
+  clienti: "Clienti",
+  mezzi: "Mezzi",
+  persone: "Persone",
+  attivita: "Attività",
+  documenti: "Documenti",
+};
+
+const NOMI_TOOL: Record<string, string> = {
+  registro: "Registro",
+  carico: "Carico",
+  scarico: "Scarico",
+  differenza: "Differenza",
+  problema: "Problema",
+  arrivi: "In arrivo",
+  agente: "Agente",
+  ritiri: "Ritiri",
+  prenota: "Prenota",
+  reclamo: "Reclamo",
+  dove: "Dov'è il carico",
+  preventivo: "Preventivo",
+};
+
+function Sez({ titolo, sotto, children }: { titolo: string; sotto: string; children: React.ReactNode }) {
+  return (
+    <div className="mt-7">
+      <h2 className="text-[14px] font-semibold">{titolo}</h2>
+      <p className="mt-0.5 mb-3 text-[12.5px] text-[var(--text-secondary)]">{sotto}</p>
+      {children}
+    </div>
+  );
+}
+
+function Ordina({
+  titolo,
+  sotto,
+  elenco,
+  nascosti,
+  nome,
+  onOrdine,
+  onNascondi,
+}: {
+  titolo: string;
+  sotto: string;
+  elenco: string[];
+  nascosti: string[];
+  nome: (k: string) => string;
+  onOrdine: (v: string[]) => void;
+  onNascondi?: (v: string[]) => void;
+}) {
+  return (
+    <Sez titolo={titolo} sotto={sotto}>
+      <div className="overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-card)]">
+        {elenco.map((k, i) => {
+          const spento = nascosti.includes(k);
+          return (
+            <div
+              key={k}
+              className={`flex items-center gap-2 border-b border-[var(--border)] px-3 py-2 last:border-0 ${
+                spento ? "opacity-45" : ""
+              }`}
+            >
+              <span className="flex-1 text-[13.5px] font-medium">{nome(k)}</span>
+              {onNascondi && (
+                <button
+                  onClick={() => onNascondi(spento ? nascosti.filter((x) => x !== k) : [...nascosti, k])}
+                  title={spento ? "Mostra" : "Nascondi"}
+                  className="cursor-pointer rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+                >
+                  <Icona nome={spento ? "occhioNo" : "occhio"} size={16} />
+                </button>
+              )}
+              <button
+                onClick={() => onOrdine(sposta(elenco, i, -1))}
+                disabled={i === 0}
+                title="Su"
+                className="cursor-pointer rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)] disabled:opacity-25"
+              >
+                <Icona nome="su" size={16} />
+              </button>
+              <button
+                onClick={() => onOrdine(sposta(elenco, i, 1))}
+                disabled={i === elenco.length - 1}
+                title="Giù"
+                className="cursor-pointer rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)] disabled:opacity-25"
+              >
+                <Icona nome="giu" size={16} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </Sez>
+  );
 }

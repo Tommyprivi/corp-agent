@@ -705,3 +705,84 @@ export function istruzioni(
 
   return righe.join("\n");
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// LE IMPOSTAZIONI DEL SITO — il capo decide come disporre le cose
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Le impostazioni di un'azienda: template, densità, ordine dei blocchi e delle
+ * voci, tool per postazione. Un blob solo (migrazione 0026): si legge intero e
+ * si applica, non si interroga.
+ *
+ * ⚠️ Il default vive nel FRONTEND, non qui: se un domani cambiano i blocchi
+ * disponibili, cambia il default lì e il vecchio salvataggio resta valido —
+ * quello che non conosce lo ignora. Qui si restituisce `{}` e ci pensa il
+ * browser a riempirlo.
+ */
+export async function config(azienda: string): Promise<Record<string, unknown>> {
+  const r = await getPool().query<{ az_config: Record<string, unknown> }>(
+    "select public.az_config($1)",
+    [azienda]
+  );
+  return r.rows[0]?.az_config ?? {};
+}
+
+export async function salvaConfig(azienda: string, impostazioni: unknown): Promise<void> {
+  // ⚠️ Un tetto sulla dimensione: le impostazioni sono ordini e interruttori,
+  // non un posto dove infilare dati. 20 KB è dieci volte quello che servirà mai.
+  const testo = JSON.stringify(impostazioni ?? {});
+  if (testo.length > 20_000) throw new Error("Impostazioni troppo grandi.");
+  await getPool().query("select public.az_config_salva($1, $2::jsonb)", [azienda, testo]);
+}
+
+/**
+ * Il modulo «scrivi al supporto»: arriva a noi (corpagent7) via Resend, con
+ * nome e azienda già dentro l'oggetto, così la casella è un elenco scorribile.
+ *
+ * ⚠️ Muto sui fallimenti come tutti gli invii: un guasto di Resend non deve far
+ * fallire l'azione davanti a chi ha scritto. Restituisce sempre «preso in
+ * carico»: il messaggio è già salvato nell'attività, non si perde.
+ */
+export async function scriviAlSupporto(
+  chi: Persona,
+  testo: string
+): Promise<void> {
+  const chiaveResend = process.env.RESEND_API_KEY;
+  const destinatari = (process.env.AVVISI_A ?? "corpagent7@gmail.com")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!chiaveResend) return;
+
+  const nomeAzienda = AZIENDE[chi.azienda]?.nome ?? chi.azienda;
+  const corpo = [
+    `Supporto da ${nomeAzienda}`,
+    "",
+    `Da:      ${chi.nome || "(senza nome)"} <${chi.email}>`,
+    `Ruolo:   ${chi.ruolo_vero}${chi.reparto ? ` · ${chi.reparto}` : ""}`,
+    "",
+    "Messaggio:",
+    testo,
+  ].join("\n");
+
+  try {
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${chiaveResend}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM ?? "CorpAgent <onboarding@resend.dev>",
+        to: destinatari,
+        subject: `Supporto — ${nomeAzienda} (${chi.nome || chi.email})`,
+        text: corpo,
+        reply_to: chi.email || undefined,
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {
+    // Volutamente muto.
+  }
+}

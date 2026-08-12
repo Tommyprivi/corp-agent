@@ -480,6 +480,11 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       if (!titolare) return soloTitolare();
       return json({ attivita: await az.attivita(chi.azienda) }, 200);
 
+    case "config":
+      // Le impostazioni del sito le legge CHIUNQUE: servono ad applicare a
+      // ogni persona il modo in cui il titolare ha disposto le cose.
+      return json({ config: await az.config(chi.azienda) }, 200);
+
     case "cerca": {
       const q = (url.searchParams.get("q") ?? "").trim();
       if (q.length < 2) return json({ risultati: [] }, 200);
@@ -771,6 +776,23 @@ async function areaAzienda(
         "ruolo",
         `${String(corpo.ruolo)}${corpo.attiva === false ? " · postazione chiusa" : ""}`
       );
+      return json({ ok: true }, 200);
+    }
+
+    case "config-salva":
+      // ⚠️ Solo il titolare cambia il sito: è LUI che decide come lo vedono
+      // tutti. Un operatore che se lo riordina per sé sarebbe un'altra cosa —
+      // e non è quella che Tommaso ha chiesto.
+      if (!titolare) return negato();
+      await az.salvaConfig(chi.azienda, corpo.impostazioni);
+      az.segnaAttivita(chi.azienda, chi.persona, "impostazioni", String((corpo.impostazioni as { template?: string })?.template ?? ""));
+      return json({ ok: true }, 200);
+
+    case "supporto": {
+      const testo = String(corpo.testo ?? "").trim();
+      if (testo.length < 3) return json({ error: "Scrivi cosa ti serve." }, 400);
+      void az.scriviAlSupporto(chi, testo.slice(0, 4000));
+      az.segnaAttivita(chi.azienda, chi.persona, "supporto", testo.slice(0, 80));
       return json({ ok: true }, 200);
     }
 

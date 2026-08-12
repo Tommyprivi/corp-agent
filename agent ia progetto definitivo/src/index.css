@@ -958,3 +958,97 @@ body {
 .bordo-marchio {
   border-color: var(--marchio-secondario);
 }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   IL SITO SU MISURA — densità, minimal, animazioni (Fase C2)
+   ═════════════════════════════════════════════════════════════════════════
+   Voluto da Tommaso: il capo sceglie densità e «più minimal», e l'area diventa
+   più professionale. Come i temi e il marchio: un attributo sulla radice
+   (data-densita / data-minimal), e i componenti non sanno niente.
+
+   ⚠️ Vale SOLO dentro l'area azienda, mai sulla vetrina: la vetrina è nera e
+   animata per vendere. Qui si lavora, e «professionale» vuol dire calmo.
+
+   ⚠️ Chi ha «riduci animazioni» nel sistema (prefers-reduced-motion) non vede
+   nessuna transizione: è la cosa giusta e per alcuni una necessità medica. */
+
+/* ── Densità compatta: tutto un filo più stretto ──────────────────────── */
+:root[data-densita="compatto"] table td,
+:root[data-densita="compatto"] table th {
+  padding-top: 0.28rem;
+  padding-bottom: 0.28rem;
+}
+/* Il minimal «fitto»: font leggermente più piccolo su tutta l'area, così ci
+   sta più roba senza toccare ogni componente a mano. */
+:root[data-minimal~="fitto"] .flex.min-h-screen.flex-col,
+:root[data-minimal~="fitto"] main {
+  font-size: 0.94em;
+}
+:root[data-minimal~="fitto"] table td,
+:root[data-minimal~="fitto"] table th {
+  padding-top: 0.22rem;
+  padding-bottom: 0.22rem;
+}
+
+/* ── Minimal «spiegazioni nascoste»: i testi lunghi spariscono ────────── */
+:root[data-minimal~="spiegazioni"] .az-spiega {
+  display: none;
+}
+
+/* ── Minimal «tasti grossi solo su telefono» ──────────────────────────── */
+/* Sopra i 640px i tastoni della banchina/ufficio si abbassano a righe sobrie:
+   su un PC non servono le dita, serve la densità. */
+@media (min-width: 640px) {
+  :root[data-minimal~="tastiSoloMobile"] [data-tasto] {
+    min-height: 0 !important;
+    padding: 0.5rem 0.75rem !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+  }
+  :root[data-minimal~="tastiSoloMobile"] [data-tasto] [data-tasto-sotto] {
+    display: none;
+  }
+  :root[data-minimal~="tastiSoloMobile"] [data-tasto] svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* ── Scorrimento e animazioni professionali ───────────────────────────── */
+/* Lo scorrimento morbido quando si salta a una sezione, e una barra di
+   scorrimento sottile: due dettagli che fanno «software curato» senza urlare. */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-densita] main {
+    scroll-behavior: smooth;
+  }
+  /* I contenuti che entrano (tabelle, riquadri) salgono di un soffio: 6px e
+     via, mai un rimbalzo — il rimbalzo è da app, non da gestionale. */
+  :root[data-densita] main > * {
+    animation: az-entra 0.22s ease-out both;
+  }
+}
+@keyframes az-entra {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Barra di scorrimento sottile, dentro tutta l'area azienda. */
+:root[data-densita] main *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+:root[data-densita] main *::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 3px solid var(--bg-card);
+}
+:root[data-densita] main *::-webkit-scrollbar-track {
+  background: transparent;
+}
