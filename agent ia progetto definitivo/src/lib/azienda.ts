@@ -50,8 +50,12 @@ export class SessioneScaduta extends Error {
 export async function leggi<T>(cosa: string, extra: Record<string, string> = {}): Promise<T> {
   const t = gettone();
   if (!t) throw new SessioneScaduta();
-  const q = new URLSearchParams({ az: cosa, t, ...extra });
-  const r = await fetch(`/api/config?${q}`);
+  // ⚠️ Il gettone va nell'intestazione, non nell'URL: un gettone nella query
+  // finisce nei log di Vercel e di ogni proxy in mezzo, ed è valido tre mesi.
+  const q = new URLSearchParams({ az: cosa, ...extra });
+  const r = await fetch(`/api/config?${q}`, {
+    headers: { "x-azienda-sessione": t },
+  });
   if (r.status === 401) {
     salvaGettone(null);
     throw new SessioneScaduta();

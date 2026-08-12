@@ -24,8 +24,19 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { getPool } from "./db.js";
 
-/** L'unica azienda viva oggi. Il giorno del secondo cliente diventa un elenco. */
-export const AZIENDE: Record<string, { nome: string; postazioni: Postazione[] }> = {
+/**
+ * L'unica azienda viva oggi. Il giorno del secondo cliente diventa un elenco.
+ *
+ * ⚠️ Senza prototipo (`Object.create(null)`), e non è un vezzo: un oggetto
+ * normale risponde `AZIENDE["__proto__"]` con qualcosa di **truthy**, così una
+ * guardia `if (!AZIENDE[azienda])` verrebbe scavalcata mandando `azienda:
+ * "__proto__"`, e chi la manda si aprirebbe una postazione da titolare in un
+ * tenant fantasma. Senza prototipo, `__proto__` è una chiave mancante come
+ * un'altra, e la guardia regge.
+ */
+export const AZIENDE: Record<string, { nome: string; postazioni: Postazione[] }> = Object.assign(
+  Object.create(null) as Record<string, { nome: string; postazioni: Postazione[] }>,
+  {
   speed: {
     nome: "Speed Trasporti",
     postazioni: [
@@ -66,7 +77,8 @@ export const AZIENDE: Record<string, { nome: string; postazioni: Postazione[] }>
       },
     ],
   },
-};
+  }
+);
 
 export interface Postazione {
   id: string;

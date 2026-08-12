@@ -78,7 +78,7 @@ export default {
     }
 
     if (request.method === "GET" && url.searchParams.get("az")) {
-      return await leggiAzienda(url);
+      return await leggiAzienda(request, url);
     }
 
     if (request.method === "GET" && url.searchParams.get("stato")) {
@@ -323,7 +323,7 @@ async function rispondiQualifica(corpo: Record<string, unknown>): Promise<Respon
 // ═════════════════════════════════════════════════════════════════════════
 //
 //   POST { az: "entra"|"profilo"|"chat"|"cliente"|... }
-//   GET  ?az=stato|chat|clienti|persone|documenti|cruscotto  &t=<sessione>
+//   GET  ?az=stato|chat|...   con l'intestazione x-azienda-sessione: <gettone>
 //
 // ⚠️ Anche questa vive dentro `config.ts` per la ragione di sempre: **Vercel
 // Hobby ammette 12 funzioni** e siamo esattamente a 12. Un tredicesimo file non
@@ -334,16 +334,22 @@ async function rispondiQualifica(corpo: Record<string, unknown>): Promise<Respon
 // una delle righe `soloTitolare` qui sotto sparisse, un magazziniere vedrebbe
 // l'elenco delle persone e potrebbe promuoversi da solo.
 
-/** Il gettone di sessione, letto dall'intestazione o dalla query. */
-function gettone(request: Request | null, url: URL | null, corpo?: Record<string, unknown>): string {
+/**
+ * Il gettone di sessione.
+ *
+ * ⚠️ Sulle POST arriva nel corpo, sulle GET **nell'intestazione**, mai nella
+ * query. Un gettone nella query finisce nei log di Vercel e in quelli di ogni
+ * proxy in mezzo: è una credenziale valida tre mesi scritta in chiaro in un
+ * registro che non si cancella. Nell'intestazione no.
+ */
+function gettone(request: Request | null, corpo?: Record<string, unknown>): string {
   if (corpo && typeof corpo.t === "string") return corpo.t;
-  if (url) return url.searchParams.get("t") ?? "";
   if (request) return request.headers.get("x-azienda-sessione") ?? "";
   return "";
 }
 
-async function leggiAzienda(url: URL): Promise<Response> {
-  const chi = await az.sessione(gettone(null, url));
+async function leggiAzienda(request: Request, url: URL): Promise<Response> {
+  const chi = await az.sessione(gettone(request));
   if (!chi) return json({ error: "sessione" }, 401);
 
   const cosa = url.searchParams.get("az");
@@ -435,7 +441,7 @@ async function areaAzienda(
     );
   }
 
-  const chi = await az.sessione(gettone(null, null, corpo));
+  const chi = await az.sessione(gettone(null, corpo));
   if (!chi) return json({ error: "sessione" }, 401);
   const titolare = chi.ruolo_vero === "titolare";
 
