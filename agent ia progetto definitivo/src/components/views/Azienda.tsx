@@ -19,7 +19,18 @@ import {
   type RepartoDati,
 } from "../../lib/azienda";
 import { Attesa, Barre, Cornice, Linea, Sdraiate } from "../azienda/Grafici";
-import { Icona, type IconaNome } from "../azienda/Console";
+import {
+  BarraStrumenti,
+  Cella,
+  Icona,
+  Niente,
+  Riga,
+  Striscia,
+  Tabella,
+  Tasto,
+  type IconaNome,
+  type Strumento,
+} from "../azienda/Console";
 
 /**
  * L'area di un'azienda cliente — la prima è Speed Trasporti.
@@ -640,7 +651,7 @@ function Conversazione({
                 }}
                 className="flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-card)] px-3 py-1.5 text-[12.5px] font-medium transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
               >
-                <span aria-hidden>{f.icona}</span>
+                <Icona nome={f.icona} size={15} className="text-[var(--text-secondary)]" />
                 {f.etichetta}
               </button>
             ))}
@@ -694,7 +705,7 @@ function Conversazione({
                   : { borderColor: "var(--border)" }
               }
             >
-              🎤
+              <Icona nome="micro" size={19} />
             </button>
             <button
               type="submit"
@@ -728,11 +739,12 @@ type TipoMovimento = "carico" | "scarico" | "differenza" | "problema" | "ritiro"
 
 interface Funzione {
   etichetta: string;
-  icona: string;
+  icona: IconaNome;
   /** Se c'è, apre il form di registrazione. Se no, prefiltra la chat. */
   tipo?: TipoMovimento;
   prefisso?: string;
 }
+
 
 /**
  * ⚠️ Oggi solo il magazzino, per decisione di Tommaso: si parte da lì, il
@@ -740,11 +752,11 @@ interface Funzione {
  */
 const FUNZIONI: Record<string, Funzione[]> = {
   magazzino: [
-    { etichetta: "Carico", icona: "📥", tipo: "carico" },
-    { etichetta: "Scarico", icona: "📤", tipo: "scarico" },
-    { etichetta: "Differenza", icona: "⚠️", tipo: "differenza" },
-    { etichetta: "Dov'è…", icona: "🔎", prefisso: "Dov'è " },
-    { etichetta: "Problema", icona: "🛠️", tipo: "problema" },
+    { etichetta: "Carico", icona: "carico" as IconaNome, tipo: "carico" },
+    { etichetta: "Scarico", icona: "scarico" as IconaNome, tipo: "scarico" },
+    { etichetta: "Differenza", icona: "differenza" as IconaNome, tipo: "differenza" },
+    { etichetta: "Dov'è…", icona: "cerca" as IconaNome, prefisso: "Dov'è " },
+    { etichetta: "Problema", icona: "problema" as IconaNome, tipo: "problema" },
   ],
 };
 
@@ -834,10 +846,10 @@ function FormMovimento({
   function rigaConferma(): string {
     if (tipo === "carico") return `✅ Carico registrato: ${colli} colli${controparte ? ` da ${controparte}` : ""}${mezzo ? ` · ${mezzo}` : ""}.`;
     if (tipo === "scarico") return `✅ Scarico registrato: ${colli} colli${controparte ? ` per ${controparte}` : ""}${mezzo ? ` · ${mezzo}` : ""}.`;
-    if (tipo === "differenza") return `⚠️ Differenza segnalata: attesi ${atteso}, contati ${contato}. La vede il capo.`;
-    if (tipo === "ritiro") return `📋 Ritiro prenotato da ${controparte}${colli ? `, ${colli} colli` : ""}${quando ? ` — ${new Date(quando).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}. Lo vede anche il magazzino.`;
-    if (tipo === "reclamo") return `📣 Reclamo di ${controparte} registrato. Lo vede il capo e il titolare.`;
-    return "🛠️ Problema segnalato. Lo vede il capo e il titolare.";
+    if (tipo === "differenza") return `Differenza segnalata: attesi ${atteso}, contati ${contato}. La vede il capo.`;
+    if (tipo === "ritiro") return `Ritiro prenotato da ${controparte}${colli ? `, ${colli} colli` : ""}${quando ? ` — ${new Date(quando).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}. Lo vede anche il magazzino.`;
+    if (tipo === "reclamo") return `Reclamo di ${controparte} registrato. Lo vede il capo e il titolare.`;
+    return "Problema segnalato. Lo vede il capo e il titolare.";
   }
 
   return (
@@ -1307,7 +1319,7 @@ function Cruscotto({
                       className={`px-4 py-3 ${i > 0 ? "border-t border-[var(--border)]" : ""}`}
                     >
                       <p className="text-[13.5px] leading-relaxed">
-                        <span aria-hidden>{c.tipo === "problema" ? "🛠️ " : "⚠️ "}</span>
+                        <Icona nome={c.tipo === "problema" ? "problema" : "differenza"} size={14} className="mr-1.5 inline-block align-[-2px] text-[var(--text-secondary)]" />
                         {c.tipo === "differenza"
                           ? `Differenza al ${c.reparto.toLowerCase()}: attesi ${c.atteso}, contati ${c.contato}${c.testo ? ` — ${c.testo}` : ""}`
                           : c.testo || "(segnalazione)"}
@@ -2039,9 +2051,8 @@ function Banchina({
   agenteVivo: boolean;
   seScaduta: (e: unknown) => void;
 }) {
-  const [scheda, setScheda] = useState<"lavoro" | "agente">("lavoro");
+  const [strumento, setStrumento] = useState("registro");
   const [dati, setDati] = useState<Banchina | null>(null);
-  const [azione, setAzione] = useState<TipoMovimento | null>(null);
   const [fatto, setFatto] = useState<string | null>(null);
 
   const carica = useCallback(() => {
@@ -2053,215 +2064,216 @@ function Banchina({
   useEffect(() => carica(), [carica]);
 
   const mag = dati?.magazzino;
-  const AZIONI: { tipo: TipoMovimento; icona: string; nome: string; sotto: string }[] = [
-    { tipo: "carico", icona: "📥", nome: "Carico", sotto: "merce che entra" },
-    { tipo: "scarico", icona: "📤", nome: "Scarico", sotto: "merce che esce" },
-    { tipo: "differenza", icona: "⚠️", nome: "Differenza", sotto: "il conto non torna" },
-    { tipo: "problema", icona: "🛠️", nome: "Problema", sotto: "qualcosa non va" },
+  // ⚠️ La fila di strumenti in cima, come le barre del gestionale: ogni cosa
+  // che si può fare in banchina è UNA VOCE CON LA SUA ICONA, non un percorso
+  // da scoprire. «Molti tool da imparare» — Tommaso.
+  const strumenti: Strumento[] = [
+    { id: "registro", nome: "Registro", icona: "magazzino" },
+    { id: "carico", nome: "Carico", icona: "carico" },
+    { id: "scarico", nome: "Scarico", icona: "scarico" },
+    { id: "differenza", nome: "Differenza", icona: "differenza" },
+    { id: "problema", nome: "Problema", icona: "problema" },
+    { id: "arrivi", nome: "In arrivo", icona: "traffico", badge: dati?.ritiri.length || 0 },
+    { id: "agente", nome: "Agente", icona: "agente" },
   ];
+  const formAperto = ["carico", "scarico", "differenza", "problema"].includes(strumento);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-3.5 md:px-8">
-        <div>
-          <h1 className="text-[15.5px] font-semibold tracking-[-0.01em]">{postazione.nome}</h1>
-          <p className="mt-0.5 text-[12.5px] text-[var(--text-secondary)]">{postazione.cosa}</p>
+      <div className="border-b border-[var(--border)] bg-[var(--bg-card)]">
+        <div className="flex items-baseline gap-3 px-5 pt-3 md:px-8">
+          <h1 className="text-[15px] font-semibold tracking-[-0.01em]">{postazione.nome}</h1>
+          <p className="truncate text-[12px] text-[var(--text-secondary)]">{postazione.cosa}</p>
         </div>
-        {/* Le due schede: il lavoro davanti, l'agente a un tocco. */}
-        <div className="flex rounded-lg border border-[var(--border)] p-0.5">
-          {(
-            [
-              ["lavoro", "Banchina"],
-              ["agente", "Agente"],
-            ] as const
-          ).map(([id, etichetta]) => (
-            <button
-              key={id}
-              onClick={() => setScheda(id)}
-              className={`cursor-pointer rounded-md px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
-                scheda === id
-                  ? "bg-[var(--accent-soft)] text-[var(--text-primary)]"
-                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              }`}
-            >
-              {etichetta}
-            </button>
-          ))}
+        <div className="mt-1 px-3 md:px-6">
+          <BarraStrumenti strumenti={strumenti} attivo={strumento} onScegli={setStrumento} />
         </div>
       </div>
 
-      {scheda === "agente" ? (
+      {strumento === "agente" && (
         <Conversazione
           postazione={postazione}
           nome={nome}
           agenteVivo={agenteVivo}
           seScaduta={seScaduta}
         />
-      ) : (
-        <div className="flex-1 overflow-y-auto px-5 py-6 md:px-8">
+      )}
+
+      {formAperto && (
+        <div className="flex-1 overflow-y-auto px-5 py-5 md:px-8">
+          <div className="mx-auto max-w-[760px] overflow-hidden rounded-md border border-[var(--border)]">
+            <FormMovimento
+              tipo={strumento as TipoMovimento}
+              onChiudi={() => setStrumento("registro")}
+              onFatto={(riga) => {
+                setFatto(riga);
+                carica();
+                setStrumento("registro");
+              }}
+              seScaduta={seScaduta}
+            />
+          </div>
+        </div>
+      )}
+
+      {strumento === "arrivi" && (
+        <div className="flex-1 overflow-y-auto px-5 py-5 md:px-8">
           <div className="mx-auto max-w-[900px]">
-            {/* ── 1 · I BOTTONI GROSSI ───────────────────────────────── */}
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              {AZIONI.map((a) => (
-                <button
-                  key={a.tipo}
-                  onClick={() => {
-                    setAzione(a.tipo);
-                    setFatto(null);
-                  }}
-                  className={`cursor-pointer rounded-xl border p-4 text-left transition-colors ${
-                    azione === a.tipo
-                      ? "border-[var(--accent)] bg-[var(--accent-soft)]"
-                      : "border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--accent)]"
-                  }`}
-                >
-                  <span aria-hidden className="text-[26px] leading-none">
-                    {a.icona}
-                  </span>
-                  <span className="mt-2 block text-[14.5px] font-semibold">{a.nome}</span>
-                  <span className="block text-[11.5px] text-[var(--text-secondary)]">
-                    {a.sotto}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            {azione && (
-              <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)]">
-                <FormMovimento
-                  tipo={azione}
-                  onChiudi={() => setAzione(null)}
-                  onFatto={(riga) => {
-                    setAzione(null);
-                    setFatto(riga);
-                    carica();
-                  }}
-                  seScaduta={seScaduta}
-                />
-              </div>
+            <p className="mb-3 text-[12.5px] text-[var(--text-secondary)]">
+              Ritiri prenotati dal traffico e non ancora arrivati: la banchina sa
+              cosa arriva prima che arrivi.
+            </p>
+            {dati !== null && dati.ritiri.length === 0 && (
+              <Niente
+                titolo="Niente in arrivo"
+                testo="Quando il traffico prenota un ritiro, compare qui con cliente, colli e orario previsto."
+              />
             )}
+            {dati !== null && dati.ritiri.length > 0 && (
+              <Tabella
+                colonne={[
+                  { nome: "Cliente" },
+                  { nome: "Colli", larghezza: "70px", destra: true },
+                  { nome: "Note" },
+                  { nome: "Quando", larghezza: "170px", destra: true },
+                ]}
+              >
+                {dati.ritiri.map((r) => (
+                  <Riga key={r.id}>
+                    <Cella>
+                      <span className="font-medium">{r.controparte}</span>
+                    </Cella>
+                    <Cella destra>{r.colli ?? "—"}</Cella>
+                    <Cella tenue>{r.testo || "—"}</Cella>
+                    <Cella destra tenue>
+                      {r.previsto
+                        ? new Date(r.previsto).toLocaleString("it-IT", {
+                            weekday: "short",
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "senza orario"}
+                    </Cella>
+                  </Riga>
+                ))}
+              </Tabella>
+            )}
+          </div>
+        </div>
+      )}
 
-            {fatto && !azione && (
+      {strumento === "registro" && (
+        <div className="flex-1 overflow-y-auto px-5 py-5 md:px-8">
+          <div className="mx-auto max-w-[900px]">
+            {fatto && (
               <p
-                className="mt-3 rounded-xl border-l-2 bg-[var(--fill-quiet)] px-4 py-3 text-[13.5px]"
+                className="mb-4 rounded-md border-l-2 bg-[var(--fill-quiet)] px-4 py-3 text-[13.5px]"
                 style={{ borderColor: "var(--accent)" }}
               >
                 {fatto}
               </p>
             )}
 
-            {/* ── 2 · OGGI, CONTATO ──────────────────────────────────── */}
+            {/* I quattro tasti grossi: scorciatoie agli stessi strumenti della
+                barra, per chi lavora col pollice e i guanti. */}
+            <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+              <Tasto icona="carico" nome="Carico" sotto="merce che entra" onClick={() => setStrumento("carico")} />
+              <Tasto icona="scarico" nome="Scarico" sotto="merce che esce" onClick={() => setStrumento("scarico")} />
+              <Tasto icona="differenza" nome="Differenza" sotto="il conto non torna" onClick={() => setStrumento("differenza")} />
+              <Tasto icona="problema" nome="Problema" sotto="qualcosa non va" onClick={() => setStrumento("problema")} />
+            </div>
+
             {mag && (
-              <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Numero valore={String(mag.entrati)} titolo="Colli entrati" sotto="oggi" />
-                <Numero valore={String(mag.usciti)} titolo="Colli usciti" sotto="oggi" />
-                <Numero valore={String(mag.movimenti)} titolo="Movimenti" sotto="carichi e scarichi" />
-                <Numero valore={String(mag.differenze)} titolo="Differenze" sotto="segnalate al capo" />
+              <div className="mt-4">
+                <Striscia
+                  dati={[
+                    { valore: String(mag.entrati), etichetta: "Colli entrati oggi", forte: true },
+                    { valore: String(mag.usciti), etichetta: "Colli usciti oggi" },
+                    { valore: String(mag.movimenti), etichetta: "Movimenti" },
+                    { valore: String(mag.differenze), etichetta: "Differenze da controllare" },
+                  ]}
+                />
               </div>
             )}
 
-            {/* ── 3 · IL REGISTRO DEL GIORNO ─────────────────────────── */}
             <div className="mt-6">
-              <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+              <h2 className="mb-2 text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
                 Oggi in banchina
               </h2>
-              {dati === null && (
-                <p className="mt-3 text-[13px] text-[var(--text-secondary)]">Leggo…</p>
-              )}
+              {dati === null && <p className="text-[13px] text-[var(--text-secondary)]">Leggo…</p>}
               {dati !== null && dati.movimenti.length === 0 && (
-                <div className="mt-3 rounded-xl border border-dashed border-[var(--border)] p-6 text-center">
-                  <p className="text-[14px] font-medium">Ancora niente, oggi</p>
-                  <p className="mx-auto mt-1.5 max-w-[44ch] text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
-                    Il primo carico o scarico registrato compare qui, con chi
-                    l'ha fatto e a che ora — come la bolla di carta, ma viva.
-                  </p>
-                </div>
+                <Niente
+                  titolo="Ancora niente, oggi"
+                  testo="Il primo carico o scarico registrato compare qui, con chi l'ha fatto e a che ora — come la bolla di carta, ma viva."
+                />
               )}
               {dati !== null && dati.movimenti.length > 0 && (
-                <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
-                  {dati.movimenti.map((mv, i) => (
-                    <div
-                      key={mv.id}
-                      className={`flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-4 py-2.5 ${
-                        i > 0 ? "border-t border-[var(--border)]" : ""
-                      }`}
-                    >
-                      <span aria-hidden className="text-[15px]">
-                        {mv.tipo === "carico"
-                          ? "📥"
-                          : mv.tipo === "scarico"
-                            ? "📤"
-                            : mv.tipo === "differenza"
-                              ? "⚠️"
-                              : "🛠️"}
-                      </span>
-                      <span className="min-w-0 flex-1 text-[13.5px]">
+                <Tabella
+                  colonne={[
+                    { nome: "", larghezza: "34px" },
+                    { nome: "Movimento" },
+                    { nome: "Mezzo", larghezza: "140px" },
+                    { nome: "Stato", larghezza: "90px" },
+                    { nome: "Chi · ora", larghezza: "170px", destra: true },
+                  ]}
+                >
+                  {dati.movimenti.map((mv) => (
+                    <Riga key={mv.id}>
+                      <Cella>
+                        <Icona
+                          nome={
+                            mv.tipo === "carico"
+                              ? "carico"
+                              : mv.tipo === "scarico"
+                                ? "scarico"
+                                : mv.tipo === "ritiro"
+                                  ? "ritiro"
+                                  : mv.tipo === "reclamo"
+                                    ? "reclamo"
+                                    : mv.tipo === "differenza"
+                                      ? "differenza"
+                                      : "problema"
+                          }
+                          size={16}
+                          className="text-[var(--text-secondary)]"
+                        />
+                      </Cella>
+                      <Cella>
                         {mv.tipo === "carico" && `${mv.colli ?? "?"} colli${mv.controparte ? ` da ${mv.controparte}` : ""}`}
                         {mv.tipo === "scarico" && `${mv.colli ?? "?"} colli${mv.controparte ? ` per ${mv.controparte}` : ""}`}
-                        {mv.tipo === "differenza" && `attesi ${mv.atteso}, contati ${mv.contato}${mv.testo ? ` — ${mv.testo}` : ""}`}
-                        {mv.tipo === "problema" && (mv.testo || "segnalazione")}
-                        {mv.mezzo ? ` · ${mv.mezzo}` : ""}
-                      </span>
-                      <span className="shrink-0 text-[11.5px] text-[var(--text-secondary)]">
+                        {mv.tipo === "differenza" && `Attesi ${mv.atteso}, contati ${mv.contato}${mv.testo ? ` — ${mv.testo}` : ""}`}
+                        {mv.tipo === "problema" && (mv.testo || "Segnalazione")}
+                        {mv.tipo === "ritiro" && `Ritiro da ${mv.controparte}${mv.colli ? `, ${mv.colli} colli` : ""}`}
+                        {mv.tipo === "reclamo" && `Reclamo di ${mv.controparte}${mv.testo ? ` — ${mv.testo}` : ""}`}
+                      </Cella>
+                      <Cella tenue>{mv.mezzo || "—"}</Cella>
+                      <Cella tenue>
+                        {["problema", "differenza", "reclamo", "ritiro"].includes(mv.tipo)
+                          ? mv.stato === "aperto"
+                            ? "aperto"
+                            : "chiuso"
+                          : "—"}
+                      </Cella>
+                      <Cella destra tenue>
                         {mv.chi ? `${mv.chi} · ` : ""}
                         {new Date(mv.creato).toLocaleTimeString("it-IT", {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
-                        {(mv.tipo === "problema" || mv.tipo === "differenza") &&
-                          (mv.stato === "aperto" ? " · dal capo" : " · risolto")}
-                      </span>
-                    </div>
+                      </Cella>
+                    </Riga>
                   ))}
-                </div>
+                </Tabella>
               )}
             </div>
 
-            {/* ── 4 · IN ARRIVO — i ritiri prenotati dal traffico ────── */}
-            {/* ⚠️ È il primo pezzo dei reparti che si parlano: il traffico
-                prenota, la banchina sa cosa arriva prima che arrivi. */}
-            {dati !== null && dati.ritiri.length > 0 && (
-              <div className="mt-6">
-                <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
-                  In arrivo · prenotato dal traffico
-                </h2>
-                <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
-                  {dati.ritiri.map((r, i) => (
-                    <div
-                      key={r.id}
-                      className={`flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-4 py-2.5 ${
-                        i > 0 ? "border-t border-[var(--border)]" : ""
-                      }`}
-                    >
-                      <span aria-hidden className="text-[15px]">🚚</span>
-                      <span className="min-w-0 flex-1 text-[13.5px]">
-                        {r.controparte}
-                        {r.colli ? ` · ${r.colli} colli` : ""}
-                        {r.testo ? ` · ${r.testo}` : ""}
-                      </span>
-                      <span className="shrink-0 text-[11.5px] text-[var(--text-secondary)]">
-                        {r.previsto
-                          ? new Date(r.previsto).toLocaleString("it-IT", {
-                              weekday: "short",
-                              day: "numeric",
-                              month: "short",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "senza orario"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── 5 · GLI SCANNER, QUANDO ARRIVANO ───────────────────── */}
-            <div className="mt-6 rounded-xl border border-dashed border-[var(--border)] px-5 py-4">
+            <div className="mt-6 rounded-md border border-dashed border-[var(--border)] px-5 py-4">
               <p className="text-[13px] font-medium">Gli scanner passeranno di qui</p>
               <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
-                Quando colleghiamo gli scanner del magazzino, ogni lettura entra
-                in questo registro da sola e l'IA la analizza: conteggi
+                Quando colleghiamo le scanner-stampanti e i palmari, ogni lettura
+                entra in questo registro da sola e l'IA la analizza: conteggi
                 automatici, differenze trovate al volo, zero doppia scrittura.
                 Fino ad allora, si registra da qui — e vale uguale.
               </p>
@@ -2295,10 +2307,9 @@ function Ufficio({
   agenteVivo: boolean;
   seScaduta: (e: unknown) => void;
 }) {
-  const [scheda, setScheda] = useState<"lavoro" | "agente">("lavoro");
+  const [strumento, setStrumento] = useState("ritiri");
   const [prefill, setPrefill] = useState<string | undefined>(undefined);
   const [dati, setDati] = useState<UfficioDati | null>(null);
-  const [azione, setAzione] = useState<TipoMovimento | null>(null);
   const [fatto, setFatto] = useState<string | null>(null);
 
   const carica = useCallback(() => {
@@ -2319,37 +2330,46 @@ function Ufficio({
   }
 
   const num = dati?.traffico;
+  const strumenti: Strumento[] = [
+    { id: "ritiri", nome: "Ritiri", icona: "ritiro", badge: dati?.ritiri.length || 0 },
+    { id: "prenota", nome: "Prenota", icona: "piu" },
+    { id: "reclamo", nome: "Reclamo", icona: "reclamo" },
+    { id: "registro", nome: "Registro", icona: "traffico" },
+    { id: "dove", nome: "Dov'è il carico", icona: "cerca" },
+    { id: "preventivo", nome: "Preventivo", icona: "agente" },
+    { id: "agente", nome: "Agente", icona: "agente" },
+  ];
+
+  // «Dov'è» e «Preventivo» non sono pannelli: sono domande. Aprono l'agente
+  // con la frase già iniziata — e sui prezzi vale la regola di ferro del
+  // titolare, scritta nelle istruzioni: solo dal listino, se no passa.
+  function scegli(id: string) {
+    if (id === "dove") {
+      setPrefill("Dov'è il carico ");
+      setStrumento("agente");
+      return;
+    }
+    if (id === "preventivo") {
+      setPrefill("Mi serve un preventivo per ");
+      setStrumento("agente");
+      return;
+    }
+    setStrumento(id);
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-3.5 md:px-8">
-        <div>
-          <h1 className="text-[15.5px] font-semibold tracking-[-0.01em]">{postazione.nome}</h1>
-          <p className="mt-0.5 text-[12.5px] text-[var(--text-secondary)]">{postazione.cosa}</p>
+      <div className="border-b border-[var(--border)] bg-[var(--bg-card)]">
+        <div className="flex items-baseline gap-3 px-5 pt-3 md:px-8">
+          <h1 className="text-[15px] font-semibold tracking-[-0.01em]">{postazione.nome}</h1>
+          <p className="truncate text-[12px] text-[var(--text-secondary)]">{postazione.cosa}</p>
         </div>
-        <div className="flex rounded-lg border border-[var(--border)] p-0.5">
-          {(
-            [
-              ["lavoro", "Ufficio"],
-              ["agente", "Agente"],
-            ] as const
-          ).map(([id, etichetta]) => (
-            <button
-              key={id}
-              onClick={() => setScheda(id)}
-              className={`cursor-pointer rounded-md px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
-                scheda === id
-                  ? "bg-[var(--accent-soft)] text-[var(--text-primary)]"
-                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              }`}
-            >
-              {etichetta}
-            </button>
-          ))}
+        <div className="mt-1 px-3 md:px-6">
+          <BarraStrumenti strumenti={strumenti} attivo={strumento} onScegli={scegli} />
         </div>
       </div>
 
-      {scheda === "agente" ? (
+      {strumento === "agente" && (
         <Conversazione
           postazione={postazione}
           nome={nome}
@@ -2357,152 +2377,151 @@ function Ufficio({
           testoIniziale={prefill}
           seScaduta={seScaduta}
         />
-      ) : (
-        <div className="flex-1 overflow-y-auto px-5 py-6 md:px-8">
+      )}
+
+      {(strumento === "prenota" || strumento === "reclamo") && (
+        <div className="flex-1 overflow-y-auto px-5 py-5 md:px-8">
+          <div className="mx-auto max-w-[760px] overflow-hidden rounded-md border border-[var(--border)]">
+            <FormMovimento
+              tipo={strumento === "prenota" ? "ritiro" : "reclamo"}
+              onChiudi={() => setStrumento("ritiri")}
+              onFatto={(riga) => {
+                setFatto(riga);
+                carica();
+                setStrumento("ritiri");
+              }}
+              seScaduta={seScaduta}
+            />
+          </div>
+        </div>
+      )}
+
+      {strumento === "registro" && (
+        <div className="flex-1 overflow-y-auto px-5 py-5 md:px-8">
           <div className="mx-auto max-w-[900px]">
-            {/* ── 1 · LE AZIONI ──────────────────────────────────────── */}
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <button
-                onClick={() => {
-                  setAzione("ritiro");
-                  setFatto(null);
-                }}
-                className={`cursor-pointer rounded-xl border p-4 text-left transition-colors ${
-                  azione === "ritiro"
-                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
-                    : "border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--accent)]"
-                }`}
-              >
-                <span aria-hidden className="text-[26px] leading-none">📋</span>
-                <span className="mt-2 block text-[14.5px] font-semibold">Prenota ritiro</span>
-                <span className="block text-[11.5px] text-[var(--text-secondary)]">lo vede il magazzino</span>
-              </button>
-              <button
-                onClick={() => {
-                  setPrefill("Mi serve un preventivo per ");
-                  setScheda("agente");
-                }}
-                className="cursor-pointer rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 text-left transition-colors hover:border-[var(--accent)]"
-              >
-                <span aria-hidden className="text-[26px] leading-none">💶</span>
-                <span className="mt-2 block text-[14.5px] font-semibold">Preventivo</span>
-                <span className="block text-[11.5px] text-[var(--text-secondary)]">solo dal listino</span>
-              </button>
-              <button
-                onClick={() => {
-                  setPrefill("Dov'è il carico ");
-                  setScheda("agente");
-                }}
-                className="cursor-pointer rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 text-left transition-colors hover:border-[var(--accent)]"
-              >
-                <span aria-hidden className="text-[26px] leading-none">🔎</span>
-                <span className="mt-2 block text-[14.5px] font-semibold">Dov'è il carico</span>
-                <span className="block text-[11.5px] text-[var(--text-secondary)]">chiedi all'agente</span>
-              </button>
-              <button
-                onClick={() => {
-                  setAzione("reclamo");
-                  setFatto(null);
-                }}
-                className={`cursor-pointer rounded-xl border p-4 text-left transition-colors ${
-                  azione === "reclamo"
-                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
-                    : "border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--accent)]"
-                }`}
-              >
-                <span aria-hidden className="text-[26px] leading-none">📣</span>
-                <span className="mt-2 block text-[14.5px] font-semibold">Reclamo</span>
-                <span className="block text-[11.5px] text-[var(--text-secondary)]">va al capo e al titolare</span>
-              </button>
-            </div>
-
-            {azione && (
-              <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)]">
-                <FormMovimento
-                  tipo={azione}
-                  onChiudi={() => setAzione(null)}
-                  onFatto={(riga) => {
-                    setAzione(null);
-                    setFatto(riga);
-                    carica();
-                  }}
-                  seScaduta={seScaduta}
-                />
-              </div>
+            <p className="mb-3 text-[12.5px] text-[var(--text-secondary)]">
+              Quello che l'ufficio ha registrato oggi: prenotazioni e reclami, con
+              chi e a che ora.
+            </p>
+            {dati === null && <p className="text-[13px] text-[var(--text-secondary)]">Leggo…</p>}
+            {dati !== null && dati.movimenti.length === 0 && (
+              <Niente
+                titolo="Ancora niente, oggi"
+                testo="Le prenotazioni e i reclami registrati oggi compaiono qui."
+              />
             )}
+            {dati !== null && dati.movimenti.length > 0 && (
+              <Tabella
+                colonne={[
+                  { nome: "", larghezza: "34px" },
+                  { nome: "Registrazione" },
+                  { nome: "Stato", larghezza: "90px" },
+                  { nome: "Chi · ora", larghezza: "170px", destra: true },
+                ]}
+              >
+                {dati.movimenti.map((mv) => (
+                  <Riga key={mv.id}>
+                    <Cella>
+                      <Icona
+                        nome={mv.tipo === "ritiro" ? "ritiro" : mv.tipo === "reclamo" ? "reclamo" : "problema"}
+                        size={16}
+                        className="text-[var(--text-secondary)]"
+                      />
+                    </Cella>
+                    <Cella>
+                      {mv.tipo === "ritiro" && `Ritiro da ${mv.controparte}${mv.colli ? `, ${mv.colli} colli` : ""}${mv.testo ? ` · ${mv.testo}` : ""}`}
+                      {mv.tipo === "reclamo" && `Reclamo di ${mv.controparte}${mv.testo ? ` — ${mv.testo}` : ""}`}
+                      {mv.tipo !== "ritiro" && mv.tipo !== "reclamo" && (mv.testo || mv.tipo)}
+                    </Cella>
+                    <Cella tenue>{mv.stato === "aperto" ? "aperto" : "chiuso"}</Cella>
+                    <Cella destra tenue>
+                      {mv.chi ? `${mv.chi} · ` : ""}
+                      {new Date(mv.creato).toLocaleTimeString("it-IT", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </Cella>
+                  </Riga>
+                ))}
+              </Tabella>
+            )}
+          </div>
+        </div>
+      )}
 
-            {fatto && !azione && (
+      {strumento === "ritiri" && (
+        <div className="flex-1 overflow-y-auto px-5 py-5 md:px-8">
+          <div className="mx-auto max-w-[900px]">
+            {fatto && (
               <p
-                className="mt-3 rounded-xl border-l-2 bg-[var(--fill-quiet)] px-4 py-3 text-[13.5px]"
+                className="mb-4 rounded-md border-l-2 bg-[var(--fill-quiet)] px-4 py-3 text-[13.5px]"
                 style={{ borderColor: "var(--accent)" }}
               >
                 {fatto}
               </p>
             )}
 
-            {/* ── 2 · I NUMERI ───────────────────────────────────────── */}
             {num && (
-              <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                <Numero valore={String(num.ritiri_prenotati)} titolo="Ritiri prenotati" sotto="oggi" />
-                <Numero valore={String(num.ritiri_aperti)} titolo="Ritiri da fare" sotto="in tutto" />
-                <Numero valore={String(num.reclami_aperti)} titolo="Reclami aperti" sotto="dal capo" />
-              </div>
+              <Striscia
+                dati={[
+                  { valore: String(num.ritiri_prenotati), etichetta: "Ritiri prenotati oggi", forte: true },
+                  { valore: String(num.ritiri_aperti), etichetta: "Ritiri da fare" },
+                  { valore: String(num.reclami_aperti), etichetta: "Reclami aperti" },
+                ]}
+              />
             )}
 
-            {/* ── 3 · I RITIRI DA FARE ───────────────────────────────── */}
             <div className="mt-6">
-              <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+              <h2 className="mb-2 text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
                 Ritiri da fare
               </h2>
-              {dati === null && (
-                <p className="mt-3 text-[13px] text-[var(--text-secondary)]">Leggo…</p>
-              )}
+              {dati === null && <p className="text-[13px] text-[var(--text-secondary)]">Leggo…</p>}
               {dati !== null && dati.ritiri.length === 0 && (
-                <div className="mt-3 rounded-xl border border-dashed border-[var(--border)] p-6 text-center">
-                  <p className="text-[14px] font-medium">Nessun ritiro in coda</p>
-                  <p className="mx-auto mt-1.5 max-w-[44ch] text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
-                    Quando prenoti un ritiro compare qui — e nella banchina del
-                    magazzino, così sanno cosa arriva.
-                  </p>
-                </div>
+                <Niente
+                  titolo="Nessun ritiro in coda"
+                  testo="Quando prenoti un ritiro compare qui — e nella banchina del magazzino, così sanno cosa arriva."
+                />
               )}
               {dati !== null && dati.ritiri.length > 0 && (
-                <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
-                  {dati.ritiri.map((r, i) => (
-                    <div
-                      key={r.id}
-                      className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${
-                        i > 0 ? "border-t border-[var(--border)]" : ""
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13.5px] font-medium">
-                          {r.controparte}
-                          {r.colli ? ` · ${r.colli} colli` : ""}
-                        </p>
-                        <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">
-                          {r.previsto
-                            ? new Date(r.previsto).toLocaleString("it-IT", {
-                                weekday: "short",
-                                day: "numeric",
-                                month: "short",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })
-                            : "senza orario"}
-                          {r.testo ? ` · ${r.testo}` : ""}
-                          {r.chi ? ` · prenotato da ${r.chi}` : ""}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => void ritiroFatto(r.id)}
-                        className="shrink-0 cursor-pointer rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12.5px] font-medium hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
-                      >
-                        Fatto
-                      </button>
-                    </div>
+                <Tabella
+                  colonne={[
+                    { nome: "Cliente" },
+                    { nome: "Colli", larghezza: "70px", destra: true },
+                    { nome: "Note" },
+                    { nome: "Quando", larghezza: "160px" },
+                    { nome: "", larghezza: "80px", destra: true },
+                  ]}
+                >
+                  {dati.ritiri.map((r) => (
+                    <Riga key={r.id}>
+                      <Cella>
+                        <span className="font-medium">{r.controparte}</span>
+                        {r.chi ? <span className="text-[var(--text-secondary)]"> · da {r.chi}</span> : ""}
+                      </Cella>
+                      <Cella destra>{r.colli ?? "—"}</Cella>
+                      <Cella tenue>{r.testo || "—"}</Cella>
+                      <Cella tenue>
+                        {r.previsto
+                          ? new Date(r.previsto).toLocaleString("it-IT", {
+                              weekday: "short",
+                              day: "numeric",
+                              month: "short",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "senza orario"}
+                      </Cella>
+                      <Cella destra>
+                        <button
+                          onClick={() => void ritiroFatto(r.id)}
+                          className="cursor-pointer rounded-md border border-[var(--border)] px-2.5 py-1 text-[12px] font-medium hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                        >
+                          Fatto
+                        </button>
+                      </Cella>
+                    </Riga>
                   ))}
-                </div>
+                </Tabella>
               )}
             </div>
           </div>
@@ -2596,7 +2615,7 @@ function Reparto({
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-[13.5px] leading-relaxed">
-                          <span aria-hidden>{c.tipo === "problema" ? "🛠️ " : "⚠️ "}</span>
+                          <Icona nome={c.tipo === "problema" ? "problema" : "differenza"} size={14} className="mr-1.5 inline-block align-[-2px] text-[var(--text-secondary)]" />
                           {c.tipo === "differenza"
                             ? `Differenza: attesi ${c.atteso}, contati ${c.contato}${c.testo ? ` — ${c.testo}` : ""}`
                             : c.testo || "(segnalazione senza testo)"}
