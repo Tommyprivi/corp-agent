@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { applicaMarchio, MARCHI } from "../../lib/marchio";
+import { useTheme } from "../../lib/theme";
 import AziendaProfilo, { RUOLI } from "./AziendaProfilo";
 import {
   gettone,
@@ -330,6 +331,7 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
             }}
             seScaduta={seScaduta}
           />
+          <LevettaTema />
           <Campanella seScaduta={seScaduta} />
           <span className="hidden text-right sm:block">
             <span className="block text-[12.5px] font-medium leading-tight">
@@ -1258,7 +1260,10 @@ function Cruscotto({
         )}
 
         {dati && (
-          <div className="flex flex-col">
+          // ⚠️ `gap` + divisori fra i blocchi: «sezioni più separate» (Tommaso).
+          // Il gap vale fra gli elementi flex a prescindere dall'ordine, quindi
+          // regge anche quando il capo li riordina.
+          <div className="mt-6 flex flex-col gap-6 [&>div]:border-t [&>div]:border-[var(--border)] [&>div]:pt-6 [&>div:first-child]:border-t-0 [&>div:first-child]:pt-0 [&>div>*:first-child]:!mt-0">
             <div style={{ order: ordBlocco("direzione") }} className={nascosto("direzione") ? "hidden" : undefined}>
             {/* ── 0 · L'AGENTE CHE GUARDA TUTTA L'AZIENDA ──────────────── */}
             {/* ⚠️ È la cosa che fa sentire l'IA in TUTTA l'azienda e non solo
@@ -2195,7 +2200,9 @@ function Banchina({
   ordine?: string[];
   seScaduta: (e: unknown) => void;
 }) {
-  const [strumento, setStrumento] = useState("registro");
+  // ⚠️ Si apre sull'AGENTE, non sul registro: Tommaso vuole poca manualità
+  // (i dati veri sono già in Assistant), quindi la prima cosa è la chat.
+  const [strumento, setStrumento] = useState("agente");
   const [dati, setDati] = useState<Banchina | null>(null);
   const [fatto, setFatto] = useState<string | null>(null);
   const [filtro, setFiltro] = useState("tutti");
@@ -2497,7 +2504,8 @@ function Ufficio({
   ordine?: string[];
   seScaduta: (e: unknown) => void;
 }) {
-  const [strumento, setStrumento] = useState("ritiri");
+  // ⚠️ Anche il traffico si apre sull'agente: poca manualità, prima la chat.
+  const [strumento, setStrumento] = useState("agente");
   const [prefill, setPrefill] = useState<string | undefined>(undefined);
   const [dati, setDati] = useState<UfficioDati | null>(null);
   const [fatto, setFatto] = useState<string | null>(null);
@@ -3862,5 +3870,30 @@ function Ordina({
         })}
       </div>
     </Sez>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LA LEVETTA CHIARO/SCURO
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ È una preferenza del DISPOSITIVO, non della persona (vive in
+ * localStorage, gestita da theme.ts): chi lavora al chiaro in banchina e al
+ * buio in cabina vuole due impostazioni diverse sui due schermi. Sta nella
+ * testata dell'area azienda, non muove niente della vetrina pubblica.
+ */
+function LevettaTema() {
+  const { theme, toggle } = useTheme();
+  const scuro = theme === "dark";
+  return (
+    <button
+      onClick={toggle}
+      title={scuro ? "Passa al chiaro" : "Passa allo scuro"}
+      aria-label={scuro ? "Passa al chiaro" : "Passa allo scuro"}
+      className="cursor-pointer rounded-md p-1.5 text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+    >
+      <Icona nome={scuro ? "sole" : "luna"} size={18} />
+    </button>
   );
 }

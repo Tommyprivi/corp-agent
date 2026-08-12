@@ -53,7 +53,9 @@ type IconaNome =
   | "su"
   | "giu"
   | "occhio"
-  | "occhioNo";
+  | "occhioNo"
+  | "sole"
+  | "luna";
 
 const TRATTI: Record<IconaNome, ReactNode> = {
   cruscotto: (
@@ -224,6 +226,13 @@ const TRATTI: Record<IconaNome, ReactNode> = {
       <path d="M4 4l16 16M9.5 9.5a2.5 2.5 0 0 0 3 3M6.5 6.7C3.9 8.2 2 12 2 12s3.5 6.5 10 6.5c1.6 0 3-.4 4.2-1M12 5.5c6 0 10 6.5 10 6.5s-.8 1.5-2.3 3" />
     </>
   ),
+  sole: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" />
+    </>
+  ),
+  luna: <path d="M20 14.5A8 8 0 0 1 9.5 4a7 7 0 1 0 10.5 10.5z" />,
 };
 
 export function Icona({

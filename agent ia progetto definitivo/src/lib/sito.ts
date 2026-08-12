@@ -49,26 +49,30 @@ export const NOMI_BLOCCO: Record<string, string> = {
   attesa: "In attesa dei collegamenti",
 };
 
-/** I tool della banchina (magazzino), nell'ordine di default. */
+/**
+ * I tool della banchina (magazzino), nell'ordine di default.
+ * ⚠️ L'agente è PRIMO: Tommaso vuole che aprendo la postazione compaia lui.
+ * Il capo può riordinare, ma di serie il primo tocco è la chat.
+ */
 export const TOOL_MAGAZZINO_DEF = [
+  "agente",
   "registro",
   "carico",
   "scarico",
   "differenza",
   "problema",
   "arrivi",
-  "agente",
 ];
 
-/** I tool dell'ufficio (traffico), nell'ordine di default. */
+/** I tool dell'ufficio (traffico), nell'ordine di default. L'agente è primo. */
 export const TOOL_TRAFFICO_DEF = [
+  "agente",
   "ritiri",
   "prenota",
   "reclamo",
   "registro",
   "dove",
   "preventivo",
-  "agente",
 ];
 
 export type Densita = "compatto" | "comodo";
