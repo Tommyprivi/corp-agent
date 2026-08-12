@@ -932,6 +932,21 @@ body {
     var(--marchio-primario-scuro) 100%
   );
   --on-primary: var(--marchio-su-primario);
+
+  /* ── IL FONT DELL'AREA CLIENTE — professionale, non giocoso ────────────
+     Voluto da Tommaso: *«lo stile deve essere più professionale e meno
+     giocoso e futuristico, cambia font»*. Via Inter (che sa di startup), qui
+     vince lo stack di sistema con Segoe UI in testa: i dipendenti di Speed
+     lavorano su Windows e sul gestionale Assistant, quindi questo font fa
+     sembrare CorpAgent un software gestionale NATIVO, quello che già usano —
+     non un'app. Zero download (nessuna chiamata a un CDN, bene per la privacy)
+     e reverte da solo alla vetrina quando si esce (data-marchio sparisce).
+     Le cifre sono tabellari: in un gestionale le colonne di numeri si leggono
+     incolonnate, non a larghezze diverse. */
+  --font-ui: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue",
+    Arial, "Liberation Sans", sans-serif;
+  font-feature-settings: "tnum" 1, "cv01" 0;
+  letter-spacing: -0.005em;
 }
 
 /* Nel tema scuro il primario si schiarisce: lo stesso verde che su bianco è
