@@ -35,18 +35,26 @@ export const MARCHI: Record<string, Marchio> = {
   /**
    * Speed Trasporti — Torino, dal 1998.
    *
-   * Verde e oro, presi dal loro logo: il globo di strisce dorate e la scritta
-   * verde. ⚠️ Sono **letti a occhio dall'immagine**: quando arriva il logo
-   * vettoriale vanno confermati, perché un verde sbagliato di poco è la cosa
-   * che un titolare nota per primo sul proprio marchio.
+   * ⚠️ I colori sono **letti dai pixel del loro logo vero**, scaricato dal loro
+   * sito — non stimati a occhio. La prima versione diceva `#00913F` e `#F5C518`
+   * ed erano tutti e due sbagliati: il verde è più scuro e l'oro è più acceso.
+   * Su un marchio, «quasi giusto» è la cosa che un titolare nota per prima e
+   * non perdona — è il suo nome, lo guarda da vent'anni.
+   *
+   * Il file non era vettoriale e non serviva esserlo: si è preso il PNG che
+   * usano online, che è lo stesso che stampano.
    */
   speed: {
     id: "speed",
     nome: "Speed Trasporti",
-    primario: "#00913F",
-    primarioScuro: "#00782F",
-    secondario: "#F5C518",
+    primario: "#008E33",
+    // ⚠️ Non è nel logo: è il verde scurito del 22% per la sfumatura del
+    // pulsante e per lo stato premuto. Un marchio dà un colore, un'interfaccia
+    // ne chiede tre.
+    primarioScuro: "#006F28",
+    secondario: "#FFC500",
     suPrimario: "#ffffff",
+    logo: "/clienti/speed-logo.png",
   },
 };
 

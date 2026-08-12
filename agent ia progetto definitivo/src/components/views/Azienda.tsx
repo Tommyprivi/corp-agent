@@ -40,9 +40,15 @@ const CHIAVE_PROFILO = "corpagent.azienda.profilo";
 
 export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
   const m = MARCHI[marchio];
+  // ⚠️ Il titolare atterra sul CRUSCOTTO, gli altri sulla chat. Un operativo
+  // apre l'app per chiedere una cosa; un titolare la apre per sapere come sta
+  // andando. Stessa app, due mestieri diversi — e la prima schermata è la
+  // differenza fra «mi serve» e «devo cercare».
   const [sezione, setSezione] = useState<Sezione>("chat");
   const [postazione, setPostazione] = useState("traffico");
   const [menuAperto, setMenuAperto] = useState(false);
+  /** Vero appena l'utente sceglie qualcosa: da lì in poi comanda lui. */
+  const [toccato, setToccato] = useState(false);
 
   /**
    * Il profilo di chi è entrato.
@@ -96,6 +102,7 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
   // titolare e vedere il fatturato.
   const ruoloVero = profilo.ruolo === "titolare" ? "titolare" : "operatore";
   const vedeTutto = ruoloVero === "titolare";
+  const sezioneVera: Sezione = sezione === "chat" && vedeTutto && !toccato ? "cruscotto" : sezione;
 
   return (
     <div className="flex min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]">
@@ -123,10 +130,11 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
                 onClick={() => {
                   setPostazione(p.id);
                   setSezione("chat");
+                  setToccato(true);
                   setMenuAperto(false);
                 }}
                 className={`mb-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] transition-colors ${
-                  sezione === "chat" && postazione === p.id
+                  sezioneVera === "chat" && postazione === p.id
                     ? "bg-[var(--accent-soft)] font-medium text-[var(--text-primary)]"
                     : "text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)]"
                 }`}
@@ -169,10 +177,11 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
                 key={id}
                 onClick={() => {
                   setSezione(id);
+                  setToccato(true);
                   setMenuAperto(false);
                 }}
                 className={`mb-0.5 block w-full cursor-pointer rounded-lg px-2.5 py-2 text-left text-[13.5px] transition-colors ${
-                  sezione === id
+                  sezioneVera === id
                     ? "bg-[var(--accent-soft)] font-medium text-[var(--text-primary)]"
                     : "text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)]"
                 }`}
@@ -225,16 +234,16 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
           <Marchio nome={m.nome} compatto />
         </header>
 
-        {sezione === "chat" && (
+        {sezioneVera === "chat" && (
           <Conversazione
             postazione={POSTAZIONI.find((p) => p.id === postazione)!}
             nome={profilo.nome.split(" ")[0]}
           />
         )}
-        {sezione === "cruscotto" && vedeTutto && <Cruscotto />}
-        {sezione === "clienti" && vedeTutto && <Clienti />}
-        {sezione === "persone" && vedeTutto && <Persone />}
-        {sezione === "documenti" && <Documenti />}
+        {sezioneVera === "cruscotto" && vedeTutto && <Cruscotto nome={profilo.nome.split(" ")[0]} />}
+        {sezioneVera === "clienti" && vedeTutto && <Clienti />}
+        {sezioneVera === "persone" && vedeTutto && <Persone />}
+        {sezioneVera === "documenti" && <Documenti />}
       </main>
     </div>
   );
@@ -248,6 +257,23 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
  * «logo»: un segnaposto che sembra un errore fa sembrare rotto tutto il resto.
  */
 function Marchio({ nome, compatto }: { nome: string; compatto?: boolean }) {
+  const logo = MARCHI.speed?.logo;
+  // ⚠️ Il logo intero contiene già la scritta «Speed Trasporti» e «Logistic
+  // Solution»: ripeterle accanto sarebbe scriverle due volte nella stessa
+  // riga. Quando c'è il logo, il testo sparisce.
+  if (logo) {
+    return (
+      <img
+        src={logo}
+        alt={nome}
+        className={compatto ? "h-7 w-auto" : "h-11 w-auto"}
+        // Il file è 887x375: dichiararlo evita che la pagina «salti» mentre
+        // l'immagine arriva.
+        width={887}
+        height={375}
+      />
+    );
+  }
   return (
     <div className="flex items-center gap-2.5">
       <span
@@ -332,58 +358,180 @@ function Conversazione({
  * non c'è lo dice invece di mostrare uno zero. Uno zero è una bugia
  * involontaria: fa credere che il dato sia stato letto e valga zero.
  */
-function Cruscotto() {
-  const nostri = [
-    { titolo: "Richieste gestite oggi", valore: "—", nota: "dall'agente, da solo" },
-    { titolo: "Tempo medio di risposta", valore: "—", nota: "misurato" },
-    { titolo: "Passate a una persona", valore: "—", nota: "quando non sapeva" },
-  ];
-  const loro = [
-    { titolo: "Fatturato di oggi", da: "gestionale fatture" },
-    { titolo: "Da incassare", da: "gestionale fatture" },
-    { titolo: "Spedizioni in corso", da: "K-Master" },
-    { titolo: "Consegnate oggi", da: "K-Master" },
-    { titolo: "Ritardi e anomalie", da: "K-Master" },
-    { titolo: "Movimenti di magazzino", da: "scanner" },
-  ];
+function Cruscotto({ nome }: { nome?: string }) {
+  const ora = new Date().getHours();
+  const saluto = ora < 12 ? "Buongiorno" : ora < 18 ? "Buon pomeriggio" : "Buonasera";
 
   return (
-    <Pagina titolo="Cruscotto" sotto="I numeri dell'azienda, giorno per giorno.">
-      <p className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
-        Da CorpAgent
-      </p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        {nostri.map((r) => (
-          <div key={r.titolo} className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
-            <p className="text-[26px] font-semibold tracking-[-0.02em]">{r.valore}</p>
-            <p className="mt-1 text-[13px] font-medium">{r.titolo}</p>
-            <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">{r.nota}</p>
-          </div>
-        ))}
-      </div>
+    <div className="flex-1 overflow-y-auto px-5 py-7 md:px-8">
+      <div className="mx-auto max-w-[980px]">
+        <h1 className="text-[22px] font-semibold tracking-[-0.02em]">
+          {saluto}{nome ? ` ${nome}` : ""}
+        </h1>
+        <p className="mt-1 text-[13.5px] text-[var(--text-secondary)]">
+          {new Date().toLocaleDateString("it-IT", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+          })}
+        </p>
 
-      <p className="mt-9 text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
-        Dai vostri sistemi
-      </p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {loro.map((r) => (
-          <div
-            key={r.titolo}
-            className="rounded-xl border border-dashed border-[var(--border)] p-4"
-          >
-            <p className="text-[13px] font-medium text-[var(--text-primary)]">{r.titolo}</p>
-            <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-              In attesa del collegamento a <strong className="font-medium">{r.da}</strong>.
+        {/* ── 1 · I SOLDI ─────────────────────────────────────────────
+            Prima di tutto, perché è la prima cosa che un imprenditore
+            guarda la mattina. ⚠️ Nessuno di questi numeri è nostro. */}
+        <Fascia titolo="I soldi" da="gestionale fatture" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Riquadro grande titolo="Fatturato di oggi" />
+          <Riquadro titolo="Questo mese" />
+          <Riquadro titolo="Da incassare" sotto="e chi è in ritardo" />
+          <Riquadro titolo="Fatture fornitori" sotto="da controllare" />
+        </div>
+
+        {/* ── 2 · IL LAVORO ──────────────────────────────────────────── */}
+        <Fascia titolo="Il lavoro di oggi" da="K-Master · QCSNET" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Riquadro grande titolo="Spedizioni in corso" />
+          <Riquadro titolo="Consegnate oggi" />
+          <Riquadro titolo="In ritardo" sotto="e di quanto" />
+          <Riquadro titolo="Da caricare domani" />
+        </div>
+
+        {/* ── 3 · IL MAGAZZINO ───────────────────────────────────────── */}
+        <Fascia titolo="Magazzino" da="scanner e barcode" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Riquadro grande titolo="Colli movimentati" />
+          <Riquadro titolo="Differenze di conteggio" sotto="letto contro atteso" />
+          <Riquadro titolo="In attesa di carico" />
+          <Riquadro titolo="Bolle da controllare" />
+        </div>
+
+        {/* ── 4 · L'AGENTE — l'unica fascia che funziona dal primo giorno ── */}
+        <div className="mt-9 flex items-baseline justify-between gap-3">
+          <div>
+            <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+              Cosa ha fatto l'agente
+            </h2>
+            <p className="mt-1 text-[12.5px] text-[var(--text-secondary)]">
+              Questi li misuriamo noi: ci sono dal primo giorno.
             </p>
           </div>
-        ))}
-      </div>
+          <span
+            aria-hidden
+            className="h-1 w-14 shrink-0 rounded-full"
+            style={{ background: "var(--marchio-secondario)" }}
+          />
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Nostro titolo="Richieste gestite" valore="0" sotto="oggi, da solo" grande />
+          <Nostro titolo="Passate a una persona" valore="0" sotto="quando non sapeva" />
+          <Nostro titolo="Tempo di risposta" valore="—" sotto="media di oggi" />
+          <Nostro titolo="Ore risparmiate" valore="0" sotto="stima del mese" />
+        </div>
 
-      <p className="mt-6 rounded-xl bg-[var(--fill-quiet)] px-4 py-3 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
-        Questi numeri vivono nei vostri sistemi, non qui: il cruscotto è una finestra, non
-        una fonte. Si riempiono nel momento in cui colleghiamo K-Master e il gestionale.
+        {/* ── 5 · COSA ASPETTA LUI ───────────────────────────────────── */}
+        <div className="mt-9">
+          <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+            Aspetta te
+          </h2>
+          {/* ⚠️ Questa sezione è la ragione per cui un titolare torna ogni
+              giorno. Un cruscotto che mostra solo numeri si guarda per una
+              settimana; uno che dice «ci sono tre cose che aspettano te» si
+              apre tutte le mattine. */}
+          <div className="mt-3 rounded-xl border border-dashed border-[var(--border)] p-7 text-center">
+            <p className="text-[14.5px] font-medium">Non c'è niente in sospeso</p>
+            <p className="mx-auto mt-1.5 max-w-[44ch] text-[13px] leading-relaxed text-[var(--text-secondary)]">
+              Qui compaiono le risposte da approvare, i solleciti da confermare e le
+              richieste che l'agente ha girato a te perché non sapeva rispondere.
+            </p>
+          </div>
+        </div>
+
+        {/* ── 6 · LA SPIEGAZIONE ONESTA ──────────────────────────────── */}
+        <div
+          className="mt-9 rounded-xl border-l-2 bg-[var(--fill-quiet)] px-5 py-4"
+          style={{ borderColor: "var(--accent)" }}
+        >
+          <p className="text-[13.5px] font-medium">Perché tre fasce su quattro sono vuote</p>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--text-secondary)]">
+            Fatturato, spedizioni e magazzino vivono dentro i vostri sistemi — il
+            gestionale delle fatture, K-Master, gli scanner. Questo cruscotto è una
+            finestra su quei dati, non una loro copia: si riempie nel momento esatto in
+            cui colleghiamo i vostri programmi, e non prima.
+          </p>
+          {/* ⚠️ Preferiamo dire «vuoto e perché» invece di mostrare uno zero.
+              Uno zero è una bugia involontaria: fa credere che il dato sia
+              stato letto e valga zero. */}
+          <p className="mt-2.5 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+            Non mettiamo degli zeri al posto dei numeri che non abbiamo: uno zero
+            sembra un dato letto, e non lo è.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** L'intestazione di una fascia, con scritto da dove verranno i numeri. */
+function Fascia({ titolo, da }: { titolo: string; da: string }) {
+  return (
+    <div className="mt-9 mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+        {titolo}
+      </h2>
+      <span className="text-[11.5px] text-[var(--text-secondary)] opacity-70">
+        da {da} — in attesa del collegamento
+      </span>
+    </div>
+  );
+}
+
+/** Un numero che non abbiamo ancora. */
+function Riquadro({
+  titolo,
+  sotto,
+  grande,
+}: {
+  titolo: string;
+  sotto?: string;
+  grande?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-xl border border-dashed border-[var(--border)] p-4 ${
+        grande ? "sm:col-span-2 lg:col-span-1" : ""
+      }`}
+    >
+      <p className="text-[13px] font-medium text-[var(--text-primary)]">{titolo}</p>
+      {sotto && <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">{sotto}</p>}
+      <p className="mt-2.5 text-[12px] text-[var(--text-secondary)] opacity-70">
+        in attesa del collegamento
       </p>
-    </Pagina>
+    </div>
+  );
+}
+
+/** Un numero che misuriamo noi, quindi c'è davvero. */
+function Nostro({
+  titolo,
+  valore,
+  sotto,
+  grande,
+}: {
+  titolo: string;
+  valore: string;
+  sotto: string;
+  grande?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 ${
+        grande ? "sm:col-span-2 lg:col-span-1" : ""
+      }`}
+    >
+      <p className="text-[30px] font-semibold leading-none tracking-[-0.02em]">{valore}</p>
+      <p className="mt-2 text-[13px] font-medium">{titolo}</p>
+      <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">{sotto}</p>
+    </div>
   );
 }
 

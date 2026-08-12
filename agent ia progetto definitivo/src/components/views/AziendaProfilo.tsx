@@ -60,22 +60,29 @@ export default function AziendaProfilo({
           cui si decide se questo sembra «un software che abbiamo comprato»
           oppure «il nostro sistema». Costa una riga e cambia tutto. */}
       <header className="flex items-center justify-center px-5 pt-10 pb-2">
-        <div className="flex items-center gap-3">
-          <span
-            aria-hidden
-            className="h-9 w-9 rounded-full"
-            style={{
-              background:
-                "conic-gradient(from 210deg, var(--marchio-secondario), var(--marchio-primario), var(--marchio-secondario))",
-            }}
-          />
-          <span>
-            <span className="block text-[16px] font-semibold tracking-[-0.01em]">{m?.nome}</span>
-            <span className="block text-[10.5px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
-              Logistic Solution
+        {/* ⚠️ Grande, in alto, prima ancora di entrare: è il momento in cui si
+            decide se questo sembra «un software che abbiamo comprato» oppure
+            «il nostro sistema». Costa una riga e cambia tutto. */}
+        {m?.logo ? (
+          <img src={m.logo} alt={m.nome} width={887} height={375} className="h-16 w-auto sm:h-20" />
+        ) : (
+          <div className="flex items-center gap-3">
+            <span
+              aria-hidden
+              className="h-9 w-9 rounded-full"
+              style={{
+                background:
+                  "conic-gradient(from 210deg, var(--marchio-secondario), var(--marchio-primario), var(--marchio-secondario))",
+              }}
+            />
+            <span>
+              <span className="block text-[16px] font-semibold tracking-[-0.01em]">{m?.nome}</span>
+              <span className="block text-[10.5px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                Logistic Solution
+              </span>
             </span>
-          </span>
-        </div>
+          </div>
+        )}
       </header>
 
       <main className="flex flex-1 items-center justify-center px-5 py-8">
