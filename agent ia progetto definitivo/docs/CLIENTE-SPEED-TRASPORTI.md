@@ -1297,3 +1297,8 @@ Tommaso ha mandato le foto dei dispositivi veri di Speed. Tre scoperte:
 - La **fotocopiatrice**: marca/modello e se ha già lo scan-to-email attivo.
 - La **stampante etichette Zebra**: modello (per la stampa etichette da
   CorpAgent, fase 2).
+
+⚠️ **Da fare col palmare in mano (non prima):** il campo «spara qui» nel form
+Carico/Scarico — autofocus all'apertura, il lettore digita, salto automatico al
+campo colli. Va tarato sul suffisso reale di DataWedge (invio/tab), quindi si
+costruisce quando c'è uno Zebra vero da provare: mezz'ora, prima del sopralluogo.
