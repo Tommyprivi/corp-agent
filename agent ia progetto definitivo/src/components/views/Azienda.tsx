@@ -11,8 +11,11 @@ import {
   type Cruscotto as DatiCruscotto,
   type Documento,
   type Messaggio,
+  type Attivita as AttivitaRiga,
+  type Avviso,
   type Banchina,
   type Mezzo,
+  type RisultatoCerca,
   type Ufficio as UfficioDati,
   type PersonaElenco,
   type PersonaViva,
@@ -55,7 +58,7 @@ import {
  * voce di menu, per non dire a nessuno che esiste una parte riservata.
  */
 
-type Sezione = "chat" | "cruscotto" | "reparto" | "clienti" | "persone" | "documenti" | "mezzi";
+type Sezione = "chat" | "cruscotto" | "reparto" | "clienti" | "persone" | "documenti" | "mezzi" | "attivita";
 
 interface PostazioneViva {
   id: string;
@@ -232,6 +235,9 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
     ...(vedeTutto
       ? [{ chiave: "persone", nome: "Persone", icona: "persone" as IconaNome, vai: vaiSezione("persone"), on: sezioneVera === "persone" }]
       : []),
+    ...(vedeTutto
+      ? [{ chiave: "attivita", nome: "Attività", icona: "attivita" as IconaNome, vai: vaiSezione("attivita"), on: sezioneVera === "attivita" }]
+      : []),
     { chiave: "documenti", nome: "Documenti", icona: "documenti" as IconaNome, vai: vaiSezione("documenti"), on: sezioneVera === "documenti" },
   ];
 
@@ -253,6 +259,15 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
           · Logistica · con CorpAgent
         </span>
         <div className="ml-auto flex items-center gap-2.5">
+          <CercaGlobale
+            vai={(tipo) => {
+              if (tipo === "cliente") vaiSezione("clienti")();
+              else if (tipo === "documento") vaiSezione("documenti")();
+              else vaiPostazione("magazzino")();
+            }}
+            seScaduta={seScaduta}
+          />
+          <Campanella seScaduta={seScaduta} />
           <span className="hidden text-right sm:block">
             <span className="block text-[12.5px] font-medium leading-tight">
               {persona.nome || persona.email}
@@ -390,6 +405,7 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
         {sezioneVera === "documenti" && (
           <Documenti ruolo={persona.ruolo} seScaduta={seScaduta} />
         )}
+        {sezioneVera === "attivita" && vedeTutto && <Attivita seScaduta={seScaduta} />}
       </main>
     </div>
   );
@@ -2054,6 +2070,7 @@ function Banchina({
   const [strumento, setStrumento] = useState("registro");
   const [dati, setDati] = useState<Banchina | null>(null);
   const [fatto, setFatto] = useState<string | null>(null);
+  const [filtro, setFiltro] = useState("tutti");
 
   const carica = useCallback(() => {
     leggi<Banchina>("banchina")
@@ -2199,9 +2216,50 @@ function Banchina({
             )}
 
             <div className="mt-6">
-              <h2 className="mb-2 text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
-                Oggi in banchina
-              </h2>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+                  Oggi in banchina
+                </h2>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={filtro}
+                    onChange={(e) => setFiltro(e.target.value)}
+                    className="cursor-pointer rounded-md border border-[var(--border)] bg-[var(--bg-card)] px-2 py-1.5 text-[12px] outline-none focus:border-[var(--accent)]"
+                  >
+                    <option value="tutti">Tutti i movimenti</option>
+                    <option value="carico">Solo carichi</option>
+                    <option value="scarico">Solo scarichi</option>
+                    <option value="differenza">Solo differenze</option>
+                    <option value="problema">Solo problemi</option>
+                  </select>
+                  <button
+                    onClick={() => {
+                      const righe = (dati?.movimenti ?? []).filter(
+                        (m) => filtro === "tutti" || m.tipo === filtro
+                      );
+                      scaricaCsv(
+                        "registro-banchina.csv",
+                        ["Ora", "Tipo", "Colli", "Cliente/Fornitore", "Mezzo", "Note", "Stato", "Chi"],
+                        righe.map((m) => [
+                          new Date(m.creato).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }),
+                          m.tipo,
+                          m.colli != null ? String(m.colli) : m.tipo === "differenza" ? `attesi ${m.atteso} contati ${m.contato}` : "",
+                          m.controparte,
+                          m.mezzo,
+                          m.testo,
+                          m.stato,
+                          m.chi,
+                        ])
+                      );
+                    }}
+                    disabled={!dati?.movimenti.length}
+                    className="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[12px] font-medium hover:border-[var(--accent)] disabled:opacity-40"
+                  >
+                    <Icona nome="esporta" size={13} />
+                    CSV
+                  </button>
+                </div>
+              </div>
               {dati === null && <p className="text-[13px] text-[var(--text-secondary)]">Leggo…</p>}
               {dati !== null && dati.movimenti.length === 0 && (
                 <Niente
@@ -2219,7 +2277,9 @@ function Banchina({
                     { nome: "Chi · ora", larghezza: "170px", destra: true },
                   ]}
                 >
-                  {dati.movimenti.map((mv) => (
+                  {dati.movimenti
+                    .filter((m) => filtro === "tutti" || m.tipo === filtro)
+                    .map((mv) => (
                     <Riga key={mv.id}>
                       <Cella>
                         <Icona
@@ -2859,4 +2919,304 @@ function Vuoto({ titolo, testo }: { titolo: string; testo: string }) {
       </p>
     </div>
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LA RICERCA GLOBALE — un colpo solo su clienti, movimenti e documenti
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ Non cerca nelle chat, di proposito: la ricerca la usano tutti, e le
+ * conversazioni restano di chi le ha fatte. Cerca nei dati condivisi.
+ */
+function CercaGlobale({
+  vai,
+  seScaduta,
+}: {
+  vai: (tipo: RisultatoCerca["tipo"]) => void;
+  seScaduta: (e: unknown) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [risultati, setRisultati] = useState<RisultatoCerca[] | null>(null);
+  const [aperto, setAperto] = useState(false);
+  const ultima = useRef(0);
+
+  useEffect(() => {
+    if (q.trim().length < 2) {
+      setRisultati(null);
+      return;
+    }
+    const mia = ++ultima.current;
+    const t = setTimeout(() => {
+      leggi<{ risultati: RisultatoCerca[] }>("cerca", { q: q.trim() })
+        .then((r) => {
+          if (mia === ultima.current) setRisultati(r.risultati);
+        })
+        .catch((e) => seScaduta(e));
+    }, 220);
+    return () => clearTimeout(t);
+  }, [q, seScaduta]);
+
+  return (
+    <div className="relative hidden md:block">
+      <div className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] px-2.5 py-1.5 focus-within:border-[var(--accent)]">
+        <Icona nome="cerca" size={15} className="shrink-0 text-[var(--text-secondary)]" />
+        <input
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setAperto(true);
+          }}
+          onFocus={() => setAperto(true)}
+          onBlur={() => setTimeout(() => setAperto(false), 150)}
+          placeholder="Cerca ovunque…"
+          className="w-[190px] bg-transparent text-[13px] outline-none placeholder:text-[var(--text-secondary)]"
+        />
+      </div>
+
+      {aperto && risultati !== null && (
+        <div className="absolute right-0 top-full z-50 mt-1.5 w-[360px] overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-card)] shadow-lg">
+          {risultati.length === 0 && (
+            <p className="px-3.5 py-3 text-[12.5px] text-[var(--text-secondary)]">
+              Niente con «{q.trim()}» — cerco fra clienti, registro e documenti.
+            </p>
+          )}
+          {risultati.map((r) => (
+            <button
+              key={`${r.tipo}${r.id}`}
+              onMouseDown={() => {
+                vai(r.tipo);
+                setQ("");
+                setRisultati(null);
+              }}
+              className="flex w-full cursor-pointer items-start gap-2.5 border-b border-[var(--border)] px-3.5 py-2.5 text-left last:border-0 hover:bg-[var(--fill-quiet)]"
+            >
+              <Icona
+                nome={r.tipo === "cliente" ? "clienti" : r.tipo === "documento" ? "documenti" : "magazzino"}
+                size={15}
+                className="mt-0.5 shrink-0 text-[var(--text-secondary)]"
+              />
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-medium">{r.titolo}</span>
+                {r.sotto && (
+                  <span className="block truncate text-[11.5px] text-[var(--text-secondary)]">
+                    {r.sotto}
+                  </span>
+                )}
+              </span>
+              <span className="ml-auto shrink-0 text-[10.5px] uppercase tracking-wide text-[var(--text-secondary)]">
+                {r.tipo}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LA CAMPANELLA — cosa aspetta qualcuno, adesso
+// ─────────────────────────────────────────────────────────────────────────
+
+function Campanella({ seScaduta }: { seScaduta: (e: unknown) => void }) {
+  const [avvisi, setAvvisi] = useState<Avviso[]>([]);
+  const [aperta, setAperta] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    const tira = () => {
+      leggi<{ avvisi: Avviso[] }>("campanella")
+        .then((r) => {
+          if (vivo) setAvvisi(r.avvisi);
+        })
+        .catch((e) => seScaduta(e));
+    };
+    tira();
+    // ⚠️ Ogni due minuti, non ogni secondo: è una campanella, non un radar.
+    // 150 persone che chiedono ogni secondo sono 150 richieste al secondo.
+    const t = setInterval(tira, 120_000);
+    return () => {
+      vivo = false;
+      clearInterval(t);
+    };
+  }, [seScaduta]);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setAperta((v) => !v)}
+        title="Avvisi"
+        className="relative cursor-pointer rounded-md p-1.5 text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+      >
+        <Icona nome="campanella" size={19} />
+        {avvisi.length > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#D92D20] px-1 text-[10px] font-semibold text-white">
+            {avvisi.length}
+          </span>
+        )}
+      </button>
+
+      {aperta && (
+        <>
+          <button
+            aria-label="Chiudi"
+            onClick={() => setAperta(false)}
+            className="fixed inset-0 z-40 cursor-default"
+          />
+          <div className="absolute right-0 top-full z-50 mt-1.5 w-[340px] overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-card)] shadow-lg">
+            <p className="border-b border-[var(--border)] px-3.5 py-2 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--text-secondary)]">
+              Aspetta qualcuno
+            </p>
+            {avvisi.length === 0 && (
+              <p className="px-3.5 py-4 text-[12.5px] text-[var(--text-secondary)]">
+                Niente in sospeso. Quando una differenza, un reclamo o un ritiro
+                aspettano qualcuno, compaiono qui.
+              </p>
+            )}
+            {avvisi.slice(0, 10).map((a, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-2.5 border-b border-[var(--border)] px-3.5 py-2.5 last:border-0"
+              >
+                <Icona
+                  nome={
+                    a.tipo === "differenza"
+                      ? "differenza"
+                      : a.tipo === "reclamo"
+                        ? "reclamo"
+                        : a.tipo === "ritiro"
+                          ? "ritiro"
+                          : "problema"
+                  }
+                  size={15}
+                  className="mt-0.5 shrink-0 text-[var(--text-secondary)]"
+                />
+                <span className="min-w-0">
+                  <span className="block text-[12.5px] leading-snug">{a.testo}</span>
+                  <span className="block text-[11px] text-[var(--text-secondary)]">
+                    {quando(a.quando)}
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// L'ATTIVITÀ — chi ha fatto cosa (solo titolare)
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ Fatti amministrativi, mai conversazioni: «è entrato», «ha registrato un
+ * carico», «ha promosso Maria». È la linea dell'articolo 4 tenuta anche qui.
+ * Le righe più vecchie di 90 giorni si cancellano da sole.
+ */
+const NOMI_AZIONE: Record<string, string> = {
+  accesso: "È entrato",
+  ruolo: "Ha cambiato un ruolo",
+  documento: "Ha aggiunto un documento",
+  "documento-eliminato": "Ha eliminato un documento",
+  "cliente-eliminato": "Ha eliminato un cliente",
+  "ritiro-fatto": "Ha segnato un ritiro come fatto",
+  "movimento:carico": "Ha registrato un carico",
+  "movimento:scarico": "Ha registrato uno scarico",
+  "movimento:differenza": "Ha segnalato una differenza",
+  "movimento:problema": "Ha segnalato un problema",
+  "movimento:ritiro": "Ha prenotato un ritiro",
+  "movimento:reclamo": "Ha registrato un reclamo",
+};
+
+function Attivita({ seScaduta }: { seScaduta: (e: unknown) => void }) {
+  const [righe, setRighe] = useState<AttivitaRiga[] | null>(null);
+
+  useEffect(() => {
+    leggi<{ attivita: AttivitaRiga[] }>("attivita")
+      .then((r) => setRighe(r.attivita))
+      .catch((e) => {
+        seScaduta(e);
+        setRighe([]);
+      });
+  }, [seScaduta]);
+
+  function esporta() {
+    if (!righe?.length) return;
+    scaricaCsv(
+      "attivita-speed.csv",
+      ["Quando", "Chi", "Azione", "Dettaglio"],
+      righe.map((r) => [
+        new Date(r.creato).toLocaleString("it-IT"),
+        r.chi,
+        NOMI_AZIONE[r.azione] ?? r.azione,
+        r.dettaglio,
+      ])
+    );
+  }
+
+  return (
+    <Pagina
+      titolo="Attività"
+      sotto="Chi ha fatto cosa e quando: accessi, registrazioni, ruoli. I fatti, mai le conversazioni. Si conserva 90 giorni."
+    >
+      <div className="mb-3 flex justify-end">
+        <button
+          onClick={esporta}
+          disabled={!righe?.length}
+          className="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-[12.5px] font-medium hover:border-[var(--accent)] disabled:opacity-40"
+        >
+          <Icona nome="esporta" size={14} />
+          Esporta CSV
+        </button>
+      </div>
+      {righe === null && <p className="text-[13px] text-[var(--text-secondary)]">Leggo…</p>}
+      {righe !== null && righe.length === 0 && (
+        <Niente
+          titolo="Ancora niente"
+          testo="Da adesso ogni accesso, registrazione e cambio di ruolo lascia una riga qui."
+        />
+      )}
+      {righe !== null && righe.length > 0 && (
+        <Tabella
+          colonne={[
+            { nome: "Quando", larghezza: "170px" },
+            { nome: "Chi", larghezza: "170px" },
+            { nome: "Azione" },
+            { nome: "Dettaglio" },
+          ]}
+        >
+          {righe.map((r) => (
+            <Riga key={r.id}>
+              <Cella tenue>{new Date(r.creato).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</Cella>
+              <Cella>{r.chi || "—"}</Cella>
+              <Cella>{NOMI_AZIONE[r.azione] ?? r.azione}</Cella>
+              <Cella tenue>{r.dettaglio || "—"}</Cella>
+            </Riga>
+          ))}
+        </Tabella>
+      )}
+    </Pagina>
+  );
+}
+
+/**
+ * Un CSV che Excel italiano apre GIUSTO al primo colpo: separatore `;`
+ * (l'Excel italiano col separatore `,` mette tutto in una colonna) e il BOM
+ * UTF-8 in testa (senza, le è diventano Ã¨).
+ */
+function scaricaCsv(nomeFile: string, intestazioni: string[], righe: string[][]): void {
+  const scappa = (v: string) => `"${(v ?? "").replaceAll('"', '""')}"`;
+  const testo =
+    "﻿" +
+    [intestazioni, ...righe].map((r) => r.map(scappa).join(";")).join("\r\n");
+  const blob = new Blob([testo], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nomeFile;
+  a.click();
+  URL.revokeObjectURL(url);
 }

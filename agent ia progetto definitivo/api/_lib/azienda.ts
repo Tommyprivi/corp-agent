@@ -320,6 +320,32 @@ export async function eliminaDocumento(azienda: string, id: string): Promise<voi
   await getPool().query("select public.az_documento_elimina($1, $2)", [id, azienda]);
 }
 
+/**
+ * Il registro attività: chi ha fatto cosa. ⚠️ Fatti amministrativi, mai
+ * contenuti di chat. Scrittura «lancia e dimentica»: un audit che rallenta o
+ * rompe l'azione vera è peggio di nessun audit.
+ */
+export function segnaAttivita(
+  azienda: string,
+  persona: string | null,
+  azione: string,
+  dettaglio = ""
+): void {
+  void getPool()
+    .query("select public.az_attivita_scrivi($1,$2,$3,$4)", [azienda, persona, azione, dettaglio])
+    .catch(() => {});
+}
+
+export async function attivita(azienda: string) {
+  const r = await getPool().query("select * from public.az_attivita($1)", [azienda]);
+  return r.rows;
+}
+
+export async function cerca(azienda: string, q: string) {
+  const r = await getPool().query("select * from public.az_cerca($1,$2)", [azienda, q]);
+  return r.rows;
+}
+
 export async function cruscotto(azienda: string) {
   const [base, mag, controlli] = await Promise.all([
     getPool().query<{ az_cruscotto: unknown }>("select public.az_cruscotto($1)", [azienda]),
@@ -639,15 +665,20 @@ export function istruzioni(
     "Dai del tu. Rispondi in italiano, corto: due o tre frasi, non di più, " +
       "a meno che non ti chiedano espressamente un elenco.",
     "",
-    "REGOLA PRINCIPALE — non inventare mai.",
-    "Non hai accesso al gestionale, a K-Master, agli scanner del magazzino né " +
-      "alle fatture: quei collegamenti non ci sono ancora. Quindi non conosci " +
-      "nessun numero di spedizione, nessun orario di consegna, nessun prezzo e " +
-      "nessun saldo, e non devi provare a dedurli.",
-    "Quando la risposta richiede un dato che non hai qui sotto, comincia la " +
-      "risposta con [PASSO] e poi spiega in una frase cosa serve e a chi lo " +
-      "stai girando. Non scusarti più di una volta.",
-    "Quando invece la risposta è qui sotto, rispondi e basta, senza [PASSO].",
+    "REGOLA PRINCIPALE — non inventare mai, ma GUARDA prima di arrenderti.",
+    "Hai degli strumenti: il registro di oggi, i ritiri da fare, le schede " +
+      "clienti e il calcolo di distanze e tempi. USALI prima di dire che non " +
+      "sai — un numero che lo strumento ti dà è un numero vero, riportalo con " +
+      "sicurezza.",
+    "Quello che invece NON hai: K-Master (spedizioni e tracking), il " +
+      "gestionale delle fatture, gli scanner. Quindi numeri di spedizione, " +
+      "stati di consegna dei colli affidati, prezzi fuori listino e saldi non " +
+      "li conosci e non li deduci.",
+    "Quando la risposta richiede un dato che né i documenti né gli strumenti " +
+      "possono darti, comincia la risposta con [PASSO] e spiega in una frase " +
+      "cosa serve e a chi lo stai girando. Non scusarti più di una volta.",
+    "Quando la risposta ce l'hai (dai documenti o dagli strumenti), rispondi " +
+      "e basta, senza [PASSO].",
   ];
 
   if (memoria.length) {

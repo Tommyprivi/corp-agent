@@ -30,6 +30,7 @@ import { authMissing, availableProviders } from "./_lib/auth.js";
 import { dbConfigured } from "./_lib/db.js";
 import { chooseModel, fetchCatalog } from "./_lib/openrouter.js";
 import * as az from "./_lib/azienda.js";
+import { attrezziAzienda, eseguiAttrezzo } from "./_lib/attrezzi.js";
 import {
   avvisaTommaso,
   conversazione,
@@ -474,6 +475,48 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       if (!titolare) return soloTitolare();
       return await riepilogoGiornata(chi);
 
+    case "attivita":
+      // Il registro attività è del titolare: chi ha fatto cosa e quando.
+      if (!titolare) return soloTitolare();
+      return json({ attivita: await az.attivita(chi.azienda) }, 200);
+
+    case "cerca": {
+      const q = (url.searchParams.get("q") ?? "").trim();
+      if (q.length < 2) return json({ risultati: [] }, 200);
+      return json({ risultati: await az.cerca(chi.azienda, q) }, 200);
+    }
+
+    case "campanella": {
+      // Gli avvisi della testata: cose aperte che aspettano qualcuno.
+      // I controlli (differenze/problemi/reclami) li vede chi guida; i ritiri
+      // di oggi li vede chiunque — sono lavoro, non sorveglianza.
+      const gestore2 = ["titolare", "amministratore", "capo"].includes(chi.ruolo_vero);
+      const [controlli, tuttiRitiri] = await Promise.all([
+        gestore2 ? az.daControllare(chi.azienda, null) : Promise.resolve([]),
+        az.ritiri(chi.azienda),
+      ]);
+      const oggiFine = new Date();
+      oggiFine.setHours(23, 59, 59, 999);
+      const avvisi = [
+        ...(controlli as { tipo: string; testo: string; atteso: number | null; contato: number | null; reparto: string; creato: string }[]).map((c) => ({
+          tipo: c.tipo,
+          testo:
+            c.tipo === "differenza"
+              ? `Differenza al ${c.reparto.toLowerCase()}: attesi ${c.atteso}, contati ${c.contato}`
+              : c.testo || "Segnalazione",
+          quando: c.creato,
+        })),
+        ...(tuttiRitiri as { controparte: string; colli: number | null; previsto: string | null; creato: string }[])
+          .filter((r) => r.previsto && new Date(r.previsto) <= oggiFine)
+          .map((r) => ({
+            tipo: "ritiro",
+            testo: `Ritiro da ${r.controparte}${r.colli ? `, ${r.colli} colli` : ""} — oggi o scaduto`,
+            quando: r.previsto as string,
+          })),
+      ];
+      return json({ avvisi }, 200);
+    }
+
     default:
       return json({ error: "Non trovato." }, 404);
   }
@@ -549,6 +592,7 @@ async function areaAzienda(
     // anti-forza-bruta della migrazione 0019, mai a sapere chi è.
     const esito = await az.entra(azienda, email, password, improntaProvenienza(request));
     if ("errore" in esito) return json({ error: esito.errore }, 401);
+    az.segnaAttivita(azienda, esito.persona.persona, "accesso", esito.persona.email);
     return json(
       {
         t: esito.token,
@@ -611,6 +655,7 @@ async function areaAzienda(
     case "cliente-elimina":
       if (!scrivente) return negato();
       await az.eliminaCliente(chi.azienda, String(corpo.id));
+      az.segnaAttivita(chi.azienda, chi.persona, "cliente-eliminato");
       return json({ ok: true }, 200);
 
     case "documento":
@@ -621,11 +666,13 @@ async function areaAzienda(
         String(corpo.titolo ?? "Senza titolo").trim(),
         String(corpo.testo ?? "").trim()
       );
+      az.segnaAttivita(chi.azienda, chi.persona, "documento", String(corpo.titolo ?? "").slice(0, 120));
       return json({ ok: true }, 200);
 
     case "documento-elimina":
       if (!gestore) return negato();
       await az.eliminaDocumento(chi.azienda, String(corpo.id));
+      az.segnaAttivita(chi.azienda, chi.persona, "documento-eliminato");
       return json({ ok: true }, 200);
 
     // ── IL MAGAZZINO ─────────────────────────────────────────────────
@@ -664,6 +711,12 @@ async function areaAzienda(
       // oggi solo il pallino nell'app, il WhatsApp arriva col numero. Senza
       // aspettare: l'avviso non deve rallentare chi ha appena registrato.
       if (["problema", "differenza", "reclamo"].includes(d.tipo)) void az.avvisaSegnalazione();
+      az.segnaAttivita(
+        chi.azienda,
+        chi.persona,
+        `movimento:${d.tipo}`,
+        [d.controparte, d.colli ? `${d.colli} colli` : "", d.testo].filter(Boolean).join(" · ").slice(0, 200)
+      );
       return json({ ok: true }, 200);
     }
 
@@ -672,6 +725,7 @@ async function areaAzienda(
       // quelli restano del capo, e questa porta chiude SOLO i ritiri.)
       if (!scrivente) return negato();
       await az.chiudiRitiro(chi.azienda, String(corpo.id));
+      az.segnaAttivita(chi.azienda, chi.persona, "ritiro-fatto");
       return json({ ok: true }, 200);
 
     case "controllo-chiudi":
@@ -710,6 +764,12 @@ async function areaAzienda(
         String(corpo.persona),
         String(corpo.ruolo),
         corpo.attiva !== false
+      );
+      az.segnaAttivita(
+        chi.azienda,
+        chi.persona,
+        "ruolo",
+        `${String(corpo.ruolo)}${corpo.attiva === false ? " · postazione chiusa" : ""}`
       );
       return json({ ok: true }, 200);
     }
@@ -761,41 +821,86 @@ async function parlaConAgente(
 
   const partito = Date.now();
   try {
-    const r = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${chiave}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://corpagent.vercel.app",
-        "X-Title": "CorpAgent · Speed Trasporti",
+    // ─────────────────────────────────────────────────────────────────
+    // IL CICLO DEGLI ATTREZZI — la riga 40, nel mondo azienda
+    // ─────────────────────────────────────────────────────────────────
+    // L'agente può chiedere uno strumento (registro, ritiri, clienti, Maps);
+    // noi lo eseguiamo e gli ridiamo il risultato, finché non ha la risposta.
+    // ⚠️ Massimo 3 giri: un modello che chiama strumenti all'infinito è un
+    // modello in confusione, e ogni giro sono secondi che l'utente aspetta.
+    const attrezzi = attrezziAzienda();
+    const messaggi: Record<string, unknown>[] = [
+      {
+        role: "system",
+        content: az.istruzioni(
+          postazione,
+          chi,
+          (memoria as { titolo: string; testo: string }[]).slice(0, 12),
+          (elenco as { nome: string }[]).map((c) => c.nome)
+        ),
       },
-      body: JSON.stringify({
-        // ⚠️ Modello leggero: sono risposte operative a chi ha le mani
-        // occupate. Qui conta arrivare in due secondi, non ragionare.
-        model: "openai/gpt-4o-mini",
-        max_tokens: 420,
-        temperature: 0.4,
-        messages: [
-          {
-            role: "system",
-            content: az.istruzioni(
-              postazione,
-              chi,
-              (memoria as { titolo: string; testo: string }[]).slice(0, 12),
-              (elenco as { nome: string }[]).map((c) => c.nome)
-            ),
-          },
-          ...storia.map((m) => ({
-            role: m.ruolo === "agente" ? "assistant" : "user",
-            content: m.testo,
-          })),
-        ],
-      }),
-      signal: AbortSignal.timeout(25_000),
-    });
+      ...storia.map((m) => ({
+        role: m.ruolo === "agente" ? "assistant" : "user",
+        content: m.testo,
+      })),
+    ];
 
-    const body = (await r.json()) as { choices?: { message?: { content?: string } }[] };
-    let risposta = body.choices?.[0]?.message?.content?.trim() ?? "";
+    let risposta = "";
+    for (let giro = 0; giro < 3; giro++) {
+      const r = await fetch(OPENROUTER_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${chiave}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://corpagent.vercel.app",
+          "X-Title": "CorpAgent · Speed Trasporti",
+        },
+        body: JSON.stringify({
+          // ⚠️ Modello leggero: sono risposte operative a chi ha le mani
+          // occupate. Qui conta arrivare in due secondi, non ragionare.
+          model: "openai/gpt-4o-mini",
+          max_tokens: 420,
+          temperature: 0.4,
+          messages: messaggi,
+          tools: attrezzi,
+        }),
+        signal: AbortSignal.timeout(25_000),
+      });
+
+      const body = (await r.json()) as {
+        choices?: {
+          message?: {
+            content?: string | null;
+            tool_calls?: {
+              id: string;
+              function: { name: string; arguments: string };
+            }[];
+          };
+        }[];
+      };
+      const msg = body.choices?.[0]?.message;
+      const chiamate = msg?.tool_calls ?? [];
+
+      if (chiamate.length === 0) {
+        risposta = msg?.content?.trim() ?? "";
+        break;
+      }
+
+      // Il modello ha chiesto degli strumenti: si eseguono TUTTI e si
+      // rimettono i risultati nella conversazione, poi un altro giro.
+      messaggi.push({ role: "assistant", content: msg?.content ?? null, tool_calls: chiamate });
+      for (const c of chiamate) {
+        let argomenti: Record<string, unknown> = {};
+        try {
+          argomenti = JSON.parse(c.function.arguments || "{}") as Record<string, unknown>;
+        } catch {
+          // argomenti illeggibili: lo strumento risponderà che gli manca qualcosa
+        }
+        const esito = await eseguiAttrezzo(chi.azienda, c.function.name, argomenti);
+        messaggi.push({ role: "tool", tool_call_id: c.id, content: esito });
+      }
+    }
+
     if (!risposta) throw new Error("risposta vuota");
 
     // ⚠️ Il marcatore si toglie prima di mostrarlo — nessuno deve leggere

@@ -44,7 +44,10 @@ type IconaNome =
   | "spunta"
   | "esci"
   | "menu"
-  | "micro";
+  | "micro"
+  | "campanella"
+  | "attivita"
+  | "esporta";
 
 const TRATTI: Record<IconaNome, ReactNode> = {
   cruscotto: (
@@ -170,6 +173,24 @@ const TRATTI: Record<IconaNome, ReactNode> = {
     <>
       <rect x="9" y="3" width="6" height="11" rx="3" />
       <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
+    </>
+  ),
+  campanella: (
+    <>
+      <path d="M6 16v-6a6 6 0 0 1 12 0v6l1.5 2.5H4.5z" />
+      <path d="M10 20a2 2 0 0 0 4 0" />
+    </>
+  ),
+  attivita: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </>
+  ),
+  esporta: (
+    <>
+      <path d="M12 3v10m0 0l-3.5-3.5M12 13l3.5-3.5" />
+      <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
     </>
   ),
 };

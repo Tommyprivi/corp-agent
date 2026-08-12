@@ -221,3 +221,25 @@ export interface Ufficio {
   movimenti: Movimento[];
   ritiri: Ritiro[];
 }
+
+export interface Attivita {
+  id: string;
+  azione: string;
+  dettaglio: string;
+  chi: string;
+  creato: string;
+}
+
+export interface RisultatoCerca {
+  tipo: "cliente" | "movimento" | "documento";
+  id: string;
+  titolo: string;
+  sotto: string;
+  creato: string;
+}
+
+export interface Avviso {
+  tipo: string;
+  testo: string;
+  quando: string;
+}
