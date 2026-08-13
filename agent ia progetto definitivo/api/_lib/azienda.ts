@@ -200,11 +200,44 @@ export async function entra(
     if (password.length < 8) {
       return { errore: "La password deve essere di almeno 8 caratteri." };
     }
-    const creata = await pool.query<{ id: string }>(
-      "select id from public.az_crea($1, $2, $3)",
-      [azienda, email.trim().toLowerCase(), impasta(password)]
+    const emailPulita = email.trim().toLowerCase();
+
+    // ⚠️ L'INGRESSO SU INVITO. Il primo che entra in un'azienda è il titolare
+    // (bootstrap: Salvatore apre il link ed è dentro). Dal secondo in poi serve
+    // un invito del titolare — se no chiunque conoscesse il link entrerebbe.
+    const primo = await pool.query<{ az_prima_persona: boolean }>(
+      "select public.az_prima_persona($1)",
+      [azienda]
     );
-    id = creata.rows[0].id;
+    if (primo.rows[0]?.az_prima_persona) {
+      const creata = await pool.query<{ id: string }>(
+        "select id from public.az_crea($1, $2, $3)",
+        [azienda, emailPulita, impasta(password)]
+      );
+      id = creata.rows[0].id;
+    } else {
+      // Consuma un invito valido (atomico: lo prende una persona sola).
+      const inv = await pool.query<{ az_invito_prendi: string | null }>(
+        "select public.az_invito_prendi($1, $2)",
+        [azienda, emailPulita]
+      );
+      const ruolo = inv.rows[0]?.az_invito_prendi ?? null;
+      if (!ruolo) {
+        await pool
+          .query("select public.az_freno_segna($1, $2, $3)", [azienda, ipHash, email])
+          .catch(() => {});
+        return {
+          errore:
+            "Non risulti tra le persone invitate. Chiedi in ufficio di aggiungerti, " +
+            "poi rientra con questa email.",
+        };
+      }
+      const creata = await pool.query<{ az_crea_invitato: string }>(
+        "select public.az_crea_invitato($1, $2, $3, $4, $5) as az_crea_invitato",
+        [azienda, emailPulita, impasta(password), ruolo, ""]
+      );
+      id = creata.rows[0].az_crea_invitato;
+    }
   }
 
   const token = randomBytes(32).toString("base64url");
@@ -248,6 +281,29 @@ export async function salvaProfilo(
 export async function persone(azienda: string) {
   const r = await getPool().query("select * from public.az_persone($1)", [azienda]);
   return r.rows;
+}
+
+// ── L'ingresso su invito ────────────────────────────────────────────────
+
+export async function invita(
+  azienda: string,
+  email: string,
+  ruolo: string,
+  reparto: string
+): Promise<void> {
+  const ammessi = ["titolare", "amministratore", "capo", "operatore", "osservatore"];
+  if (!ammessi.includes(ruolo)) throw new Error("Ruolo sconosciuto.");
+  if (!email.includes("@")) throw new Error("Email non valida.");
+  await getPool().query("select public.az_invita($1,$2,$3,$4)", [azienda, email, ruolo, reparto]);
+}
+
+export async function inviti(azienda: string) {
+  const r = await getPool().query("select * from public.az_inviti($1)", [azienda]);
+  return r.rows;
+}
+
+export async function revocaInvito(azienda: string, email: string): Promise<void> {
+  await getPool().query("select public.az_invito_revoca($1,$2)", [azienda, email]);
 }
 
 export async function cambiaRuolo(

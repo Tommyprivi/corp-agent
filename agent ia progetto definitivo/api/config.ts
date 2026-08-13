@@ -467,6 +467,11 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       if (!titolare) return soloTitolare();
       return json({ persone: await az.persone(chi.azienda) }, 200);
 
+    case "inviti":
+      // Gli inviti in sospeso: solo il titolare li vede e li gestisce.
+      if (!titolare) return soloTitolare();
+      return json({ inviti: await az.inviti(chi.azienda) }, 200);
+
     case "cruscotto":
       if (!titolare) return soloTitolare();
       return json({ cruscotto: await az.cruscotto(chi.azienda) }, 200);
@@ -792,6 +797,27 @@ async function areaAzienda(
     case "mezzo-elimina":
       if (!gestore) return negato();
       await az.eliminaMezzo(chi.azienda, String(corpo.id));
+      return json({ ok: true }, 200);
+
+    case "invita": {
+      if (!titolare) return negato();
+      try {
+        await az.invita(
+          chi.azienda,
+          String(corpo.email ?? "").trim(),
+          String(corpo.ruolo ?? "operatore"),
+          String(corpo.reparto ?? "")
+        );
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : "Invito non valido." }, 400);
+      }
+      az.segnaAttivita(chi.azienda, chi.persona, "invito", String(corpo.email ?? ""));
+      return json({ ok: true }, 200);
+    }
+
+    case "invito-revoca":
+      if (!titolare) return negato();
+      await az.revocaInvito(chi.azienda, String(corpo.email ?? ""));
       return json({ ok: true }, 200);
 
     case "ruolo": {

@@ -216,7 +216,7 @@ function Entra({
       <p className="mt-3.5 text-center text-[12px] leading-relaxed text-[var(--text-secondary)]">
         Resti collegato su questo telefono per tre mesi.
         <br />
-        Se la tua email non c'è ancora, la postazione si apre adesso.
+        Entri con l'email che ti hanno invitato in ufficio.
       </p>
     </form>
   );

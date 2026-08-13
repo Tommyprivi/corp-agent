@@ -252,3 +252,11 @@ export interface Lettura {
   abbinato: boolean;
   quando: string;
 }
+
+export interface Invito {
+  email: string;
+  ruolo: string;
+  reparto: string;
+  creato: string;
+  usato: string | null;
+}

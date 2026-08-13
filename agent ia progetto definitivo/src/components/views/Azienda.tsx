@@ -20,6 +20,7 @@ import {
   type RisultatoCerca,
   type Ufficio as UfficioDati,
   type PersonaElenco,
+  type Invito,
   type PersonaViva,
   type RepartoDati,
 } from "../../lib/azienda";
@@ -1925,6 +1926,11 @@ function Persone({
   seScaduta: (e: unknown) => void;
 }) {
   const [elenco, setElenco] = useState<PersonaElenco[] | null>(null);
+  const [inviti, setInviti] = useState<Invito[]>([]);
+  const [invEmail, setInvEmail] = useState("");
+  const [invRuolo, setInvRuolo] = useState("operatore");
+  const [invErr, setInvErr] = useState<string | null>(null);
+  const [invInCorso, setInvInCorso] = useState(false);
 
   const carica = useCallback(() => {
     leggi<{ persone: PersonaElenco[] }>("persone")
@@ -1933,9 +1939,36 @@ function Persone({
         seScaduta(e);
         setElenco([]);
       });
+    leggi<{ inviti: Invito[] }>("inviti")
+      .then((r) => setInviti(r.inviti))
+      .catch(() => {});
   }, [seScaduta]);
 
   useEffect(() => carica(), [carica]);
+
+  async function invita() {
+    if (!invEmail.includes("@") || invInCorso) return;
+    setInvInCorso(true);
+    setInvErr(null);
+    try {
+      await manda({ az: "invita", email: invEmail.trim(), ruolo: invRuolo });
+      setInvEmail("");
+      carica();
+    } catch (e) {
+      setInvErr(e instanceof Error ? e.message : "Invito non riuscito.");
+    } finally {
+      setInvInCorso(false);
+    }
+  }
+
+  async function revocaInvito(email: string) {
+    try {
+      await manda({ az: "invito-revoca", email });
+      carica();
+    } catch (e) {
+      seScaduta(e);
+    }
+  }
 
   async function cambia(p: PersonaElenco, ruolo: string, attiva: boolean) {
     try {
@@ -1964,6 +1997,80 @@ function Persone({
             background: "var(--accent)",
           }}
         />
+      </div>
+
+      {/* ── INVITA — solo chi è invitato può entrare ─────────────────── */}
+      <div className="mt-6 rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-4">
+        <h3 className="text-[13.5px] font-semibold">Invita una persona</h3>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+          Entra solo chi inviti tu. Metti l'email e scegli il ruolo: la persona
+          entra la prima volta con quell'email e sceglie la sua password.
+        </p>
+        <form
+          className="mt-3 flex flex-wrap gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void invita();
+          }}
+        >
+          <input
+            type="email"
+            value={invEmail}
+            onChange={(e) => setInvEmail(e.target.value)}
+            placeholder="email@azienda.it"
+            className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[13.5px]"
+          />
+          <select
+            value={invRuolo}
+            onChange={(e) => setInvRuolo(e.target.value)}
+            className="cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-[13.5px] outline-none focus:border-[var(--accent)]"
+          >
+            {RUOLI.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.nome}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            disabled={!invEmail.includes("@") || invInCorso}
+            className="btn-grad shrink-0 cursor-pointer rounded-lg px-4 py-2.5 text-[13.5px] font-medium disabled:opacity-40"
+          >
+            {invInCorso ? "Invito…" : "Invita"}
+          </button>
+        </form>
+        {invErr && <p className="mt-2 text-[12.5px] text-[#D92D20]">{invErr}</p>}
+
+        {inviti.filter((i) => !i.usato).length > 0 && (
+          <div className="mt-4">
+            <p className="mb-1.5 text-[11px] uppercase tracking-[0.09em] text-[var(--text-secondary)]">
+              In attesa che entrino
+            </p>
+            <div className="overflow-hidden rounded-md border border-[var(--border)]">
+              {inviti
+                .filter((i) => !i.usato)
+                .map((i, k) => (
+                  <div
+                    key={i.email}
+                    className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 ${
+                      k > 0 ? "border-t border-[var(--border)]" : ""
+                    }`}
+                  >
+                    <span className="min-w-0 flex-1 truncate text-[13px]">{i.email}</span>
+                    <span className="text-[12px] text-[var(--text-secondary)]">
+                      {RUOLI.find((r) => r.id === i.ruolo)?.nome ?? i.ruolo}
+                    </span>
+                    <button
+                      onClick={() => void revocaInvito(i.email)}
+                      className="cursor-pointer rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+                    >
+                      Togli
+                    </button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {elenco === null && <p className="mt-6 text-[13px] text-[var(--text-secondary)]">Leggo…</p>}
