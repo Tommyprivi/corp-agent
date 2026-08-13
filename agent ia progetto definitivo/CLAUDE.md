@@ -94,12 +94,17 @@ variabile sta su Vercel e in `.env.local`, l'indirizzo può essere pubblico quan
 
 ## Estetica — non negoziabile
 
-**Grafite e bianco** — deciso da Tommaso il 2 Agosto 2026. Niente gradienti colorati:
-nero, bianco, grigi, e il colore **solo dove porta informazione** (verde = attivo).
-È la scelta di Linear e Vercel: sembra costoso perché non urla. Desktop prima di tutto.
+**Ottone su grafite, neutri caldi** — deciso da Tommaso il 13 Agosto 2026
+(«cambia colori»), sostituisce il grafite-e-bianco del 2 Agosto. Neutri CALDI
+(grigio-carta, non grigio-azzurro), testo inchiostro, e l'accento è l'OTTONE:
+#B8892F nel chiaro, #C89B3C nello scuro, con `--on-primary` quasi nero sopra.
+Niente gradienti, niente neon: il colore in più resta solo dove porta
+informazione (verde = attivo, rosso = errore). Desktop prima di tutto.
 
-⚠️ Ha sostituito un tentativo viola→ciano durato poche ore, bocciato dal proprietario
-del design. Non riproporre gradienti colorati.
+⚠️ Storia dei bocciati, per non riproporli: viola→ciano (2 Agosto, durato ore),
+gradienti grafite + effetti da «sito IA» (orb, glass, glow, cursore, suoni —
+tolti il 13 Agosto). L'area cliente Speed NON segue questa palette: usa i
+colori del marchio del cliente (verde/oro) via `data-marchio`.
 
 **Due temi, un solo insieme di nomi.** `:root` è il chiaro, `:root[data-theme="dark"]`
 riscrive gli stessi nomi. I componenti non sanno quale sia attivo: usano
@@ -133,12 +138,16 @@ permanentemente scura porta la classe `.on-dark`**, che inverte `.btn-grad`,
 `.text-grad` e `.ring-grad` una volta sola nel CSS. Dentro la sidebar si usano
 `--side-accent` / `--side-on-accent` / `--side-positive`, mai `--accent`.
 
-Stessa regola per il testo: un `text-white` sopra `--grad-primary` è un bug: nel
-tema scuro quel fondo è bianco. Si usa `var(--on-primary)`.
+Stessa regola per il testo: un `text-white` sopra `--grad-primary` è un bug: da
+Agosto 2026 quel fondo è OTTONE in tutti e due i temi, e il bianco sopra dà
+3:1 — non si legge. Si usa `var(--on-primary)` (quasi nero, pensato apposta).
 
 Tipografia (cambiata da Tommaso il 13 Agosto 2026 — «sembra fatto con l'IA,
-sempre gli stessi font»): **Schibsted Grotesk** per l'interfaccia di CorpAgent,
-**IBM Plex Sans** per l'area cliente (`data-marchio`), più i quattro display
+sempre gli stessi font, niente scelte scontate»): **Familjen Grotesk** per
+l'interfaccia di CorpAgent, **Overpass** (il font della segnaletica
+autostradale — siamo nei trasporti) per l'area cliente (`data-marchio`),
+entrambi variabili; Familjen parte da peso 400: `font-extralight`/`font-light`
+clampano a 400, non usarli. Più i quattro display
 della vetrina (Boldonse, Big Shoulders, Instrument Serif, Geist Mono). TUTTI
 self-hosted in `public/fonts/*.woff2` — niente CDN Google, niente Inter.
 Nello stesso giro sono spariti: gradienti su pulsanti e titoli (ora piatti,

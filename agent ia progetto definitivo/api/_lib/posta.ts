@@ -75,6 +75,19 @@ function apriClient(c: { host: string; porta: number; utente: string; password: 
 }
 
 /**
+ * Si connette e PRETENDE il TLS. Su porta 143 imapflow tenta STARTTLS, ma se
+ * il server non lo offre prosegue in chiaro — e la password dell'ufficio
+ * viaggerebbe nuda. Meglio nessun collegamento che un collegamento così.
+ */
+async function connettiSicuro(client: ImapFlow): Promise<void> {
+  await client.connect();
+  if (!client.secureConnection) {
+    await client.logout().catch(() => {});
+    throw new Error("Il server non offre una connessione cifrata (TLS). Usa la porta 993.");
+  }
+}
+
+/**
  * Prova il collegamento SENZA salvare niente: si connette, entra, apre la
  * cartella, conta i messaggi, esce. Se qualcosa non va, l'errore torna in
  * italiano comprensibile — è quello che il titolare leggerà.
@@ -82,7 +95,7 @@ function apriClient(c: { host: string; porta: number; utente: string; password: 
 export async function provaPosta(c: ConfigPosta): Promise<{ messaggi: number }> {
   const client = apriClient(c);
   try {
-    await client.connect();
+    await connettiSicuro(client);
     const box = await client.mailboxOpen(c.cartella || "INBOX", { readOnly: true });
     return { messaggi: box.exists };
   } catch (e) {
@@ -168,7 +181,7 @@ export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; er
   let ultimoUid = Number(cred.ultimo_uid) || 0;
   let validitaSalvata = Number(cred.uid_validita) || 0;
   try {
-    await client.connect();
+    await connettiSicuro(client);
     const lock = await client.getMailboxLock(cred.cartella || "INBOX");
     try {
       const box = client.mailbox;

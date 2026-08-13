@@ -4028,7 +4028,11 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
         setCartella(r.stato.cartella);
       }
     } catch (e) {
-      seScaduta(e);
+      // ⚠️ Solo la sessione scaduta esce; ogni altro guasto SI DICE. Prima
+      // un 500 al caricamento mostrava il form «collega» come se la casella
+      // fosse sparita — e il titolare reinseriva le credenziali a vuoto.
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setEsito({ tipo: "errore", testo: "Non riesco a leggere lo stato della posta. Ricarica la pagina." });
     } finally {
       setCaricato(true);
     }
@@ -4097,7 +4101,8 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
       setPorta("993");
       setCartella("INBOX");
     } catch (e) {
-      seScaduta(e);
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setEsito({ tipo: "errore", testo: "Non sono riuscito a staccare la casella. Riprova." });
     } finally {
       setInCorso(false);
     }
@@ -4165,7 +4170,7 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
             <div className="divide-y divide-[var(--border)]">
               {arrivi.slice(0, 8).map((a) => (
                 <div key={a.id} className="flex items-baseline gap-3 px-4 py-2.5">
-                  <span className="w-32 shrink-0 text-[11.5px] text-[var(--text-secondary)]">
+                  <span className="w-40 shrink-0 whitespace-nowrap text-[11.5px] text-[var(--text-secondary)]">
                     {a.ricevuto ? new Date(a.ricevuto).toLocaleString("it-IT") : "—"}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-[13px]">

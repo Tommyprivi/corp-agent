@@ -32,7 +32,7 @@ export default function Logo({ size = 26, showWordmark = true }: LogoProps) {
       <LogoMark size={size} />
       {showWordmark && (
         <span
-          className="font-logo font-extralight leading-none"
+          className="font-logo font-normal tracking-[0.01em] leading-none"
           style={{ fontSize: size * 0.76, letterSpacing: "-0.015em" }}
         >
           corp agent

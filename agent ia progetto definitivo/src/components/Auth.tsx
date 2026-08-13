@@ -213,7 +213,7 @@ export default function Auth({ onDone }: AuthProps) {
                       done
                         ? { background: "var(--positive)", color: "#fff" }
                         : current
-                          ? { background: "var(--grad-primary)", color: "#fff" }
+                          ? { background: "var(--grad-primary)", color: "var(--on-primary)" }
                           : { background: "rgba(255,255,255,0.08)", color: "var(--hero-text-dim)" }
                     }
                   >
