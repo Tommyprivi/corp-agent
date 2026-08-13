@@ -211,7 +211,7 @@ export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; er
           const msgid =
             posta.messageId ||
             `senza-id:${posta.date?.toISOString() ?? ""}:${(posta.subject ?? "").slice(0, 80)}`;
-          const inserito = await getPool().query<{ az_posta_arrivo: boolean }>(
+          const inserito = await getPool().query<{ az_posta_arrivo: string | null }>(
             "select public.az_posta_arrivo($1,$2,$3,$4,$5,$6,$7)",
             [
               azienda,
@@ -223,7 +223,23 @@ export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; er
               (posta.text ?? "").trim(),
             ]
           );
-          if (inserito.rows[0]?.az_posta_arrivo) nuovi++;
+          const arrivoId = inserito.rows[0]?.az_posta_arrivo;
+          if (arrivoId != null) {
+            nuovi++;
+            // ⚠️ Gli allegati si salvano COI BYTE: sono le bolle scannerizzate,
+            // e senza i byte non c'è niente da leggere. Solo immagini e PDF,
+            // fino a 4 MB l'uno e 5 per messaggio: una foto da 40 MB non è una
+            // bolla, è un errore di qualcuno.
+            for (const a of (posta.attachments ?? []).slice(0, 5)) {
+              const tipo = (a.contentType || "").toLowerCase();
+              const buono = tipo.startsWith("image/") || tipo === "application/pdf";
+              if (!buono || !a.content || a.content.length > 4_000_000) continue;
+              await getPool().query(
+                "select public.az_posta_allegato_salva($1,$2,$3,$4,$5)",
+                [azienda, arrivoId, a.filename || "documento", tipo, a.content]
+              );
+            }
+          }
         }
         // Anche un messaggio illeggibile fa avanzare il segnalibro: meglio
         // perderne uno strano che rimasticarlo a ogni giro per sempre.
@@ -252,7 +268,9 @@ export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; er
   }
 }
 
-/** Il giro serale: ogni azienda con la posta accesa, una per una. */
+/** Il giro serale: ogni azienda con la posta accesa, una per una — e dopo lo
+ *  scarico si LEGGONO le bolle in attesa (fino a 6 per azienda: il resto al
+ *  giro dopo, o col tasto «Controlla adesso»). */
 export async function scaricaPostaTutte(): Promise<{ azienda: string; nuovi: number; errore: string | null }[]> {
   const r = await getPool().query<{ azienda: string }>("select * from public.az_posta_accese()");
   const esiti: { azienda: string; nuovi: number; errore: string | null }[] = [];
@@ -261,6 +279,7 @@ export async function scaricaPostaTutte(): Promise<{ azienda: string; nuovi: num
       nuovi: 0,
       errore: traduciErrore(e),
     }));
+    await leggiBolle(azienda, 6).catch(() => {});
     esiti.push({ azienda, ...esito });
   }
   return esiti;
@@ -288,4 +307,231 @@ function traduciErrore(e: unknown): string {
   if (minuscolo.includes("mailbox") && (minuscolo.includes("exist") || minuscolo.includes("select")))
     return "La cartella indicata non esiste sulla casella: prova con INBOX.";
   return "Collegamento non riuscito: " + testo.slice(0, 160);
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// LA LETTURA DELLE BOLLE — dai byte ai dati
+// ─────────────────────────────────────────────────────────────────────────
+
+/** I dati che si provano a estrarre da una bolla. Tutto può essere null:
+ *  meglio un campo vuoto che un campo inventato. */
+export interface DatiBolla {
+  tipo: string | null;
+  mittente: string | null;
+  destinatario: string | null;
+  numero: string | null;
+  data: string | null;
+  colli: number | null;
+  note: string | null;
+}
+
+/**
+ * Trova il JPEG più grande annegato in un PDF di scansione.
+ *
+ * ⚠️ Le multifunzione fanno quasi tutte così: il PDF è solo una busta attorno
+ * a un'immagine JPEG (flusso DCTDecode). Invece di renderizzare il PDF — che
+ * su una funzione serverless vorrebbe un motore grafico che non c'è — si
+ * cerca la firma JPEG (FFD8FF … FFD9) e si tira fuori l'immagine com'è.
+ * Se il PDF è "vero" (testo vettoriale), qui non si trova niente e si passa
+ * dalla via del testo.
+ */
+function estraiJpegDaPdf(pdf: Buffer): Buffer | null {
+  let migliore: Buffer | null = null;
+  let da = 0;
+  for (;;) {
+    const inizio = pdf.indexOf(Buffer.from([0xff, 0xd8, 0xff]), da);
+    if (inizio === -1) break;
+    const fine = pdf.indexOf(Buffer.from([0xff, 0xd9]), inizio + 3);
+    if (fine === -1) break;
+    const pezzo = pdf.subarray(inizio, fine + 2);
+    if (!migliore || pezzo.length > migliore.length) migliore = pezzo;
+    da = fine + 2;
+  }
+  // Sotto i 4 KB non è una scansione: è un'iconcina o un falso positivo.
+  return migliore && migliore.length > 4_000 && migliore.length < 3_500_000 ? migliore : null;
+}
+
+/** Il testo di un PDF "vero" (con strato di testo), via unpdf. */
+async function testoDaPdf(pdf: Buffer): Promise<string> {
+  try {
+    const { extractText, getDocumentProxy } = await import("unpdf");
+    const doc = await getDocumentProxy(new Uint8Array(pdf));
+    const { text } = await extractText(doc, { mergePages: true });
+    return (text ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
+const ISTRUZIONI_LETTURA = [
+  "Sei il lettore di documenti di un'azienda di trasporti italiana. Ti arriva",
+  "un documento (di solito una bolla di consegna/DDT, a volte una fattura o",
+  "un ordine), come immagine scannerizzata o come testo.",
+  "",
+  "Rispondi SOLO con un oggetto JSON, senza altro testo attorno:",
+  '{"tipo":"bolla|fattura|ordine|altro","mittente":string|null,',
+  '"destinatario":string|null,"numero":string|null,"data":string|null,',
+  '"colli":number|null,"note":string|null,"testo":string}',
+  "",
+  "REGOLE:",
+  "- \"testo\" è la trascrizione fedele di quello che leggi (max ~1500 caratteri).",
+  "- null dove non leggi con certezza. NON INVENTARE MAI niente:",
+  "  un numero di colli sbagliato è un collo perso in magazzino.",
+  "- \"data\" in formato YYYY-MM-DD se leggibile, altrimenti null.",
+].join("\n");
+
+/** Una chiamata di lettura al modello: immagine o testo, fuori JSON. */
+async function chiediAlModello(
+  contenuto: { immagine: string } | { testo: string }
+): Promise<{ dati: DatiBolla; testo: string } | null> {
+  const chiave = process.env.OPENROUTER_API_KEY;
+  if (!chiave) return null;
+  const user =
+    "immagine" in contenuto
+      ? [
+          { type: "text", text: "Leggi questo documento scannerizzato." },
+          { type: "image_url", image_url: { url: contenuto.immagine } },
+        ]
+      : [{ type: "text", text: "Leggi questo documento (testo estratto dal PDF):\n\n" + contenuto.testo.slice(0, 6000) }];
+  try {
+    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${chiave}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://corpagent.vercel.app",
+        "X-Title": "CorpAgent · Lettura bolle",
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        max_tokens: 900,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: ISTRUZIONI_LETTURA },
+          { role: "user", content: user },
+        ],
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const body = (await r.json()) as { choices?: { message?: { content?: string } }[] };
+    const grezzo = body.choices?.[0]?.message?.content?.trim();
+    if (!grezzo) return null;
+    const j = JSON.parse(grezzo) as Record<string, unknown>;
+    const testo = typeof j.testo === "string" ? j.testo : "";
+    const dati: DatiBolla = {
+      tipo: typeof j.tipo === "string" ? j.tipo : null,
+      mittente: typeof j.mittente === "string" ? j.mittente : null,
+      destinatario: typeof j.destinatario === "string" ? j.destinatario : null,
+      numero: typeof j.numero === "string" || typeof j.numero === "number" ? String(j.numero) : null,
+      data: typeof j.data === "string" ? j.data : null,
+      colli: typeof j.colli === "number" && Number.isFinite(j.colli) ? Math.trunc(j.colli) : null,
+      note: typeof j.note === "string" ? j.note : null,
+    };
+    return { dati, testo };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Legge gli allegati ancora `nuovo` di un'azienda, pochi per volta.
+ *
+ * ⚠️ Ogni lettura è una chiamata al modello (secondi, non millisecondi):
+ * `massimo` tiene la passata dentro il tempo di una funzione Vercel. Quello
+ * che non si legge ora si legge al giro dopo — o resta `illeggibile` CON IL
+ * PERCHÉ scritto, mai un fallimento muto.
+ */
+export async function leggiBolle(
+  azienda: string,
+  massimo = 3
+): Promise<{ lette: number; illeggibili: number }> {
+  const r = await getPool().query<{ id: string; nome: string; tipo: string; dati: Buffer }>(
+    "select * from public.az_posta_da_leggere($1,$2)",
+    [azienda, massimo]
+  );
+  let lette = 0;
+  let illeggibili = 0;
+  for (const allegato of r.rows) {
+    let esito: { dati: DatiBolla; testo: string } | null = null;
+    let perche = "";
+    if (allegato.tipo.startsWith("image/")) {
+      esito = await chiediAlModello({
+        immagine: `data:${allegato.tipo};base64,${allegato.dati.toString("base64")}`,
+      });
+      if (!esito) perche = "Il modello di lettura non ha risposto. Si riproverà.";
+    } else {
+      // PDF: prima la via del testo (gratis e fedele), poi la scansione.
+      const testo = await testoDaPdf(allegato.dati);
+      if (testo.length > 40) {
+        esito = await chiediAlModello({ testo });
+        if (!esito) perche = "Il modello di lettura non ha risposto. Si riproverà.";
+      } else {
+        const jpeg = estraiJpegDaPdf(allegato.dati);
+        if (jpeg) {
+          esito = await chiediAlModello({
+            immagine: `data:image/jpeg;base64,${jpeg.toString("base64")}`,
+          });
+          if (!esito) perche = "Il modello di lettura non ha risposto. Si riproverà.";
+        } else {
+          perche = "PDF senza testo né immagine estraibile: impostare la multifunzione su JPEG o PDF immagine.";
+        }
+      }
+    }
+    if (esito) {
+      await getPool().query("select public.az_posta_allegato_letto($1,$2,$3,$4,$5)", [
+        azienda,
+        Number(allegato.id),
+        "letto",
+        esito.testo,
+        JSON.stringify(esito.dati),
+      ]);
+      lette++;
+    } else if (perche.includes("riproverà")) {
+      // Guasto temporaneo: resta `nuovo`, il prossimo giro riprova da sé.
+      illeggibili++;
+    } else {
+      await getPool().query("select public.az_posta_allegato_letto($1,$2,$3,$4,$5)", [
+        azienda,
+        Number(allegato.id),
+        "illeggibile",
+        perche,
+        null,
+      ]);
+      illeggibili++;
+    }
+  }
+  return { lette, illeggibili };
+}
+
+export interface BollaElenco {
+  id: string;
+  arrivo: string;
+  nome: string;
+  tipo: string;
+  stato: string;
+  letto: string;
+  bolla: DatiBolla | null;
+  creato: string;
+  kb: number;
+}
+
+export async function bolle(azienda: string, limite = 30): Promise<BollaElenco[]> {
+  const r = await getPool().query<BollaElenco>("select * from public.az_posta_bolle($1,$2)", [
+    azienda,
+    limite,
+  ]);
+  return r.rows;
+}
+
+export async function allegato(
+  azienda: string,
+  id: number
+): Promise<{ nome: string; tipo: string; dati: Buffer } | null> {
+  const r = await getPool().query<{ nome: string; tipo: string; dati: Buffer }>(
+    "select * from public.az_posta_allegato($1,$2)",
+    [azienda, id]
+  );
+  return r.rows[0] ?? null;
 }

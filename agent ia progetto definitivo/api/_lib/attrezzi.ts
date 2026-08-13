@@ -62,6 +62,18 @@ export function attrezziAzienda(): Strumento[] {
         },
       },
     },
+    {
+      type: "function",
+      function: {
+        name: "bolle_arrivate",
+        description:
+          "Le bolle e i documenti arrivati via posta (scan-to-email della multifunzione), " +
+          "già letti dal sistema: mittente, numero, data, colli, stato lettura. " +
+          "Usalo per «è arrivata la bolla di...?», «quanti colli sulla bolla...?», " +
+          "«cosa è arrivato oggi via mail?».",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
   ];
 
   if (process.env.GOOGLE_MAPS_API_KEY) {
@@ -138,6 +150,35 @@ export async function eseguiAttrezzo(
           else if (r.tipo === "ritiro") righe.push(`- ${ora} ritiro prenotato da ${r.controparte}${r.colli ? `, ${r.colli} colli` : ""} (${r.chi})`);
           else if (r.tipo === "reclamo") righe.push(`- ${ora} reclamo di ${r.controparte}: ${r.testo} — ${r.stato} (${r.chi})`);
           else righe.push(`- ${ora} problema: ${r.testo || "segnalazione"} — ${r.stato} (${r.chi})`);
+        }
+      }
+      return righe.join("\n");
+    }
+
+    if (nome === "bolle_arrivate") {
+      const { bolle } = await import("./posta.js");
+      const elenco = await bolle(azienda, 15);
+      if (elenco.length === 0) {
+        return "Nessuna bolla arrivata via posta, per ora. (Serve la casella email collegata nelle Impostazioni.)";
+      }
+      const righe: string[] = [`Documenti arrivati via posta (ultimi ${elenco.length}):`];
+      for (const b of elenco) {
+        const quando = new Date(b.creato).toLocaleString("it-IT", {
+          day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+          timeZone: "Europe/Rome",
+        });
+        if (b.stato === "letto" && b.bolla) {
+          const d = b.bolla;
+          righe.push(
+            `- ${quando} ${d.tipo ?? "documento"}${d.numero ? ` n. ${d.numero}` : ""}` +
+            `${d.mittente ? ` da ${d.mittente}` : ""}${d.destinatario ? ` per ${d.destinatario}` : ""}` +
+            `${d.colli != null ? `, ${d.colli} colli` : ""}${d.data ? ` (del ${d.data})` : ""}` +
+            `${d.note ? ` — ${d.note}` : ""}`
+          );
+        } else if (b.stato === "illeggibile") {
+          righe.push(`- ${quando} «${b.nome}»: NON LEGGIBILE (${b.letto})`);
+        } else {
+          righe.push(`- ${quando} «${b.nome}»: arrivata, in attesa di lettura`);
         }
       }
       return righe.join("\n");

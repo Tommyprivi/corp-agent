@@ -523,6 +523,29 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       if (!titolare) return soloTitolare();
       return json({ chiave: await az.ingressoChiave(chi.azienda) }, 200);
 
+    case "bolle":
+      // Le bolle arrivate via posta, coi dati estratti: le vede chi lavora —
+      // la banchina deve sapere cosa è arrivato, come per le letture scanner.
+      return json({ bolle: await posta.bolle(chi.azienda, 30) }, 200);
+
+    case "allegato": {
+      // I byte di UNA bolla (immagine o PDF), per aprirla. Risposta binaria.
+      const id = Number(url.searchParams.get("id"));
+      if (!Number.isFinite(id) || id <= 0) return json({ error: "Serve l'id." }, 400);
+      const a = await posta.allegato(chi.azienda, id);
+      if (!a) return json({ error: "Non trovato." }, 404);
+      // ⚠️ `inline` e non `attachment`: una bolla si GUARDA, al volo, dal
+      // magazzino; scaricarla resta possibile dal visore del browser.
+      return new Response(new Uint8Array(a.dati), {
+        status: 200,
+        headers: {
+          "Content-Type": a.tipo || "application/octet-stream",
+          "Content-Disposition": `inline; filename="${a.nome.replace(/[^\w. -]/g, "_")}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     case "posta": {
       // La casella collegata: stato (MAI il segreto, nemmeno cifrato) e gli
       // ultimi arrivi. La vede chi amministra: titolare e amministrazione.
@@ -896,7 +919,22 @@ async function areaAzienda(
       if (!titolare && chi.ruolo_vero !== "amministratore") return negato();
       const esito = await posta.scaricaPosta(chi.azienda);
       if (esito.errore) return json({ error: esito.errore, nuovi: esito.nuovi }, 400);
-      return json({ ok: true, nuovi: esito.nuovi }, 200);
+      // Quello che è appena entrato si prova subito a leggerlo (poche bolle,
+      // per stare nei tempi della funzione): il resto al giro serale.
+      let bolle = { lette: 0, illeggibili: 0 };
+      try {
+        bolle = await posta.leggiBolle(chi.azienda, 3);
+      } catch {
+        /* la lettura non deve far fallire lo scarico: si riproverà */
+      }
+      return json({ ok: true, nuovi: esito.nuovi, ...bolle }, 200);
+    }
+
+    case "posta-leggi": {
+      // Legge ADESSO le bolle in attesa (poche per volta).
+      if (!titolare && chi.ruolo_vero !== "amministratore") return negato();
+      const esito = await posta.leggiBolle(chi.azienda, 4);
+      return json({ ok: true, ...esito }, 200);
     }
 
     case "posta-stacca":

@@ -3,11 +3,13 @@ import { applicaMarchio, MARCHI } from "../../lib/marchio";
 import { useTheme } from "../../lib/theme";
 import AziendaProfilo, { RUOLI } from "./AziendaProfilo";
 import {
+  apriAllegato,
   gettone,
   leggi,
   manda,
   salvaGettone,
   SessioneScaduta,
+  type Bolla,
   type Cliente,
   type Cruscotto as DatiCruscotto,
   type Documento,
@@ -2362,12 +2364,25 @@ function Banchina({
   const [dati, setDati] = useState<Banchina | null>(null);
   const [fatto, setFatto] = useState<string | null>(null);
   const [filtro, setFiltro] = useState("tutti");
+  // Le bolle arrivate via posta: si caricano quando si apre «In arrivo»,
+  // non prima — la banchina apre l'agente, non serve pagare la query subito.
+  const [bolle, setBolle] = useState<Bolla[] | null>(null);
 
   const carica = useCallback(() => {
     leggi<Banchina>("banchina")
       .then(setDati)
       .catch((e) => seScaduta(e));
   }, [seScaduta]);
+
+  useEffect(() => {
+    if (strumento !== "arrivi") return;
+    leggi<{ bolle: Bolla[] }>("bolle")
+      .then((r) => setBolle(r.bolle))
+      .catch((e) => {
+        if (e instanceof SessioneScaduta) seScaduta(e);
+        else setBolle([]);
+      });
+  }, [strumento, seScaduta]);
 
   useEffect(() => carica(), [carica]);
 
@@ -2475,6 +2490,67 @@ function Banchina({
                             minute: "2-digit",
                           })
                         : "senza orario"}
+                    </Cella>
+                  </Riga>
+                ))}
+              </Tabella>
+            )}
+
+            {/* ── Le bolle dalla posta ─────────────────────────────────────
+                La multifunzione scannerizza → la mail arriva → CorpAgent la
+                legge. Qui la banchina vede il risultato: chi manda, che
+                numero, quanti colli — e la scansione si apre col suo tasto. */}
+            <h2 className="mt-8 mb-2 text-[13px] font-semibold uppercase tracking-[0.07em] text-[var(--text-secondary)]">
+              Bolle dalla posta
+            </h2>
+            {bolle === null && (
+              <p className="text-[12.5px] text-[var(--text-secondary)]">Carico…</p>
+            )}
+            {bolle !== null && bolle.length === 0 && (
+              <Niente
+                titolo="Nessuna bolla via posta"
+                testo="Quando la multifunzione manda una scansione alla casella collegata (Impostazioni → La posta), la bolla compare qui, già letta."
+              />
+            )}
+            {bolle !== null && bolle.length > 0 && (
+              <Tabella
+                colonne={[
+                  { nome: "Documento" },
+                  { nome: "Da" },
+                  { nome: "Colli", larghezza: "70px", destra: true },
+                  { nome: "Stato", larghezza: "110px" },
+                  { nome: "", larghezza: "70px", destra: true },
+                ]}
+              >
+                {bolle.map((b) => (
+                  <Riga key={b.id}>
+                    <Cella>
+                      <span className="font-medium">
+                        {b.bolla?.tipo ? b.bolla.tipo.charAt(0).toUpperCase() + b.bolla.tipo.slice(1) : "Documento"}
+                        {b.bolla?.numero ? ` n. ${b.bolla.numero}` : ""}
+                      </span>
+                      <span className="block text-[11.5px] text-[var(--text-secondary)]">
+                        {b.nome} · {new Date(b.creato).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </Cella>
+                    <Cella tenue>{b.bolla?.mittente ?? "—"}</Cella>
+                    <Cella destra>{b.bolla?.colli ?? "—"}</Cella>
+                    <Cella>
+                      {b.stato === "letto" ? (
+                        <span className="text-[var(--positive)]">Letta</span>
+                      ) : b.stato === "illeggibile" ? (
+                        <span title={b.letto} className="text-[#b3261e]">Non leggibile</span>
+                      ) : (
+                        <span className="text-[var(--text-secondary)]">Da leggere</span>
+                      )}
+                    </Cella>
+                    <Cella destra>
+                      <button
+                        onClick={() => void apriAllegato(b.id).catch((e) => seScaduta(e))}
+                        className="cursor-pointer rounded px-2 py-1 text-[12px] font-medium text-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                      >
+                        Apri
+                      </button>
                     </Cella>
                   </Riga>
                 ))}

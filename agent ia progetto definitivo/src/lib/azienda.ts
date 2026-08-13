@@ -260,3 +260,62 @@ export interface Invito {
   creato: string;
   usato: string | null;
 }
+
+/** I dati estratti da una bolla letta. Tutto può essere null: mai inventato. */
+export interface DatiBolla {
+  tipo: string | null;
+  mittente: string | null;
+  destinatario: string | null;
+  numero: string | null;
+  data: string | null;
+  colli: number | null;
+  note: string | null;
+}
+
+export interface Bolla {
+  id: string;
+  arrivo: string;
+  nome: string;
+  tipo: string;
+  stato: string; // nuovo | letto | illeggibile
+  letto: string;
+  bolla: DatiBolla | null;
+  creato: string;
+  kb: number;
+}
+
+/**
+ * Apre una bolla (immagine o PDF) in una scheda nuova.
+ *
+ * ⚠️ Non può essere un semplice <a href>: il gettone viaggia nell'INTESTAZIONE
+ * (mai nell'URL, finirebbe nei log), quindi si scaricano i byte con fetch e si
+ * apre un blob. La scheda va aperta PRIMA dell'await, o il blocco popup dei
+ * browser la mangia (un window.open fuori dal gesto dell'utente è "popup").
+ */
+export async function apriAllegato(id: string): Promise<void> {
+  const t = gettone();
+  if (!t) throw new SessioneScaduta();
+  const scheda = window.open("about:blank", "_blank");
+  try {
+    const r = await fetch(`/api/config?az=allegato&id=${encodeURIComponent(id)}`, {
+      headers: { "x-azienda-sessione": t },
+    });
+    if (r.status === 401) {
+      scheda?.close();
+      salvaGettone(null);
+      throw new SessioneScaduta();
+    }
+    if (!r.ok) {
+      scheda?.close();
+      throw new Error("Non riesco ad aprire l'allegato.");
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    if (scheda) scheda.location.href = url;
+    // L'URL del blob si libera dopo un minuto: la scheda ormai l'ha caricato.
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (e) {
+    scheda?.close();
+    throw e;
+  }
+}
