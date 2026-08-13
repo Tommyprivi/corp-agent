@@ -25,6 +25,7 @@ import {
   type RepartoDati,
 } from "../../lib/azienda";
 import { Attesa, Barre, Cornice, Linea, Sdraiate } from "../azienda/Grafici";
+import { PannelloEtichette, stampaEtichette } from "../azienda/Etichetta";
 import {
   applicaSito,
   NOMI_BLOCCO,
@@ -2377,6 +2378,7 @@ function Banchina({
   const strumenti: Strumento[] = ordinaTool(ordine, [
     { id: "registro", nome: "Registro", icona: "magazzino" },
     { id: "scansioni", nome: "Scansioni", icona: "barcode" },
+    { id: "etichette", nome: "Etichette", icona: "stampa" },
     { id: "carico", nome: "Carico", icona: "carico" },
     { id: "scarico", nome: "Scarico", icona: "scarico" },
     { id: "differenza", nome: "Differenza", icona: "differenza" },
@@ -2409,6 +2411,12 @@ function Banchina({
 
       {strumento === "scansioni" && (
         <Scansioni titolare={!!titolare} seScaduta={seScaduta} />
+      )}
+
+      {strumento === "etichette" && (
+        <div className="flex-1 overflow-y-auto px-5 py-5 md:px-8">
+          <PannelloEtichette nomeAzienda={MARCHI.speed?.nome ?? "Speed Trasporti"} />
+        </div>
       )}
 
       {formAperto && (
@@ -2870,12 +2878,40 @@ function Ufficio({
                           : "senza orario"}
                       </Cella>
                       <Cella destra>
-                        <button
-                          onClick={() => void ritiroFatto(r.id)}
-                          className="cursor-pointer rounded-md border border-[var(--border)] px-2.5 py-1 text-[12px] font-medium hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
-                        >
-                          Fatto
-                        </button>
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            onClick={() =>
+                              stampaEtichette(MARCHI.speed?.nome ?? "Speed Trasporti", [
+                                {
+                                  codice: `RIT${r.id}`,
+                                  cliente: r.controparte,
+                                  righe: [
+                                    r.colli ? `${r.colli} colli` : "ritiro",
+                                    r.testo || "",
+                                    r.previsto
+                                      ? new Date(r.previsto).toLocaleString("it-IT", {
+                                          day: "numeric",
+                                          month: "short",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })
+                                      : "",
+                                  ].filter(Boolean),
+                                },
+                              ])
+                            }
+                            title="Stampa l'etichetta del ritiro"
+                            className="cursor-pointer rounded-md border border-[var(--border)] px-2.5 py-1 text-[12px] font-medium hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                          >
+                            Stampa
+                          </button>
+                          <button
+                            onClick={() => void ritiroFatto(r.id)}
+                            className="cursor-pointer rounded-md border border-[var(--border)] px-2.5 py-1 text-[12px] font-medium hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                          >
+                            Fatto
+                          </button>
+                        </div>
                       </Cella>
                     </Riga>
                   ))}
