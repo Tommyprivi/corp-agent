@@ -126,10 +126,18 @@ export async function arriviPosta(azienda: string, limite = 20): Promise<ArrivoP
 }
 
 /**
- * Scarica i messaggi non letti e li porta dentro: mittente, oggetto, corpo e
+ * Scarica i messaggi nuovi e li porta dentro: mittente, oggetto, corpo e
  * NOMI degli allegati (il contenuto degli allegati — l'OCR delle bolle — è il
- * passo dopo). Ogni messaggio letto viene segnato come letto sulla casella,
- * così il giro dopo riparte da dove si era rimasti.
+ * passo dopo).
+ *
+ * ⚠️ «Nuovo» si misura con l'UID, NON con la spunta di lettura (migrazione
+ * 0034). La casella dell'ufficio la apre anche una persona: se qualcuno
+ * legge una mail in Outlook prima del giro serale, per IMAP è «letta» e col
+ * vecchio criterio CorpAgent non l'avrebbe importata MAI — in silenzio. E
+ * marcare noi «letto» sporcava la casella. Con l'UID si riparte sempre da
+ * dov'eravamo rimasti, qualunque cosa facciano le persone con le spunte; se
+ * il server cambia UIDVALIDITY gli UID salvati non valgono più (lo dice
+ * IMAP) e si riparte da zero — i doppioni li ferma comunque il msgid unico.
  */
 export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; errore: string | null }> {
   const r = await getPool().query<{
@@ -139,6 +147,8 @@ export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; er
     segreto_cifrato: string;
     cartella: string;
     attivo: boolean;
+    ultimo_uid: string;
+    uid_validita: string;
   }>("select * from public.az_posta_credenziali($1)", [azienda]);
   const cred = r.rows[0];
   if (!cred) return { nuovi: 0, errore: "Nessuna casella collegata." };
@@ -153,47 +163,75 @@ export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; er
 
   const client = apriClient({ ...cred, password });
   let nuovi = 0;
+  // Da dove si riparte, e fin dove si è arrivati in QUESTA passata: si salva
+  // anche se la passata muore a metà, così non si rilavora quanto già fatto.
+  let ultimoUid = Number(cred.ultimo_uid) || 0;
+  let validitaSalvata = Number(cred.uid_validita) || 0;
   try {
     await client.connect();
     const lock = await client.getMailboxLock(cred.cartella || "INBOX");
     try {
-      const uids = await client.search({ seen: false }, { uid: true });
-      const daFare = (uids || []).slice(0, MASSIMO_PER_PASSATA);
+      const box = client.mailbox;
+      const validita = box && typeof box === "object" ? Number(box.uidValidity ?? 0) : 0;
+      if (validita !== validitaSalvata) {
+        // Cassetta «rinata»: gli UID vecchi non significano più niente.
+        ultimoUid = 0;
+        validitaSalvata = validita;
+      }
+      // ⚠️ La ricerca «n:*» per contratto IMAP ritorna SEMPRE almeno l'ultimo
+      // messaggio, anche se il suo UID è sotto n: il filtro dopo è d'obbligo.
+      const uids = await client.search({ uid: `${ultimoUid + 1}:*` }, { uid: true });
+      const daFare = (uids || [])
+        .filter((u) => u > ultimoUid)
+        .sort((a, b) => a - b)
+        .slice(0, MASSIMO_PER_PASSATA);
       for (const uid of daFare) {
         const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
-        if (!msg || !msg.source) continue;
-        const posta = await simpleParser(msg.source);
-        const allegati = (posta.attachments ?? [])
-          .map((a) => a.filename || "")
-          .filter(Boolean)
-          .slice(0, 20);
-        // Senza message-id (capita con scanner economici) se ne fabbrica uno
-        // stabile da data+oggetto, così il doppione resta riconoscibile.
-        const msgid =
-          posta.messageId ||
-          `senza-id:${posta.date?.toISOString() ?? ""}:${(posta.subject ?? "").slice(0, 80)}`;
-        const inserito = await getPool().query<{ az_posta_arrivo: boolean }>(
-          "select public.az_posta_arrivo($1,$2,$3,$4,$5,$6,$7)",
-          [
-            azienda,
-            msgid.slice(0, 500),
-            posta.date ?? null,
-            posta.from?.text ?? "",
-            posta.subject ?? "",
-            allegati,
-            (posta.text ?? "").trim(),
-          ]
-        );
-        if (inserito.rows[0]?.az_posta_arrivo) nuovi++;
-        await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
+        if (msg && msg.source) {
+          const posta = await simpleParser(msg.source);
+          const allegati = (posta.attachments ?? [])
+            .map((a) => a.filename || "")
+            .filter(Boolean)
+            .slice(0, 20);
+          // Senza message-id (capita con scanner economici) se ne fabbrica uno
+          // stabile da data+oggetto, così il doppione resta riconoscibile.
+          const msgid =
+            posta.messageId ||
+            `senza-id:${posta.date?.toISOString() ?? ""}:${(posta.subject ?? "").slice(0, 80)}`;
+          const inserito = await getPool().query<{ az_posta_arrivo: boolean }>(
+            "select public.az_posta_arrivo($1,$2,$3,$4,$5,$6,$7)",
+            [
+              azienda,
+              msgid.slice(0, 500),
+              posta.date ?? null,
+              posta.from?.text ?? "",
+              posta.subject ?? "",
+              allegati,
+              (posta.text ?? "").trim(),
+            ]
+          );
+          if (inserito.rows[0]?.az_posta_arrivo) nuovi++;
+        }
+        // Anche un messaggio illeggibile fa avanzare il segnalibro: meglio
+        // perderne uno strano che rimasticarlo a ogni giro per sempre.
+        ultimoUid = uid;
       }
     } finally {
       lock.release();
     }
+    await getPool().query("select public.az_posta_segna_uid($1,$2,$3)", [
+      azienda,
+      validitaSalvata,
+      ultimoUid,
+    ]);
     await getPool().query("select public.az_posta_esito($1,$2,$3)", [azienda, null, nuovi]);
     return { nuovi, errore: null };
   } catch (e) {
     const errore = traduciErrore(e);
+    // Il segnalibro di quanto fatto prima dell'errore non si butta.
+    await getPool()
+      .query("select public.az_posta_segna_uid($1,$2,$3)", [azienda, validitaSalvata, ultimoUid])
+      .catch(() => {});
     await getPool().query("select public.az_posta_esito($1,$2,$3)", [azienda, errore, nuovi]);
     return { nuovi, errore };
   } finally {
