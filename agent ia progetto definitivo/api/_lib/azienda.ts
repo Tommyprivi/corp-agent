@@ -440,6 +440,74 @@ export async function ultimoReport(
   return r.rows[0] ?? null;
 }
 
+/**
+ * Genera il report di direzione di un'azienda e lo salva come report del
+ * giorno. UNO SOLO posto che lo fa, riusato da due chiamanti: il tasto nel
+ * cruscotto (con `nome` = chi lo apre, per il saluto) e il lavoro serale delle
+ * 20:00 (senza nome — non c'è nessuno davanti allo schermo).
+ *
+ * ⚠️ Al modello arrivano SOLO i numeri contati del cruscotto, già in italiano
+ * (`riassuntoDati`), e le istruzioni gli vietano di inventare fatturato o
+ * spedizioni che il sistema non ha. Ritorna il testo salvato, o `null` se il
+ * modello è spento o non risponde: il chiamante decide cosa dire in quel caso.
+ */
+export async function generaReport(azienda: string, nome = ""): Promise<string | null> {
+  const chiave = process.env.OPENROUTER_API_KEY;
+  if (!chiave) return null;
+  const dati = await cruscotto(azienda);
+  try {
+    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${chiave}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://corpagent.vercel.app",
+        "X-Title": "CorpAgent · " + (AZIENDE[azienda]?.nome ?? azienda),
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        max_tokens: 260,
+        temperature: 0.5,
+        messages: [
+          { role: "system", content: istruzioniRiepilogo(nome) },
+          // ⚠️ I numeri già in italiano, non il JSON grezzo: così «1038
+          // millisecondi» non diventa «1.038 ore».
+          { role: "user", content: "I numeri di oggi e della settimana:\n" + riassuntoDati(dati) },
+        ],
+      }),
+      signal: AbortSignal.timeout(25_000),
+    });
+    const body = (await r.json()) as { choices?: { message?: { content?: string } }[] };
+    const testo = body.choices?.[0]?.message?.content?.trim();
+    if (!testo) return null;
+    // Si salva come report del giorno: così il titolare lo trova pronto quando
+    // apre, senza rigenerarlo (e senza ripagare il modello).
+    await salvaReport(azienda, oggiRoma(), testo);
+    return testo;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Il lavoro serale: prepara il report di ogni azienda conosciuta, così alle
+ * 20:00 è già scritto e il titolare lo trova pronto invece di generarlo lui
+ * aprendo il cruscotto. Lo chiama il `cron` di Vercel (dentro `whatsapp.ts`).
+ *
+ * ⚠️ Le aziende si fanno una per una, non in parallelo: sono poche e ognuna è
+ * una chiamata al modello: meglio non aprire dieci richieste insieme. E se una
+ * fallisce si va avanti con le altre — un'azienda muta non deve zittire le sue
+ * vicine.
+ */
+export async function generaReportSerale(): Promise<{ azienda: string; fatto: boolean }[]> {
+  const esiti: { azienda: string; fatto: boolean }[] = [];
+  for (const azienda of Object.keys(AZIENDE)) {
+    const testo = await generaReport(azienda).catch(() => null);
+    esiti.push({ azienda, fatto: testo != null });
+  }
+  return esiti;
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // IL MAGAZZINO — mezzi, movimenti, e la vista del capo
 // ─────────────────────────────────────────────────────────────────────────

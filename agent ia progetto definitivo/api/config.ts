@@ -555,51 +555,17 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
  * contato, e le istruzioni gli vietano di aggiungere il resto.
  */
 async function riepilogoGiornata(chi: az.Persona): Promise<Response> {
-  const dati = await az.cruscotto(chi.azienda);
-  const chiave = process.env.OPENROUTER_API_KEY;
-  if (!chiave) {
-    return json(
-      { testo: "L'agente di direzione è momentaneamente spento. Riprova più tardi." },
-      200
-    );
-  }
+  // La generazione vera vive in az.generaReport (un solo posto, riusato dal
+  // lavoro serale delle 20:00). Qui si traduce solo l'esito in una risposta.
   const nome = (chi.nome || "").split(" ")[0];
-  try {
-    const r = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${chiave}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://corpagent.vercel.app",
-        "X-Title": "CorpAgent · Speed Trasporti",
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-4o-mini",
-        max_tokens: 260,
-        temperature: 0.5,
-        messages: [
-          { role: "system", content: az.istruzioniRiepilogo(nome) },
-          // ⚠️ I numeri già in italiano, non il JSON grezzo: così «1038
-          // millisecondi» non diventa «1.038 ore».
-          { role: "user", content: "I numeri di oggi e della settimana:\n" + az.riassuntoDati(dati) },
-        ],
-      }),
-      signal: AbortSignal.timeout(25_000),
-    });
-    const body = (await r.json()) as { choices?: { message?: { content?: string } }[] };
-    const testo = body.choices?.[0]?.message?.content?.trim();
-    if (!testo) throw new Error("vuoto");
-    // ⚠️ Si salva come report del giorno: così il titolare lo trova pronto la
-    // prossima volta che apre, senza rigenerarlo (e senza ripagare il modello).
-    const giorno = az.oggiRoma();
-    void az.salvaReport(chi.azienda, giorno, testo).catch(() => {});
-    return json({ testo, giorno }, 200);
-  } catch {
+  const testo = await az.generaReport(chi.azienda, nome);
+  if (testo == null) {
     return json(
       { testo: "Non riesco a fare il punto in questo momento. I numeri qui sotto sono comunque aggiornati." },
       200
     );
   }
+  return json({ testo, giorno: az.oggiRoma() }, 200);
 }
 
 async function areaAzienda(

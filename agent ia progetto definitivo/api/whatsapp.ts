@@ -42,6 +42,7 @@ import {
   sendWhatsApp,
   watchdog,
 } from "./_lib/whatsapp.js";
+import { generaReportSerale } from "./_lib/azienda.js";
 import {
   embeddingConfigured,
   indexText,
@@ -110,7 +111,19 @@ export default {
         const giorno = url.searchParams.get("giorno") ?? new Date().toISOString().slice(0, 10);
         try {
           const esito = await sendDailyPulse(giorno);
-          return new Response(JSON.stringify({ giorno, ...esito }), {
+          // ── Il report di direzione dell'area azienda ────────────────────
+          // Stesso battito delle 20:00: mentre il pulse WhatsApp parte, si
+          // prepara anche il riepilogo del cruscotto di ogni azienda, così il
+          // titolare la sera lo trova già scritto invece di generarlo aprendo.
+          // ⚠️ Non deve poter far fallire il pulse: se il modello è giù, si
+          // segna e basta.
+          let report: { azienda: string; fatto: boolean }[] = [];
+          try {
+            report = await generaReportSerale();
+          } catch (e) {
+            console.error("Report serale azienda fallito:", e);
+          }
+          return new Response(JSON.stringify({ giorno, ...esito, report }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
