@@ -576,6 +576,41 @@ body {
   background-clip: content-box;
 }
 
+/* ── La barra di scorrimento sulla VETRINA (pagina scura) ────────────────
+   Il pomello globale usa --border-strong, che sul tema chiaro è beige: sulla
+   home scura spiccava come un graffio (Tommaso: «a destra si vede la linea
+   di scorrimento, non va bene»). Richiesta.tsx mette data-vetrina sulla
+   radice quando è aperta: qui la barra diventa scura e discreta.
+   ⚠️ Le due forme del selettore servono ENTRAMBE: senza spazio è la barra
+   della pagina stessa (l'elemento html), con lo spazio quelle dei blocchi
+   interni. */
+:root[data-vetrina] {
+  color-scheme: dark;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+:root[data-vetrina]::-webkit-scrollbar-thumb,
+:root[data-vetrina] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  background-clip: content-box;
+}
+:root[data-vetrina]::-webkit-scrollbar-thumb:hover,
+:root[data-vetrina] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+  background-clip: content-box;
+}
+
+/* Niente barra del tutto: per le chat che scorrono da sole (la demo
+   dell'hero, la chat di qualifica) e per il modal dell'ordine. Si scorre
+   lo stesso — sparisce solo la barra, che lì è rumore. */
+.senza-barra {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.senza-barra::-webkit-scrollbar {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

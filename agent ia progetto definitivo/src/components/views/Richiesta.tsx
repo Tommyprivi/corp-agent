@@ -89,6 +89,14 @@ export default function Richiesta() {
     }
   }, []);
 
+  // La barra di scorrimento della pagina diventa scura e sottile finché la
+  // vetrina è aperta (vedi :root[data-vetrina] in index.css): quella chiara
+  // del tema di default era un graffio bianco sul nero.
+  useEffect(() => {
+    document.documentElement.setAttribute("data-vetrina", "");
+    return () => document.documentElement.removeAttribute("data-vetrina");
+  }, []);
+
   return (
     <div
       className="on-dark relative min-h-screen overflow-x-hidden bg-[#0B0A08] text-[#F2F0EB]"
@@ -347,7 +355,7 @@ function ChatFinta() {
       {/* ⚠️ Più bassa su telefono: 330px su uno schermo da 667px di altezza
           mangiano metà pagina, e il form finirebbe sotto due schermate di
           scorrimento. È il form che deve restare a portata di pollice. */}
-      <div ref={boxRef} className="h-[240px] space-y-2.5 overflow-y-auto pr-1 sm:h-[330px]">
+      <div ref={boxRef} className="senza-barra h-[240px] space-y-2.5 overflow-y-auto pr-1 sm:h-[330px]">
         {COPIONE.slice(0, visibili).map((b, i) => (
           <Bolla key={i} chi={b.chi} testo={b.testo} nota={b.nota} />
         ))}
@@ -681,7 +689,7 @@ function ChatQualifica({ chiave, saluto }: { chiave: string; saluto: string }) {
             Richiesta ricevuta. Tre domande veloci e abbiamo finito.
           </p>
 
-          <div className="max-h-[52vh] space-y-3 overflow-y-auto pr-1 sm:max-h-[46vh]">
+          <div className="senza-barra max-h-[52vh] space-y-3 overflow-y-auto pr-1 sm:max-h-[46vh]">
             {righe.map((r, i) => (
               <div key={i} className={`flex ${r.chi === "azienda" ? "justify-end" : "justify-start"}`}>
                 <div
@@ -1212,7 +1220,7 @@ function OrdineModal({
         role="dialog"
         aria-modal="true"
         aria-label={`Ordina ${servizio.nome}`}
-        className="max-h-[90vh] w-full max-w-[420px] overflow-y-auto rounded-xl border border-white/12 bg-[#14120E] p-6"
+        className="senza-barra max-h-[90vh] w-full max-w-[420px] overflow-y-auto rounded-xl border border-white/12 bg-[#14120E] p-6"
       >
         {fatto ? (
           <>
