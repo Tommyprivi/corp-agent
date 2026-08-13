@@ -151,6 +151,7 @@ export default function Richiesta() {
         <Funzioni />
         <Confronto />
         <Servizi />
+        <Sicurezza />
         <Storia />
         <Cantiere />
         <Faq />
@@ -1145,6 +1146,62 @@ function Servizi() {
       </Compare>
 
       {ordina && <OrdineModal servizio={ordina} onChiudi={() => setOrdina(null)} />}
+    </section>
+  );
+}
+
+/**
+ * La sezione Sicurezza — «mettilo nella cosa principale» (Tommaso, 13 Ago).
+ *
+ * ⚠️ Ogni riga è VERA e verificabile: niente «bank-grade», niente sigilli
+ * inventati. Un cliente come un'azienda di trasporti che affida i dati dei suoi
+ * clienti vuole sapere cosa succede davvero, non uno slogan. Quello che NON
+ * cifriamo (i dati di lavoro, che il sistema deve leggere per cercarli) non si
+ * nasconde: si spiega perché la protezione lì è un'altra.
+ */
+const SICUREZZA: { titolo: string; testo: string }[] = [
+  { titolo: "Si entra solo su invito", testo: "All'area della tua azienda accede solo chi il titolare ha invitato. Un estraneo che conosce il link non passa: lo decide il server, a ogni richiesta." },
+  { titolo: "Tutto viaggia cifrato", testo: "Ogni scambio tra telefono, server e database è su HTTPS/TLS. In mezzo non si legge niente, nemmeno noi in transito." },
+  { titolo: "Le password non esistono in chiaro", testo: "Password, chiavi dei collegamenti e gettoni d'accesso sono cifrati o ridotti a un'impronta irreversibile. Un furto del database non consegna le chiavi di nessuno." },
+  { titolo: "I documenti sono cifrati", testo: "Le bolle scannerizzate e i documenti caricati (listini, contratti) si salvano cifrati a riposo: nel database ne vivono solo byte illeggibili senza la chiave, che sta solo sul server." },
+  { titolo: "Ogni azienda vede solo i suoi dati", testo: "I dati di un'azienda sono isolati da quelli di ogni altra: nessuna via, nemmeno indovinando un indirizzo, porta a leggere quelli di un altro cliente." },
+  { titolo: "Niente sorveglianza inutile", testo: "Non conserviamo indirizzi IP in chiaro né traccia di ciò che non serve. Meno dati teniamo, meno ce n'è da proteggere." },
+];
+
+function Sicurezza() {
+  return (
+    <section id="sicurezza" className="mt-24 sm:mt-32">
+      <Compare>
+        <p className="font-dato text-[11px] uppercase tracking-[0.12em]" style={{ color: `rgb(${LUCE})` }}>
+          La sicurezza
+        </p>
+        <h2 className="font-sezione mt-2 text-[clamp(1.9rem,6vw,3rem)] leading-[0.94]">
+          I tuoi dati al sicuro
+        </h2>
+        <span aria-hidden className="riga-titolo" />
+        <p className="mt-3.5 max-w-[34rem] text-[14.5px] leading-relaxed text-white/55">
+          Nessuno slogan: ecco, riga per riga, cosa proteggiamo e come. Se una
+          cosa non è cifrata è perché il sistema deve poterla leggere per
+          lavorarci — e lì la protezione è l'accesso chiuso, non un lucchetto finto.
+        </p>
+      </Compare>
+
+      <Compare>
+        <div className="mt-9 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+          {SICUREZZA.map((s) => (
+            <div key={s.titolo} className="rounded-xl border border-white/[0.09] bg-white/[0.022] p-5">
+              <div className="mb-2.5" style={{ color: `rgb(${LUCE})` }} aria-hidden>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                  <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" />
+                  <path d="M9 12l2 2 4-4" />
+                </svg>
+              </div>
+              <p className="text-[14px] font-semibold text-white">{s.titolo}</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-white/55">{s.testo}</p>
+            </div>
+          ))}
+        </div>
+      </Compare>
     </section>
   );
 }

@@ -66,6 +66,36 @@ export function cifra(testo: string): string {
   ].join(".");
 }
 
+/**
+ * Cifra dei BYTE (una scansione, un PDF) e ritorna un pacchetto di byte:
+ * [iv 12][tag 16][testo cifrato]. Stessa chiave e stesso algoritmo di `cifra`,
+ * ma senza passare per base64 — un documento può pesare, e base64 lo gonfia
+ * di un terzo. Serve a cifrare a riposo i documenti sensibili (le bolle).
+ */
+export function cifraByte(dati: Buffer): Buffer {
+  const chiave = chiaveDiCifratura();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", chiave, iv);
+  const corpo = Buffer.concat([cipher.update(dati), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), corpo]);
+}
+
+/** Rimette in chiaro dei byte cifrati con `cifraByte`. `null` se non torna. */
+export function decifraByte(pacchetto: Buffer | null): Buffer | null {
+  if (!pacchetto || pacchetto.length < 28) return null;
+  try {
+    const chiave = chiaveDiCifratura();
+    const iv = pacchetto.subarray(0, 12);
+    const tag = pacchetto.subarray(12, 28);
+    const corpo = pacchetto.subarray(28);
+    const decipher = createDecipheriv("aes-256-gcm", chiave, iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(corpo), decipher.final()]);
+  } catch {
+    return null;
+  }
+}
+
 /** Rimette in chiaro. Restituisce `null` se qualcosa non torna. */
 export function decifra(pacchetto: string | null): string | null {
   if (!pacchetto) return null;

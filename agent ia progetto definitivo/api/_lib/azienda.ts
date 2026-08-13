@@ -22,6 +22,7 @@
  */
 
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { cifra, decifra } from "./connectors.js";
 import { getPool } from "./db.js";
 
 /**
@@ -403,8 +404,14 @@ export async function eliminaCliente(azienda: string, id: string): Promise<void>
 }
 
 export async function documenti(azienda: string) {
-  const r = await getPool().query("select * from public.az_documenti($1)", [azienda]);
-  return r.rows;
+  const r = await getPool().query<{ id: string; titolo: string; testo: string; creato: string }>(
+    "select * from public.az_documenti($1)",
+    [azienda]
+  );
+  // Il testo dei documenti è cifrato a riposo: si decifra qui, l'unico punto da
+  // cui lo leggono sia la lista sia l'agente. `?? testo` fa da rete per un
+  // eventuale documento vecchio salvato in chiaro prima della cifratura.
+  return r.rows.map((d) => ({ ...d, testo: decifra(d.testo) ?? d.testo }));
 }
 
 export async function salvaDocumento(
@@ -413,10 +420,12 @@ export async function salvaDocumento(
   titolo: string,
   testo: string
 ): Promise<void> {
+  // Cifrato a riposo: un listino, un contratto, una regola aziendale sono roba
+  // riservata. Nel database ne vive solo la versione cifrata.
   await getPool().query("select public.az_documento_salva($1,$2,$3,$4)", [
     azienda,
     titolo,
-    testo,
+    cifra(testo),
     persona,
   ]);
 }

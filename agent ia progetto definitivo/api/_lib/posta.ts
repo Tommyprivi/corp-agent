@@ -27,7 +27,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import { cifra, decifra } from "./connectors.js";
+import { cifra, cifraByte, decifra, decifraByte } from "./connectors.js";
 import { getPool } from "./db.js";
 
 export interface ConfigPosta {
@@ -310,9 +310,11 @@ export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; er
               const tipo = (a.contentType || "").toLowerCase();
               const buono = TIPI_BOLLA.has(tipo);
               if (!buono || !a.content || a.content.length > 4_000_000) continue;
+              // ⚠️ Si salvano CIFRATI: il documento scannerizzato è un dato
+              // sensibile, e nel database ne vivono solo i byte cifrati.
               await getPool().query(
                 "select public.az_posta_allegato_salva($1,$2,$3,$4,$5)",
-                [azienda, arrivoId, a.filename || "documento", tipo, a.content]
+                [azienda, arrivoId, a.filename || "documento", tipo, cifraByte(a.content)]
               );
             }
           }
@@ -532,19 +534,32 @@ export async function leggiBolle(
   for (const allegato of r.rows) {
     let esito: { dati: DatiBolla; testo: string } | null = null;
     let perche = "";
+    // I byte arrivano cifrati: si decifrano SOLO qui, in memoria, per leggerli.
+    const dati = decifraByte(allegato.dati);
+    if (!dati) {
+      await getPool().query("select public.az_posta_allegato_letto($1,$2,$3,$4,$5)", [
+        azienda,
+        Number(allegato.id),
+        "illeggibile",
+        "Documento illeggibile (chiave di cifratura cambiata?).",
+        null,
+      ]);
+      illeggibili++;
+      continue;
+    }
     if (allegato.tipo.startsWith("image/")) {
       esito = await chiediAlModello({
-        immagine: `data:${allegato.tipo};base64,${allegato.dati.toString("base64")}`,
+        immagine: `data:${allegato.tipo};base64,${dati.toString("base64")}`,
       });
       if (!esito) perche = "Il modello di lettura non ha risposto. Si riproverà.";
     } else {
       // PDF: prima la via del testo (gratis e fedele), poi la scansione.
-      const testo = await testoDaPdf(allegato.dati);
+      const testo = await testoDaPdf(dati);
       if (testo.length > 40) {
         esito = await chiediAlModello({ testo });
         if (!esito) perche = "Il modello di lettura non ha risposto. Si riproverà.";
       } else {
-        const jpeg = estraiJpegDaPdf(allegato.dati);
+        const jpeg = estraiJpegDaPdf(dati);
         if (jpeg) {
           esito = await chiediAlModello({
             immagine: `data:image/jpeg;base64,${jpeg.toString("base64")}`,
@@ -556,11 +571,15 @@ export async function leggiBolle(
       }
     }
     if (esito) {
+      // La trascrizione è il contenuto del documento: si salva CIFRATA. I dati
+      // strutturati (bolla jsonb: mittente, numero, colli) restano in chiaro —
+      // sono i metadati che la banchina deve poter leggere per lavorare, come
+      // le letture degli scanner; il documento pieno (byte + testo) è cifrato.
       await getPool().query("select public.az_posta_allegato_letto($1,$2,$3,$4,$5)", [
         azienda,
         Number(allegato.id),
         "letto",
-        esito.testo,
+        cifra(esito.testo),
         JSON.stringify(esito.dati),
       ]);
       lette++;
@@ -598,7 +617,16 @@ export async function bolle(azienda: string, limite = 30): Promise<BollaElenco[]
     azienda,
     limite,
   ]);
-  return r.rows;
+  // La trascrizione (`letto`) delle bolle LETTE è cifrata: si decifra qui e si
+  // taglia per la vista. Per le bolle `illeggibili`, `letto` è un messaggio di
+  // sistema in chiaro (il perché) e si lascia com'è.
+  return r.rows.map((b) => {
+    if (b.stato === "letto" && b.letto) {
+      const chiaro = decifra(b.letto);
+      return { ...b, letto: (chiaro ?? "").slice(0, 2000) };
+    }
+    return b;
+  });
 }
 
 export async function allegato(
@@ -609,5 +637,11 @@ export async function allegato(
     "select * from public.az_posta_allegato($1,$2)",
     [azienda, id]
   );
-  return r.rows[0] ?? null;
+  const a = r.rows[0];
+  if (!a) return null;
+  // I byte escono cifrati dal database: si decifrano solo per servirli. Se la
+  // chiave non torna, meglio niente che byte spazzatura.
+  const dati = decifraByte(a.dati);
+  if (!dati) return null;
+  return { nome: a.nome, tipo: a.tipo, dati };
 }

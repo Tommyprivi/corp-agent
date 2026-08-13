@@ -3753,8 +3753,9 @@ function Supporto({
           ))}
         </div>
 
+        <div className="space-y-4 h-fit">
         {/* ── Scrivi al supporto ───────────────────────────────────── */}
-        <div className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-4 h-fit">
+        <div className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-4">
           <div className="flex items-center gap-2">
             <Icona nome="supporto" size={18} className="text-[var(--text-secondary)]" />
             <h3 className="text-[13.5px] font-semibold">Scrivi al supporto</h3>
@@ -3792,6 +3793,36 @@ function Supporto({
               </button>
             </>
           )}
+        </div>
+
+        {/* ── La sicurezza, in chiaro ──────────────────────────────────
+            Voluta da Tommaso («fallo sapere»): chi lavora qui deve sapere che
+            i dati sono protetti. Ogni riga è vera. */}
+        <div className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-4">
+          <div className="flex items-center gap-2">
+            <span aria-hidden style={{ color: "var(--accent)" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" />
+                <path d="M9 12l2 2 4-4" />
+              </svg>
+            </span>
+            <h3 className="text-[13.5px] font-semibold">I dati sono al sicuro</h3>
+          </div>
+          <ul className="mt-2.5 space-y-1.5">
+            {[
+              "Entra solo chi il titolare ha invitato.",
+              "Tutto viaggia cifrato (HTTPS/TLS).",
+              "Password e accessi mai in chiaro: cifrati o a impronta.",
+              "Bolle e documenti cifrati a riposo nel database.",
+              "I dati di Speed sono isolati da ogni altra azienda.",
+            ].map((t, i) => (
+              <li key={i} className="flex gap-2 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+                <span aria-hidden style={{ color: "var(--accent)" }}>—</span>
+                <span>{t}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
         </div>
       </div>
     </Pagina>
@@ -4079,11 +4110,39 @@ interface ArrivoPosta {
  * ⚠️ La password si SCRIVE e basta: non torna mai indietro dal server,
  * nemmeno per mostrarla mascherata. Per cambiarla si ricollega.
  */
+/**
+ * I fornitori di posta più comuni, con l'indirizzo IMAP già pronto: il
+ * titolare sceglie il logo del suo e non deve sapere cos'è un «server IMAP».
+ * `appPassword` dice se serve la «password per le app» (Gmail, Outlook) o
+ * quella normale (Aruba, PEC). ⚠️ Gmail e Outlook business a volte hanno l'IMAP
+ * spento dall'amministratore: per quello c'è il consiglio della casella
+ * dedicata nella guida.
+ */
+const PROVIDER_POSTA: {
+  id: string;
+  nome: string;
+  host: string;
+  appPassword: boolean;
+  aiuto: string;
+}[] = [
+  { id: "gmail", nome: "Gmail", host: "imap.gmail.com", appPassword: true,
+    aiuto: "Vai su myaccount.google.com → Sicurezza → attiva la Verifica in due passaggi → cerca «Password per le app» e creane una: è un codice di 16 lettere, incollalo qui sotto al posto della password normale." },
+  { id: "outlook", nome: "Outlook", host: "outlook.office365.com", appPassword: true,
+    aiuto: "Su account.microsoft.com → Sicurezza → Opzioni di sicurezza avanzate → attiva la Verifica in due passaggi → «Password per le app»: crea un codice e incollalo qui. Se è un account aziendale e non funziona, l'IMAP potrebbe essere spento dall'amministratore." },
+  { id: "aruba", nome: "Aruba", host: "imaps.aruba.it", appPassword: false,
+    aiuto: "Per Aruba va la password NORMALE della casella, quella che usi per leggere la posta. Niente da creare." },
+  { id: "pec", nome: "PEC Aruba", host: "imaps.pec.aruba.it", appPassword: false,
+    aiuto: "Per la PEC Aruba va la password normale della casella PEC. Niente da creare." },
+  { id: "altra", nome: "Altra casella", host: "", appPassword: false,
+    aiuto: "Metti l'indirizzo IMAP del tuo fornitore (di solito «imap.» seguito dal dominio della posta) e la password della casella. Se non lo sai, lo trovi cercando «IMAP» + il nome del tuo provider." },
+];
+
 function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
   const [stato, setStato] = useState<StatoPosta | null>(null);
   const [arrivi, setArrivi] = useState<ArrivoPosta[]>([]);
   const [caricato, setCaricato] = useState(false);
   const [modifica, setModifica] = useState(false);
+  const [provider, setProvider] = useState("");
   const [host, setHost] = useState("");
   const [porta, setPorta] = useState("993");
   const [utente, setUtente] = useState("");
@@ -4265,33 +4324,76 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
         </div>
       ) : (
         <div className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block sm:col-span-1">
-              <span className="text-[12px] text-[var(--text-secondary)]">Server IMAP</span>
-              <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="es. imap.gmail.com, outlook.office365.com" className={campo} />
-            </label>
-            <label className="block">
-              <span className="text-[12px] text-[var(--text-secondary)]">Porta</span>
-              <input value={porta} onChange={(e) => setPorta(e.target.value)} inputMode="numeric" className={campo} />
-            </label>
-            <label className="block">
-              <span className="text-[12px] text-[var(--text-secondary)]">Utente (l'indirizzo email)</span>
-              <input value={utente} onChange={(e) => setUtente(e.target.value)} placeholder="es. ufficio@speedtrasporti.it" className={campo} />
-            </label>
-            <label className="block">
-              <span className="text-[12px] text-[var(--text-secondary)]">Password</span>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={campo} />
-            </label>
-            <label className="block">
-              <span className="text-[12px] text-[var(--text-secondary)]">Cartella</span>
-              <input value={cartella} onChange={(e) => setCartella(e.target.value)} className={campo} />
-            </label>
+          {/* ── I bottoni dei fornitori: scegli il tuo e il resto si compila ── */}
+          <p className="mb-2 text-[12px] text-[var(--text-secondary)]">Che casella colleghi?</p>
+          <div className="mb-4 flex flex-wrap gap-2">
+            {PROVIDER_POSTA.map((p) => {
+              const scelto = provider === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setProvider(p.id);
+                    setHost(p.host);
+                    setPorta("993");
+                    setCartella("INBOX");
+                    setEsito(null);
+                  }}
+                  className={`cursor-pointer rounded-md border px-3.5 py-2 text-[13px] font-medium transition-colors ${
+                    scelto
+                      ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text-primary)]"
+                      : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)]"
+                  }`}
+                >
+                  {p.nome}
+                </button>
+              );
+            })}
           </div>
-          <p className="az-spiega mt-2.5 text-[12px] leading-relaxed text-[var(--text-secondary)]">
-            Per Gmail e Outlook non va la password normale: serve una «password per le app»,
-            che si crea nelle impostazioni di sicurezza dell'account in un minuto.
-            Prima di salvare proviamo davvero a entrare: se qualcosa è storto te lo diciamo subito.
-          </p>
+
+          {provider && (
+            <>
+              {/* La guida del fornitore scelto */}
+              <p className="mb-3 rounded-md border-l-2 bg-[var(--fill-quiet)] px-3.5 py-2.5 text-[12.5px] leading-relaxed" style={{ borderColor: "var(--accent)" }}>
+                {PROVIDER_POSTA.find((p) => p.id === provider)?.aiuto}
+              </p>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block sm:col-span-2">
+                  <span className="text-[12px] text-[var(--text-secondary)]">L'indirizzo email della casella</span>
+                  <input value={utente} onChange={(e) => setUtente(e.target.value)} placeholder="es. bolle.speed@gmail.com" autoComplete="username" className={campo} />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className="text-[12px] text-[var(--text-secondary)]">
+                    {PROVIDER_POSTA.find((p) => p.id === provider)?.appPassword ? "La «password per le app»" : "La password della casella"}
+                  </span>
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" className={campo} />
+                </label>
+
+                {/* Server e porta: nascosti per i fornitori noti (già giusti),
+                    visibili solo per «Altra casella». */}
+                {provider === "altra" && (
+                  <>
+                    <label className="block">
+                      <span className="text-[12px] text-[var(--text-secondary)]">Server IMAP</span>
+                      <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="es. imap.tuofornitore.it" className={campo} />
+                    </label>
+                    <label className="block">
+                      <span className="text-[12px] text-[var(--text-secondary)]">Porta</span>
+                      <input value={porta} onChange={(e) => setPorta(e.target.value)} inputMode="numeric" className={campo} />
+                    </label>
+                  </>
+                )}
+              </div>
+
+              <p className="mt-2.5 flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)]">
+                <Icona nome="impostazioni" size={13} />
+                Prima di salvare proviamo davvero a entrare: la password si cifra e
+                non esce mai da qui. Se qualcosa è storto, te lo diciamo subito.
+              </p>
+            </>
+          )}
           <div className="mt-3 flex items-center gap-2">
             <button
               onClick={() => void collega()}

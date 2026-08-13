@@ -170,6 +170,26 @@ function Entra({
         Una volta sola: il telefono ti riconosce e non te lo richiede più.
       </p>
 
+      {/* ⚠️ Accesso riservato: si entra SOLO se il titolare ti ha invitato.
+          Un estraneo che conosce il link non passa (lo garantisce il server,
+          non questo avviso), e la scritta lo dice chiaro. */}
+      <div
+        className="mt-4 flex items-start gap-2.5 rounded-xl border px-3.5 py-2.5"
+        style={{ borderColor: "var(--border)", background: "var(--fill-quiet)" }}
+      >
+        <span className="mt-0.5 shrink-0" aria-hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <rect x="4" y="10" width="16" height="10" rx="2" />
+            <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+          </svg>
+        </span>
+        <span className="text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+          <span className="font-medium text-[var(--text-primary)]">Accesso riservato ai membri di Speed Trasporti.</span>{" "}
+          Entra solo chi è stato invitato in ufficio. I dati viaggiano cifrati e
+          i documenti sono protetti.
+        </span>
+      </div>
+
       <div className="mt-6 space-y-2.5">
         <input
           type="email"
