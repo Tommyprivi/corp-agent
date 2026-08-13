@@ -366,6 +366,23 @@ async function applica(evento: {
       case "checkout.session.completed": {
         const customer = String(oggetto.customer ?? "");
         const metadata = (oggetto.metadata ?? {}) as Record<string, string>;
+
+        // ── Un ordine di servizio dalla home (13 Agosto 2026) ────────────
+        // ⚠️ PRIMA del controllo `customer`: quei checkout sono da ospite
+        // (solo customer_email), quindi customer è vuoto e il return sotto
+        // li mangerebbe. L'ordine passa a 'pagato' e l'avviso arriva subito:
+        // un pagamento vero non deve mai sembrare un ordine solo registrato.
+        if (metadata.ordine_id) {
+          await client.query("select public.ordine_stato($1, 'pagato')", [
+            Number(metadata.ordine_id),
+          ]);
+          const { avvisoWhatsAppTesto } = await import("./_lib/richieste.js");
+          await avvisoWhatsAppTesto(
+            `PAGATO ✓ ordine n. ${metadata.ordine_id} (carta via Stripe). Da attivare.`
+          ).catch(() => {});
+          return;
+        }
+
         if (!customer) return;
 
         if (metadata.topup_id && metadata.credits) {

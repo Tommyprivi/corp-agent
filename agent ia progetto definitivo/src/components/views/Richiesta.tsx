@@ -75,6 +75,19 @@ const COPIONE: { chi: "cliente" | "agente"; testo: string; nota?: string }[] = [
 
 export default function Richiesta() {
   const [inviata, setInviata] = useState<{ chiave: string; saluto: string } | null>(null);
+  // Il ritorno dalla cassa di Stripe (quando ci sarà): ?ordine=fatto o
+  // ?ordine=annullato. Senza questo, chi ha PAGATO atterrerebbe su una home
+  // che non gli dice niente — trovato dalla verifica avversaria.
+  const [esitoPagamento, setEsitoPagamento] = useState<"fatto" | "annullato" | null>(null);
+
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get("ordine");
+    if (p === "fatto" || p === "annullato") {
+      setEsitoPagamento(p);
+      // Via il parametro dall'indirizzo: un refresh non deve rimostrarlo.
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   return (
     <div
@@ -94,6 +107,25 @@ export default function Richiesta() {
       </header>
 
       <main className="relative z-10 mx-auto max-w-[1100px] px-5 pb-20 sm:px-6 sm:pb-24">
+        {esitoPagamento && (
+          <div
+            className="mt-4 flex items-start justify-between gap-3 rounded-lg border px-4 py-3"
+            style={{ borderColor: `rgba(${LUCE}, 0.5)`, background: `rgba(${LUCE}, 0.07)` }}
+          >
+            <p className="text-[13.5px] leading-relaxed text-white/85">
+              {esitoPagamento === "fatto"
+                ? "Pagamento ricevuto ✓ — l'ordine è confermato. Ti scriviamo in giornata per partire con l'attivazione."
+                : "Pagamento annullato. L'ordine resta registrato: se vuoi ti ricontattiamo noi, o riprova quando preferisci."}
+            </p>
+            <button
+              onClick={() => setEsitoPagamento(null)}
+              aria-label="Chiudi"
+              className="cursor-pointer text-[16px] leading-none text-white/40 hover:text-white"
+            >
+              ×
+            </button>
+          </div>
+        )}
         <Hero />
         {inviata ? (
           <ChatQualifica chiave={inviata.chiave} saluto={inviata.saluto} />
@@ -101,8 +133,17 @@ export default function Richiesta() {
           <Form onFatto={setInviata} />
         )}
         <Funzioni />
+        <Confronto />
         <Servizi />
+        <Storia />
+        <Cantiere />
+        <Faq />
         <Piede />
+        {/* ⚠️ DENTRO main, non fuori: main è uno stacking context (z-10) e un
+            banner fratello a z-40 si dipingerebbe SOPRA il modal dell'ordine
+            (che vive qui dentro, a z-50). Qui dentro l'ordine è giusto:
+            modal sopra il banner. Trovato dalla verifica avversaria. */}
+        <BannerCookie />
       </main>
     </div>
   );
@@ -883,69 +924,646 @@ function Funzioni() {
 // ─────────────────────────────────────────────────────────────────────────
 
 /**
- * Voluta da Tommaso il 13 Agosto 2026: «voglio vendere prodotti digitali in
- * più oltre agli agenti IA — nella pagina iniziale sotto ci sono i servizi».
- * Se a un'azienda l'agente non serve, c'è comunque qualcosa da farle: il
- * negozio online, il sito, le automazioni. Righe da listino, non card che
- * brillano: è un'offerta di lavoro, non uno spettacolo.
+ * Voluta da Tommaso il 13 Agosto 2026, in due tempi: prima «voglio vendere
+ * prodotti digitali oltre agli agenti IA», poi «si possono pagare
+ * direttamente, senza fare la mail dove scrivi tutto».
+ *
+ * ⚠️ IL LISTINO VERO STA SUL SERVER (api/_lib/ordini.ts): il browser manda
+ * solo l'id del servizio. Quello qui sotto è la copia da MOSTRARE — se i due
+ * divergono, fa fede il server.
+ *
+ * ⚠️ L'offerta di lancio è una decisione commerciale di Tommaso: prezzo pieno
+ * barrato, prezzo di lancio in grande. Il glow ottone sta SOLO qui, dove si
+ * paga — chiesto esplicitamente: «per i pagamenti metti effetti glow».
  */
-const SERVIZI: { nome: string; cosa: string }[] = [
+const LISTINO: {
+  id: string;
+  nome: string;
+  cosa: string;
+  pieno: string;
+  lancio: string;
+  evidenza?: boolean;
+  /** Si può pagare in 3 rate mensili senza interessi (deciso il 13 Agosto). */
+  rate?: boolean;
+}[] = [
   {
-    nome: "Agenti IA su misura",
-    cosa: "Il cuore: un dipendente digitale preparato sul tuo mestiere, che risponde a clienti e colleghi.",
+    id: "agente",
+    nome: "Agente IA su misura",
+    cosa: "Un dipendente digitale preparato sul tuo mestiere: risponde a clienti e colleghi, 24 ore su 24.",
+    pieno: "99 €/mese",
+    lancio: "49 €/mese",
+    evidenza: true,
   },
   {
-    nome: "Aree aziendali complete",
-    cosa: "Un'area di lavoro per la tua azienda: postazioni per reparto, cruscotto con i numeri veri, accessi per il personale.",
+    id: "area",
+    rate: true,
+    nome: "Area aziendale completa",
+    cosa: "Postazioni per reparto, cruscotto coi numeri veri, accessi per il personale, report serale automatico.",
+    pieno: "589 € avvio + 119 €/mese",
+    lancio: "249 € avvio + 79 €/mese",
   },
   {
-    nome: "Negozi online",
-    cosa: "Apriamo e colleghiamo il tuo negozio (Shopify): catalogo, ordini e magazzino — con l'agente che risponde ai clienti.",
+    id: "negozio",
+    rate: true,
+    nome: "Negozio online (Shopify)",
+    cosa: "Apriamo e colleghiamo il tuo negozio: catalogo, ordini, magazzino — e l'agente che risponde ai clienti.",
+    pieno: "999 €",
+    lancio: "499 € una tantum",
   },
   {
-    nome: "Siti web professionali",
-    cosa: "Vetrine veloci e sobrie, fatte per farsi trovare e per vendere. Senza fronzoli.",
+    id: "sito",
+    rate: true,
+    nome: "Sito web professionale",
+    cosa: "Vetrina veloce e sobria, fatta per farsi trovare e per vendere. Senza fronzoli.",
+    pieno: "599 €",
+    lancio: "299 € una tantum",
   },
   {
+    id: "automazioni",
     nome: "Automazioni d'ufficio",
-    cosa: "Le bolle entrano dallo scanner, le etichette escono con il codice a barre, il report serale si scrive da solo.",
+    cosa: "Le bolle entrano dallo scanner, le etichette escono col codice a barre, il report si scrive da solo.",
+    pieno: "a preventivo",
+    lancio: "consulenza gratuita",
   },
   {
-    nome: "Collegamenti ai tuoi programmi",
+    id: "collegamenti",
+    rate: true,
+    nome: "Collegamenti ai programmi",
     cosa: "Posta, fogli di calcolo, calendario, gestionali: CorpAgent legge e scrive dove lavori già.",
+    pieno: "199 € l'uno",
+    lancio: "99 € l'uno",
   },
 ];
 
 function Servizi() {
+  const [ordina, setOrdina] = useState<(typeof LISTINO)[number] | null>(null);
+
   return (
     <section id="servizi" className="mt-24 sm:mt-32">
       <Compare>
         <p className="font-dato text-[11px] uppercase tracking-[0.12em]" style={{ color: `rgb(${LUCE})` }}>
-          I servizi
+          I servizi · offerta di lancio
         </p>
         <h2 className="font-sezione mt-2 text-[clamp(1.9rem,6vw,3rem)] leading-[0.94]">
           Non solo agenti
         </h2>
         <p className="mt-3.5 max-w-[34rem] text-[14.5px] leading-relaxed text-white/55">
-          CorpAgent è una squadra che costruisce strumenti digitali per aziende.
-          L'agente è il pezzo forte, ma il lavoro si prende dove serve.
+          Siamo appena partiti, e i primi clienti ci servono più dei margini: per
+          le <span className="text-white">prime 10 aziende</span> i prezzi sono
+          questi. Si ordina qui sotto in trenta secondi — niente form lungo, niente
+          listino da chiedere via email.
+        </p>
+      </Compare>
+
+      <div className="mt-9 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+        {LISTINO.map((s, i) => (
+          <Compare key={s.id} ritardo={i * 60} className={s.evidenza ? "glow-lancio rounded-xl" : undefined}>
+            {/* ⚠️ Il glow sta sul CONTENITORE, la card opaca sopra: un ::before
+                con z-index negativo si dipinge SOPRA lo sfondo del suo stesso
+                elemento (ordine di pittura CSS), quindi sullo stesso div
+                l'alone lavava tutta la faccia della card. Sul wrapper invece
+                la card — figlia normale — lo copre al centro e l'alone resta
+                solo sui bordi. Trovato dalla verifica avversaria. */}
+            <div
+              className={`flex h-full flex-col rounded-xl border p-5 ${
+                s.evidenza ? "border-white/[0.16] bg-[#14120E]" : "border-white/[0.09] bg-white/[0.022]"
+              }`}
+            >
+              {s.evidenza && (
+                <p
+                  className="font-dato mb-2 text-[10.5px] uppercase tracking-[0.1em]"
+                  style={{ color: `rgb(${LUCE})` }}
+                >
+                  Il più richiesto
+                </p>
+              )}
+              <p className="text-[15px] font-semibold text-white">{s.nome}</p>
+              <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-white/55">{s.cosa}</p>
+              <div className="mt-4 flex items-baseline gap-2.5">
+                <span className="text-[12.5px] text-white/35 line-through">{s.pieno}</span>
+                <span className="text-[17px] font-semibold" style={{ color: `rgb(${LUCE})` }}>
+                  {s.lancio}
+                </span>
+              </div>
+              {s.rate && (
+                <p className="mt-1 text-[11.5px] text-white/45">
+                  oppure in 3 rate mensili, senza interessi
+                </p>
+              )}
+              <button
+                onClick={() => setOrdina(s)}
+                className="btn-grad mt-3.5 cursor-pointer rounded-lg py-2.5 text-[13.5px] font-medium"
+              >
+                {s.id === "automazioni" ? "Prenota la consulenza" : "Ordina adesso"}
+              </button>
+            </div>
+          </Compare>
+        ))}
+      </div>
+
+      <Compare>
+        <p className="mt-6 text-[12px] leading-relaxed text-white/40">
+          L'ordine registra la tua richiesta e ti ricontattiamo in giornata per
+          attivazione e pagamento — nessun addebito automatico. L'offerta di
+          lancio vale finché ci sono posti: i prezzi pieni sono quelli che
+          troverai dopo.
+        </p>
+      </Compare>
+
+      {ordina && <OrdineModal servizio={ordina} onChiudi={() => setOrdina(null)} />}
+    </section>
+  );
+}
+
+/**
+ * Il mini-modulo dell'ordine: tre campi e via. È il contrario del form lungo
+ * («senza fare la mail dove scrivi tutto»): azienda, email, telefono.
+ * L'esca invisibile c'è anche qui, come nel form delle richieste.
+ */
+function OrdineModal({
+  servizio,
+  onChiudi,
+}: {
+  servizio: (typeof LISTINO)[number];
+  onChiudi: () => void;
+}) {
+  const [d, setD] = useState({ azienda: "", email: "", telefono: "" });
+  const [esca2, setEsca2] = useState("");
+  const [rate, setRate] = useState(false);
+  const [attesa, setAttesa] = useState(false);
+  const [errore, setErrore] = useState<string | null>(null);
+  const [fatto, setFatto] = useState(false);
+
+  // Escape chiude (ma non a metà invio: l'ordine partirebbe senza conferma).
+  useEffect(() => {
+    const giu = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !attesa) onChiudi();
+    };
+    window.addEventListener("keydown", giu);
+    return () => window.removeEventListener("keydown", giu);
+  }, [attesa, onChiudi]);
+
+  async function invia() {
+    setErrore(null);
+    setAttesa(true);
+    try {
+      const r = await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ordine: { servizio: servizio.id, ...d, rate, sito: esca2 } }),
+      });
+      const body = (await r.json()) as { ok?: boolean; paga?: string; errore?: string };
+      if (!r.ok || !body.ok) throw new Error(body.errore ?? "Non è andata: riprova.");
+      // Quando Stripe sarà configurato, da qui si va dritti alla cassa.
+      if (body.paga) {
+        window.location.href = body.paga;
+        return;
+      }
+      setFatto(true);
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAttesa(false);
+    }
+  }
+
+  const pieno = d.azienda.trim().length >= 2 && d.email.includes("@");
+  const campo =
+    "mt-1 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3.5 py-2.5 text-[15px] text-white outline-none placeholder:text-white/25 focus:border-white/40";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      // ⚠️ mousedown sull'overlay stesso, non click: col click, selezionare il
+      // testo di un campo e rilasciare fuori chiudeva il modal buttando via
+      // quello che era stato scritto. E mai chiudere mentre l'invio è in
+      // volo: l'ordine partirebbe senza che nessuno veda la conferma.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !attesa) onChiudi();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Ordina ${servizio.nome}`}
+        className="max-h-[90vh] w-full max-w-[420px] overflow-y-auto rounded-xl border border-white/12 bg-[#14120E] p-6"
+      >
+        {fatto ? (
+          <>
+            <p className="text-[17px] font-semibold text-white">Ordine registrato ✓</p>
+            <p className="mt-2.5 text-[13.5px] leading-relaxed text-white/60">
+              Ti scriviamo <span className="text-white">in giornata</span> a{" "}
+              <span className="text-white">{d.email}</span> per attivazione e
+              pagamento di <span className="text-white">{servizio.nome}</span> al
+              prezzo di lancio ({servizio.lancio}
+              {rate ? ", in 3 rate mensili senza interessi" : ""}). Nessun addebito
+              parte da solo.
+            </p>
+            <button
+              onClick={onChiudi}
+              className="btn-grad mt-5 w-full cursor-pointer rounded-lg py-2.5 text-[13.5px] font-medium"
+            >
+              Chiudi
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[17px] font-semibold text-white">{servizio.nome}</p>
+              <button
+                onClick={onChiudi}
+                disabled={attesa}
+                aria-label="Chiudi"
+                className="cursor-pointer rounded px-1.5 text-[18px] leading-none text-white/40 hover:text-white disabled:opacity-30"
+              >
+                ×
+              </button>
+            </div>
+            <p className="mt-1 text-[13px] text-white/55">
+              <span className="line-through opacity-60">{servizio.pieno}</span>{" "}
+              <span style={{ color: `rgb(${LUCE})` }}>{servizio.lancio}</span> · offerta di lancio
+            </p>
+            {servizio.rate && (
+              <div className="mt-3.5 space-y-1.5">
+                {(
+                  [
+                    [false, "In un'unica soluzione", servizio.lancio],
+                    [true, "In 3 rate mensili", "stesso prezzo, senza interessi"],
+                  ] as const
+                ).map(([val, nome, sotto]) => (
+                  <label
+                    key={String(val)}
+                    className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 ${
+                      rate === val ? "border-white/40 bg-white/[0.05]" : "border-white/12"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="pagamento"
+                      checked={rate === val}
+                      onChange={() => setRate(val)}
+                      className="accent-[#C89B3C]"
+                    />
+                    <span className="text-[13px] text-white">{nome}</span>
+                    <span className="ml-auto text-[11.5px] text-white/45">{sotto}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="mt-4 space-y-3">
+              <label className="block">
+                <span className="text-[12px] text-white/50">Nome dell'azienda</span>
+                <input value={d.azienda} onChange={(e) => setD({ ...d, azienda: e.target.value })} className={campo} />
+              </label>
+              <label className="block">
+                <span className="text-[12px] text-white/50">Email</span>
+                <input type="email" value={d.email} onChange={(e) => setD({ ...d, email: e.target.value })} className={campo} />
+              </label>
+              <label className="block">
+                <span className="text-[12px] text-white/50">Telefono (facoltativo)</span>
+                <input type="tel" value={d.telefono} onChange={(e) => setD({ ...d, telefono: e.target.value })} className={campo} />
+              </label>
+              {/* L'esca: invisibile alle persone, irresistibile per i programmi. */}
+              <input
+                type="text"
+                value={esca2}
+                onChange={(e) => setEsca2(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden
+                className="absolute -left-[9999px] h-0 w-0 opacity-0"
+              />
+            </div>
+            {errore && <p className="mt-3 text-[12.5px] text-[#ff9d8f]">{errore}</p>}
+            <button
+              onClick={() => void invia()}
+              disabled={!pieno || attesa}
+              className="btn-grad mt-4 w-full cursor-pointer rounded-lg py-2.5 text-[13.5px] font-medium disabled:opacity-40"
+            >
+              {attesa ? "Invio…" : "Conferma l'ordine"}
+            </button>
+            <p className="mt-2.5 text-[11px] leading-relaxed text-white/35">
+              Registriamo l'ordine e ti ricontattiamo per attivazione e pagamento.
+              Dati trattati come da <a href="/privacy" className="underline">privacy</a>.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// IL CONFRONTO — il problema dell'azienda, prima e dopo
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Chiesto da Tommaso il 13 Agosto 2026: «fai un confronto tra i servizi e il
+ * problema dell'azienda, quella che fa Speed». Le righe vengono dal cantiere
+ * VERO: sono i problemi trovati al sopralluogo in un'azienda di trasporti,
+ * non esempi inventati. Chi legge si riconosce riga per riga.
+ */
+const CONFRONTO: { problema: string; dopo: string; servizio: string }[] = [
+  {
+    problema: "Le bolle arrivano di carta e qualcuno le ricopia a mano nel gestionale.",
+    dopo: "La multifunzione le scannerizza ed entrano da sole, già leggibili.",
+    servizio: "Automazioni",
+  },
+  {
+    problema: "«Dov'è il mio carico?» — e in ufficio parte la caccia al telefono.",
+    dopo: "Risponde l'agente, con lo stato vero, anche alle otto di sera.",
+    servizio: "Agente IA",
+  },
+  {
+    problema: "Le etichette dei colli si scrivono a penna, e qualcuna si perde.",
+    dopo: "Si stampano col codice a barre e il palmare le rilegge in banchina.",
+    servizio: "Automazioni",
+  },
+  {
+    problema: "Il titolare sa com'è andata solo se qualcuno si ricorda di dirglielo.",
+    dopo: "Alle otto di sera il report della giornata è già scritto, da solo.",
+    servizio: "Area aziendale",
+  },
+  {
+    problema: "Ogni reparto ha i suoi fogli, e nessuno vede il quadro insieme.",
+    dopo: "Una postazione per reparto e un cruscotto solo, coi numeri veri.",
+    servizio: "Area aziendale",
+  },
+  {
+    problema: "I clienti scrivono su tre canali e qualcosa resta senza risposta.",
+    dopo: "L'agente legge la casella e niente cade per terra.",
+    servizio: "Collegamenti",
+  },
+];
+
+function Confronto() {
+  return (
+    <section className="mt-24 sm:mt-32">
+      <Compare>
+        <p className="font-dato text-[11px] uppercase tracking-[0.12em]" style={{ color: `rgb(${LUCE})` }}>
+          Prima e dopo
+        </p>
+        <h2 className="font-sezione mt-2 text-[clamp(1.9rem,6vw,3rem)] leading-[0.94]">
+          Il tuo problema,
+          <br />
+          probabilmente, è qui
+        </h2>
+        <p className="mt-3.5 max-w-[34rem] text-[14.5px] leading-relaxed text-white/55">
+          Queste righe vengono da un'azienda vera — trasporti, Torino, 150
+          persone — dove stiamo costruendo adesso. Non sono esempi da manuale:
+          sono quello che abbiamo trovato entrando in ufficio.
         </p>
       </Compare>
 
       <Compare>
-        <div className="mt-9 border-t border-white/[0.08]">
-          {SERVIZI.map((s) => (
-            <div
-              key={s.nome}
-              className="flex flex-col gap-1 border-b border-white/[0.08] py-4 sm:flex-row sm:items-baseline sm:gap-6"
-            >
-              <p className="w-56 shrink-0 text-[14px] font-medium text-white">{s.nome}</p>
-              <p className="text-[13px] leading-relaxed text-white/55">{s.cosa}</p>
+        <div className="mt-9 overflow-x-auto">
+          <div className="min-w-[640px] border-t border-white/[0.08]">
+            <div className="grid grid-cols-[1fr_1fr_130px] gap-4 border-b border-white/[0.08] py-2.5">
+              <p className="font-dato text-[10.5px] uppercase tracking-[0.1em] text-white/40">Oggi, senza</p>
+              <p className="font-dato text-[10.5px] uppercase tracking-[0.1em]" style={{ color: `rgb(${LUCE})` }}>
+                Con CorpAgent
+              </p>
+              <p className="font-dato text-[10.5px] uppercase tracking-[0.1em] text-white/40">Servizio</p>
+            </div>
+            {CONFRONTO.map((r) => (
+              <div key={r.problema} className="grid grid-cols-[1fr_1fr_130px] gap-4 border-b border-white/[0.08] py-3.5">
+                <p className="text-[13px] leading-relaxed text-white/55">{r.problema}</p>
+                <p className="text-[13px] leading-relaxed text-white">{r.dopo}</p>
+                <p className="text-[12px] text-white/45">{r.servizio}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Compare>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LA STORIA — chi c'è dietro, senza gonfiarla
+// ─────────────────────────────────────────────────────────────────────────
+
+function Storia() {
+  return (
+    <section className="mt-24 sm:mt-32">
+      <Compare>
+        <p className="font-dato text-[11px] uppercase tracking-[0.12em]" style={{ color: `rgb(${LUCE})` }}>
+          La storia
+        </p>
+        <h2 className="font-sezione mt-2 text-[clamp(1.9rem,6vw,3rem)] leading-[0.94]">
+          Nata in un'azienda vera
+        </h2>
+        <div className="mt-5 max-w-[38rem] space-y-4 text-[14.5px] leading-relaxed text-white/60">
+          <p>
+            CorpAgent nasce nel 2026 da una domanda semplice: perché in
+            un'azienda che lavora bene c'è ancora qualcuno che ricopia bolle a
+            mano, rincorre telefonate e a fine giornata non sa dire com'è andata?
+          </p>
+          <p>
+            Il primo cantiere non è stato un cliente qualsiasi: è un'azienda di
+            trasporti di Torino che lavora dal 1998, con centocinquanta persone
+            tra uffici, banchina e strada. Lì dentro abbiamo imparato la regola
+            che ci portiamo su ogni lavoro:{" "}
+            <span className="text-white">
+              il software si costruisce dentro l'azienda, non davanti a un catalogo
+            </span>
+            . Prima il sopralluogo, poi il codice.
+          </p>
+          <p>
+            Per questo non troverai demo gonfiate né funzioni «in arrivo»
+            spacciate per pronte: quello che c'è scritto in questa pagina esiste,
+            e quello che non esiste non c'è scritto.
+          </p>
+        </div>
+      </Compare>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// IL PRIMO CANTIERE — le recensioni si guadagnano, non si scrivono
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ Tommaso ha chiesto «recensioni». Le recensioni INVENTATE non entrano qui:
+ * su una pagina che promette «se te lo promettessimo e non ci fosse, avresti
+ * scoperto che ti abbiamo mentito», cinque clienti finti sarebbero la
+ * smentita di tutto il resto (oltre a essere una pratica scorretta per legge).
+ * Quello che abbiamo di vero è il primo cantiere: si racconta quello, coi
+ * fatti. Le recensioni vere prenderanno questo posto man mano che arrivano.
+ */
+function Cantiere() {
+  const fatti = [
+    { cosa: "Postazioni attive", num: "4", sotto: "traffico, magazzino, autisti, amministrazione" },
+    { cosa: "Scanner collegati", num: "sì", sotto: "i palmari di banchina mandano le letture da soli" },
+    { cosa: "Etichette col barcode", num: "sì", sotto: "stampate da CorpAgent, rilette dai palmari" },
+    { cosa: "Report serale", num: "sì", sotto: "il punto della giornata si scrive da solo, ogni sera" },
+  ];
+  return (
+    <section className="mt-24 sm:mt-32">
+      <Compare>
+        <p className="font-dato text-[11px] uppercase tracking-[0.12em]" style={{ color: `rgb(${LUCE})` }}>
+          Il primo cantiere
+        </p>
+        <h2 className="font-sezione mt-2 text-[clamp(1.9rem,6vw,3rem)] leading-[0.94]">
+          Trasporti, Torino,
+          <br />
+          150 persone
+        </h2>
+        <p className="mt-3.5 max-w-[34rem] text-[14.5px] leading-relaxed text-white/55">
+          Un'azienda che spedisce dal 1998, col suo gestionale storico e le sue
+          abitudini. Non gliele abbiamo cambiate: ci siamo collegati.
+        </p>
+      </Compare>
+
+      <Compare>
+        <div className="mt-9 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+          {fatti.map((f) => (
+            <div key={f.cosa} className="rounded-xl border border-white/[0.09] bg-white/[0.022] p-4">
+              <p className="font-dato text-[22px]" style={{ color: `rgb(${LUCE})` }}>
+                {f.num}
+              </p>
+              <p className="mt-1 text-[13.5px] font-medium text-white">{f.cosa}</p>
+              <p className="mt-1 text-[12px] leading-relaxed text-white/50">{f.sotto}</p>
             </div>
           ))}
         </div>
       </Compare>
+
+      <Compare>
+        <p className="mt-6 text-[12px] leading-relaxed text-white/40">
+          Le recensioni dei clienti compariranno qui, con nome e cognome, man mano
+          che i cantieri si chiudono. Non ne scriveremo nemmeno una al posto loro.
+        </p>
+      </Compare>
     </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LE DOMANDE — quelle che fanno davvero, con le risposte vere
+// ─────────────────────────────────────────────────────────────────────────
+
+const DOMANDE: { d: string; r: string }[] = [
+  {
+    d: "Quanto ci vuole per partire?",
+    r: "Un agente semplice risponde in pochi giorni. Un'area aziendale completa dipende da quanti reparti e collegamenti servono: al sopralluogo (o alla prima chiamata) ti diamo una data, e quella resta.",
+  },
+  {
+    d: "Devo cambiare il gestionale che uso?",
+    r: "No. Ci colleghiamo a quello che c'è — posta, fogli, scanner, gestionali — e dove un collegamento non esiste ancora, te lo diciamo chiaro invece di fingere che ci sia.",
+  },
+  {
+    d: "E se l'agente sbaglia con un cliente?",
+    r: "All'inizio lavora in modalità Ghost: prepara le risposte e le approvi tu, una per una, finché non ti fidi. E ogni risposta passa un controllo che blocca sconti non autorizzati e promesse fuori listino.",
+  },
+  {
+    d: "I miei dati dove stanno?",
+    r: "In un database PostgreSQL in Europa (Francoforte), separato per azienda: la tua memoria non la vede nessun altro cliente, e lo garantisce il database stesso, non una promessa. I dettagli sono nella pagina privacy.",
+  },
+  {
+    d: "I miei documenti finiscono ad addestrare qualche IA?",
+    r: "No. Usiamo i modelli tramite le loro API commerciali, i cui termini prevedono che i dati inviati non vengano usati per addestrarli — e non attiviamo nessuna opzione di condivisione. I tuoi listini restano tuoi.",
+  },
+  {
+    d: "Il personale deve imparare un programma nuovo?",
+    r: "Quasi niente: si apre una pagina e si parla con l'agente, o si preme un tasto grosso. Chi usa già un gestionale ci mette mezza giornata a sentirsi a casa.",
+  },
+  {
+    d: "Posso disdire?",
+    r: "Sì, con una email e il preavviso scritto nei termini. Niente vincoli pluriennali nascosti: se non ti facciamo risparmiare tempo, è giusto che tu vada.",
+  },
+  {
+    d: "Perché i prezzi di lancio sono così bassi?",
+    r: "Perché siamo all'inizio e i primi cantieri ci servono più dei margini: ogni azienda vera ci insegna qualcosa che nessuna demo può insegnare. Quando i posti finiscono, restano i prezzi pieni.",
+  },
+];
+
+function Faq() {
+  return (
+    <section className="mt-24 sm:mt-32">
+      <Compare>
+        <p className="font-dato text-[11px] uppercase tracking-[0.12em]" style={{ color: `rgb(${LUCE})` }}>
+          Le domande
+        </p>
+        <h2 className="font-sezione mt-2 text-[clamp(1.9rem,6vw,3rem)] leading-[0.94]">
+          Quello che chiedono tutti
+        </h2>
+      </Compare>
+
+      <Compare>
+        <div className="mt-8 max-w-[44rem] border-t border-white/[0.08]">
+          {DOMANDE.map((f) => (
+            <details key={f.d} className="group border-b border-white/[0.08]">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-[14.5px] font-medium text-white/85 hover:text-white [&::-webkit-details-marker]:hidden">
+                {f.d}
+                <span aria-hidden className="shrink-0 text-white/40 transition-transform group-open:rotate-45">+</span>
+              </summary>
+              <p className="pb-4 pr-8 text-[13.5px] leading-relaxed text-white/55">{f.r}</p>
+            </details>
+          ))}
+        </div>
+      </Compare>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// IL BANNER DEI COOKIE — onesto: qui non c'è tracciamento
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Chiesto da Tommaso («aggiungi i cookies»). La verità tecnica: questo sito
+ * non ha cookie di profilazione — solo memoria tecnica (tema, sessione,
+ * questa presa visione). Il banner lo DICE, invece di fingere un consenso
+ * complicato che non serve. Si mostra una volta; la scelta vive in
+ * localStorage.
+ */
+function BannerCookie() {
+  const [visibile, setVisibile] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem("cookie-visto")) setVisibile(true);
+    } catch {
+      /* localStorage bloccato: pazienza, niente banner */
+    }
+  }, []);
+
+  if (!visibile) return null;
+
+  function chiudi() {
+    try {
+      localStorage.setItem("cookie-visto", new Date().toISOString());
+    } catch {
+      /* idem */
+    }
+    setVisibile(false);
+  }
+
+  return (
+    <>
+      {/* Lo spaziatore: finché la barra è visibile, il fondo pagina non deve
+          restarle nascosto sotto (su telefono la barra è alta due righe). */}
+      <div aria-hidden className="h-28 sm:h-16" />
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/12 bg-[#14120E] px-5 py-3.5">
+        <div className="mx-auto flex max-w-[1100px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[12.5px] leading-relaxed text-white/60">
+            Questo sito non usa cookie di tracciamento: solo memoria tecnica per il
+            tema e la tua sessione.{" "}
+            <a href="/cookie" className="underline underline-offset-2 hover:text-white">
+              Come funziona
+            </a>
+          </p>
+          <button
+            onClick={chiudi}
+            className="btn-grad shrink-0 cursor-pointer rounded-lg px-5 py-2 text-[12.5px] font-medium"
+          >
+            Ho capito
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 

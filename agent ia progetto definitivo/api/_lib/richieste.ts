@@ -246,11 +246,6 @@ async function avvisoPerEmail(d: DatiRichiesta, chiave: string): Promise<void> {
  * e si archivia; questo perché arriva in tasca in tre secondi.
  */
 async function avvisoSuWhatsApp(d: DatiRichiesta): Promise<void> {
-  const numero = process.env.AVVISI_WA;
-  const gettone = process.env.WHATSAPP_TOKEN;
-  const telefono = process.env.WHATSAPP_PHONE_ID;
-  if (!numero || !gettone || !telefono) return;
-
   const testo = [
     `Nuova richiesta: *${d.azienda}*`,
     d.settore,
@@ -259,6 +254,20 @@ async function avvisoSuWhatsApp(d: DatiRichiesta): Promise<void> {
     "",
     `${d.telefono} · ${d.email}`,
   ].join("\n");
+  await avvisoWhatsAppTesto(testo);
+}
+
+/**
+ * Un testo qualsiasi sul WhatsApp di Tommaso. Esportata perché è il secondo
+ * canale anche degli ORDINI (api/_lib/ordini.ts): la ragione è la stessa
+ * delle richieste — Resend può finire nello spam, e un ordine non visto è un
+ * cliente perso.
+ */
+export async function avvisoWhatsAppTesto(testo: string): Promise<void> {
+  const numero = process.env.AVVISI_WA;
+  const gettone = process.env.WHATSAPP_TOKEN;
+  const telefono = process.env.WHATSAPP_PHONE_ID;
+  if (!numero || !gettone || !telefono) return;
 
   try {
     await fetch(`https://graph.facebook.com/v21.0/${telefono}/messages`, {

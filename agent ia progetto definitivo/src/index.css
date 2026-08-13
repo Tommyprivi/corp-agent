@@ -695,13 +695,52 @@ body {
    esaurimento avvertono — ma ora la porta un BORDO fermo e colorato, non
    una lampada lava. */
 .glow-offer {
-  border-color: rgba(99, 102, 241, 0.65) !important;
-  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.35);
+  border-color: rgba(200, 155, 60, 0.65) !important;
+  box-shadow: inset 0 0 0 1px rgba(200, 155, 60, 0.35);
 }
 
 .glow-warn {
   border-color: rgba(245, 158, 11, 0.7) !important;
   box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
+}
+
+/* ── IL GLOW DEI PAGAMENTI — 13 Agosto 2026 ──────────────────────────────
+   Tommaso: «per i pagamenti metti effetti glow». È l'UNICO alone animato
+   rimasto in tutto il sito, ed è una scelta: dove si paga, l'occhio deve
+   cadere da solo. Ottone, in palette — niente neon. Chi ha chiesto meno
+   movimento lo vede fermo. */
+@keyframes lancio-respira {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+.glow-lancio {
+  position: relative;
+  isolation: isolate;
+}
+.glow-lancio::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(120deg, #8f6b1e, #c89b3c 45%, #e0b85c);
+  filter: blur(12px);
+  animation: lancio-respira 3.4s ease-in-out infinite;
+  pointer-events: none;
+}
+.glow-lancio {
+  border-color: rgba(200, 155, 60, 0.7) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .glow-lancio::before {
+    animation: none;
+    opacity: 0.7;
+  }
 }
 
 

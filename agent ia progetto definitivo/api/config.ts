@@ -31,6 +31,7 @@ import { dbConfigured } from "./_lib/db.js";
 import { chooseModel, fetchCatalog } from "./_lib/openrouter.js";
 import * as az from "./_lib/azienda.js";
 import * as posta from "./_lib/posta.js";
+import { creaOrdine } from "./_lib/ordini.js";
 import { attrezziAzienda, eseguiAttrezzo } from "./_lib/attrezzi.js";
 import {
   avvisaTommaso,
@@ -75,6 +76,22 @@ export default {
 
       if (corpo.richiesta) return await creaRichiesta(corpo, request);
       if (corpo.qualifica) return await rispondiQualifica(corpo);
+      // POST { ordine } → un ordine di servizio dalla home (13 Agosto 2026):
+      // Tommaso, «si paga direttamente, senza il form lungo». Il listino sta
+      // sul SERVER (api/_lib/ordini.ts): il browser manda solo l'id.
+      // ⚠️ Stessa rete di sicurezza del ramo `az`: un singhiozzo del database
+      // deve tornare come JSON pulito, non come 500 nudo di Vercel.
+      if (corpo.ordine && typeof corpo.ordine === "object") {
+        try {
+          const esito = await creaOrdine(corpo.ordine as Record<string, unknown>, request);
+          return json(esito, esito.ok ? 200 : 400);
+        } catch {
+          return json(
+            { ok: false, errore: "Qualcosa non ha funzionato. Riprova, o scrivici a corpagent7@gmail.com." },
+            500
+          );
+        }
+      }
       // ⚠️ Rete di sicurezza: un id malformato (un UUID non valido, un campo
       // storto) fa alzare un'eccezione al database. Senza questo, il browser
       // riceverebbe un 500 nudo di Vercel; così riceve un errore pulito e
