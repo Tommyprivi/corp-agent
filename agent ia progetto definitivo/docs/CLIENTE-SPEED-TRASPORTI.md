@@ -1,6 +1,6 @@
-# Speed Trasporti — il primo cliente vero
+ Speed Trasporti — il primo cliente vero
 
-> Qualificato da Tommaso l'11 agosto 2026. Referente: **Salvatore**,
+> Qualificat#o da Tommaso l'11 agosto 2026. Referente: **Salvatore**,
 > `salvatore@speedtrasporti.com` · 34558072.
 > La pratica è nella scrivania (Impostazioni Avanzate → Richieste), stato
 > **in lavoro**.

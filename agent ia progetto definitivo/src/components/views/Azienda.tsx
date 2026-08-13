@@ -1213,6 +1213,7 @@ function Cruscotto({
   const [dati, setDati] = useState<DatiCruscotto | null>(null);
   const [errore, setErrore] = useState(false);
   const [riepilogo, setRiepilogo] = useState<string | null>(null);
+  const [reportGiorno, setReportGiorno] = useState<string | null>(null);
   const [riepilogoInCorso, setRiepilogoInCorso] = useState(false);
 
   useEffect(() => {
@@ -1222,13 +1223,25 @@ function Cruscotto({
         seScaduta(e);
         setErrore(true);
       });
+    // ⚠️ Il report serale già pronto si carica da solo: il titolare lo trova
+    // scritto, senza premere niente e senza rigenerarlo (il modello si paga
+    // una volta al giorno, non a ogni apertura del cruscotto).
+    leggi<{ report: { giorno: string; testo: string } | null }>("report")
+      .then((r) => {
+        if (r.report) {
+          setRiepilogo(r.report.testo);
+          setReportGiorno(r.report.giorno);
+        }
+      })
+      .catch(() => {});
   }, [seScaduta]);
 
   async function chiediRiepilogo() {
     setRiepilogoInCorso(true);
     try {
-      const r = await leggi<{ testo: string }>("riepilogo");
+      const r = await leggi<{ testo: string; giorno?: string }>("riepilogo");
       setRiepilogo(r.testo);
+      setReportGiorno(r.giorno ?? null);
     } catch (e) {
       seScaduta(e);
     } finally {
@@ -1304,9 +1317,13 @@ function Cruscotto({
                     ✦
                   </span>
                   <div>
-                    <p className="text-[13.5px] font-medium">L'agente di direzione</p>
+                    <p className="text-[13.5px] font-medium">
+                      {reportGiorno ? "Il report della giornata" : "L'agente di direzione"}
+                    </p>
                     <p className="text-[12px] text-[var(--text-secondary)]">
-                      Guarda tutta l'azienda insieme e ti dice com'è andata.
+                      {reportGiorno
+                        ? `Fatto dall'agente${reportData(reportGiorno)}. Guarda tutta l'azienda insieme.`
+                        : "Guarda tutta l'azienda insieme e ti dice com'è andata."}
                     </p>
                   </div>
                 </div>
@@ -1638,6 +1655,16 @@ function Soldi({ periodo }: { periodo: string }) {
 function secondi(ms: number | null): string {
   if (ms === null || ms === undefined) return "—";
   return `${(ms / 1000).toFixed(1).replace(".", ",")} s`;
+}
+
+/** « di oggi» / « di ieri» / « del 12 agosto» a partire da un YYYY-MM-DD. */
+function reportData(giorno: string): string {
+  const oggi = new Date().toLocaleDateString("en-CA");
+  const ieri = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
+  const g = giorno.slice(0, 10);
+  if (g === oggi) return " di oggi";
+  if (g === ieri) return " di ieri";
+  return ` del ${new Date(g).toLocaleDateString("it-IT", { day: "numeric", month: "long" })}`;
 }
 
 function giornoCorto(data: string): string {

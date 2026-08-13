@@ -361,6 +361,29 @@ export async function cruscotto(azienda: string) {
   return dati;
 }
 
+/** La data di oggi in fuso Europe/Rome, come stringa YYYY-MM-DD. */
+export function oggiRoma(): string {
+  // ⚠️ 'en-CA' dà proprio YYYY-MM-DD; il fuso Rome evita che a mezzanotte UTC
+  // il report «di oggi» diventi quello di ieri per chi lavora in Italia.
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+}
+
+/** Salva il report di un giorno (uno per giorno, sovrascrive). */
+export async function salvaReport(azienda: string, giorno: string, testo: string): Promise<void> {
+  await getPool().query("select public.az_report_salva($1,$2::date,$3)", [azienda, giorno, testo]);
+}
+
+/** L'ultimo report disponibile — quello di oggi, o il più recente. */
+export async function ultimoReport(
+  azienda: string
+): Promise<{ giorno: string; testo: string; creato: string } | null> {
+  const r = await getPool().query<{ giorno: string; testo: string; creato: string }>(
+    "select * from public.az_report_ultimo($1)",
+    [azienda]
+  );
+  return r.rows[0] ?? null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // IL MAGAZZINO — mezzi, movimenti, e la vista del capo
 // ─────────────────────────────────────────────────────────────────────────

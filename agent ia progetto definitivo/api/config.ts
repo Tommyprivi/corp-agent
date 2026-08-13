@@ -475,6 +475,11 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       if (!titolare) return soloTitolare();
       return await riepilogoGiornata(chi);
 
+    case "report":
+      // L'ultimo report serale già pronto, senza rigenerarlo. Solo il titolare.
+      if (!titolare) return soloTitolare();
+      return json({ report: await az.ultimoReport(chi.azienda) }, 200);
+
     case "attivita":
       // Il registro attività è del titolare: chi ha fatto cosa e quando.
       if (!titolare) return soloTitolare();
@@ -579,7 +584,11 @@ async function riepilogoGiornata(chi: az.Persona): Promise<Response> {
     const body = (await r.json()) as { choices?: { message?: { content?: string } }[] };
     const testo = body.choices?.[0]?.message?.content?.trim();
     if (!testo) throw new Error("vuoto");
-    return json({ testo }, 200);
+    // ⚠️ Si salva come report del giorno: così il titolare lo trova pronto la
+    // prossima volta che apre, senza rigenerarlo (e senza ripagare il modello).
+    const giorno = az.oggiRoma();
+    void az.salvaReport(chi.azienda, giorno, testo).catch(() => {});
+    return json({ testo, giorno }, 200);
   } catch {
     return json(
       { testo: "Non riesco a fare il punto in questo momento. I numeri qui sotto sono comunque aggiornati." },
