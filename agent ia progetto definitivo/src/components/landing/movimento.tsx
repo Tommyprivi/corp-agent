@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { suonoClick, suonoSfiora } from "../../lib/suoni";
+import { suonoSfiora } from "../../lib/suoni";
 
 /**
  * I tre movimenti della vetrina, scelti da Tommaso l'11 Agosto 2026.
@@ -176,31 +176,21 @@ export function PulsanteMagnetico({
 }) {
   const ref = useRef<HTMLButtonElement>(null);
   const [spostamento, setSpostamento] = useState({ x: 0, y: 0 });
-  const [onde, setOnde] = useState<OndaViva[]>([]);
-  const prossima = useRef(0);
+  // Ferma per sempre vuota da quando l'onda è spenta: il render sotto resta
+  // identico e non disegna niente.
+  const [onde] = useState<OndaViva[]>([]);
 
-  function insegui(e: React.MouseEvent) {
-    if (disabled || calmo()) return;
-    if (!window.matchMedia("(pointer: fine)").matches) return;
-    const r = ref.current?.getBoundingClientRect();
-    if (!r) return;
-    setSpostamento({
-      x: ((e.clientX - (r.left + r.width / 2)) / r.width) * 10,
-      y: ((e.clientY - (r.top + r.height / 2)) / r.height) * 10,
-    });
+  /* ⚠️ MAGNETISMO E ONDA SPENTI il 13 Agosto 2026 — Tommaso: «sembra fatto
+     con l'IA, troppo decorato». Un pulsante serio sta fermo e fa una cosa
+     sola: parte al clic. Lo spostamento resta a zero, nessuna onda nasce e
+     nessun suono parte; la struttura del componente non cambia, così chi lo
+     usa non deve toccare una riga. */
+  function insegui(_e: React.MouseEvent) {
+    /* fermo */
   }
 
-  function premi(e: React.MouseEvent) {
+  function premi(_e: React.MouseEvent) {
     if (disabled) return;
-    const r = ref.current?.getBoundingClientRect();
-    if (r && !calmo()) {
-      const id = prossima.current++;
-      setOnde((o) => [...o, { id, x: e.clientX - r.left, y: e.clientY - r.top }]);
-      // 620ms = la durata dell'animazione. Se non si togliessero, dopo venti
-      // clic ci sarebbero venti elementi invisibili ancora nel documento.
-      window.setTimeout(() => setOnde((o) => o.filter((x) => x.id !== id)), 620);
-    }
-    suonoClick();
     onClick();
   }
 

@@ -51,7 +51,14 @@ interface Nota {
   hzFinale?: number;
 }
 
+/* ⚠️ SPENTI il 13 Agosto 2026 — Tommaso: «lo stile sembra fatto con l'IA,
+   troppo decorato». I suoni al clic sono decorazione. L'interruttore sta qui,
+   nel punto da cui passano tutte le note: le funzioni restano (nessun
+   componente da toccare), ma non suonano. Per riaccenderli: false. */
+const SPENTI = true;
+
 function suona({ hz, durata, volume, tipo = "sine", hzFinale }: Nota): void {
+  if (SPENTI) return;
   const c = contesto();
   if (!c) return;
 

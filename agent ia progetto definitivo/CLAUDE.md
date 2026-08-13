@@ -136,7 +136,14 @@ permanentemente scura porta la classe `.on-dark`**, che inverte `.btn-grad`,
 Stessa regola per il testo: un `text-white` sopra `--grad-primary` è un bug: nel
 tema scuro quel fondo è bianco. Si usa `var(--on-primary)`.
 
-Tipografia: Inter per l'interfaccia, Outfit ultra-light solo per il wordmark del logo.
+Tipografia (cambiata da Tommaso il 13 Agosto 2026 — «sembra fatto con l'IA,
+sempre gli stessi font»): **Schibsted Grotesk** per l'interfaccia di CorpAgent,
+**IBM Plex Sans** per l'area cliente (`data-marchio`), più i quattro display
+della vetrina (Boldonse, Big Shoulders, Instrument Serif, Geist Mono). TUTTI
+self-hosted in `public/fonts/*.woff2` — niente CDN Google, niente Inter.
+Nello stesso giro sono spariti: gradienti su pulsanti e titoli (ora piatti,
+`--grad-primary` è un colore), sfere `.orb`, glassmorphism, cursore-glow,
+pulsante magnetico, suoni, hover che sollevano. Non reintrodurli.
 Il logo è un anello sottile aperto in alto a destra con un punto pieno al centro
 (`src/components/Logo.tsx`) — non sostituirlo con un'icona generica.
 

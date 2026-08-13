@@ -42,7 +42,10 @@ import { Compare, Numero, PulsanteMagnetico } from "../landing/movimento";
  */
 
 /** L'accento che vive solo qui, in RGB per poterlo sfumare. */
-const LUCE = "77, 225, 255";
+/* ⚠️ Era il ciano neon "77, 225, 255" — IL colore dei siti fatti con l'IA.
+   Dal 13 Agosto 2026 la luce della pagina è l'OTTONE della nuova palette:
+   caldo, da officina, non da spaceship. */
+const LUCE = "200, 155, 60";
 
 // ─────────────────────────────────────────────────────────────────────────
 // LA CONVERSAZIONE CHE SI SCRIVE DA SOLA
@@ -75,7 +78,7 @@ export default function Richiesta() {
 
   return (
     <div
-      className="on-dark relative min-h-screen overflow-x-hidden bg-[#050507] text-[#F5F5F7]"
+      className="on-dark relative min-h-screen overflow-x-hidden bg-[#0B0A08] text-[#F2F0EB]"
       style={{ ["--luce" as string]: LUCE }}
     >
       <CursoreGlow colore={LUCE} />
@@ -98,6 +101,7 @@ export default function Richiesta() {
           <Form onFatto={setInviata} />
         )}
         <Funzioni />
+        <Servizi />
         <Piede />
       </main>
     </div>
@@ -109,24 +113,16 @@ export default function Richiesta() {
 // ─────────────────────────────────────────────────────────────────────────
 
 /**
- * Due aloni immobili e una griglia appena visibile.
+ * Solo la griglia da carta millimetrata.
  *
- * ⚠️ Immobili di proposito. Uno sfondo che si muove da solo compete con la
- * chat che si scrive — e quando due cose si muovono insieme, non se ne guarda
- * nessuna. Il movimento in questa pagina è **uno solo**, ed è il momento
- * vistoso che Tommaso ha scelto.
+ * ⚠️ I due aloni sfocati che «respiravano» sono stati TOLTI il 13 Agosto
+ * 2026 — Tommaso: «lo stile sembra fatto con l'IA, troppo decorato». Il
+ * bagliore radiale sfocato è il cliché numero uno dei siti generati. La
+ * griglia resta: è disegno tecnico, non decorazione.
  */
 function Bagliori() {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div
-        className="anima-respiro absolute -top-40 left-1/2 h-[560px] w-[900px] -translate-x-1/2 rounded-full blur-[120px]"
-        style={{ background: `radial-gradient(closest-side, rgba(${LUCE}, 0.16), transparent)` }}
-      />
-      <div
-        className="anima-respiro absolute top-[45%] -right-40 h-[420px] w-[620px] rounded-full blur-[130px]"
-        style={{ background: `radial-gradient(closest-side, rgba(${LUCE}, 0.09), transparent)` }}
-      />
       <div
         className="absolute inset-0 opacity-[0.13]"
         style={{
@@ -877,6 +873,77 @@ function Funzioni() {
           Non c'è un'iscrizione e non c'è una prova da attivare da soli. Ogni azienda la
           prepariamo a mano, partendo dal suo mestiere.
         </p>
+      </Compare>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// I SERVIZI — quello che facciamo oltre agli agenti
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Voluta da Tommaso il 13 Agosto 2026: «voglio vendere prodotti digitali in
+ * più oltre agli agenti IA — nella pagina iniziale sotto ci sono i servizi».
+ * Se a un'azienda l'agente non serve, c'è comunque qualcosa da farle: il
+ * negozio online, il sito, le automazioni. Righe da listino, non card che
+ * brillano: è un'offerta di lavoro, non uno spettacolo.
+ */
+const SERVIZI: { nome: string; cosa: string }[] = [
+  {
+    nome: "Agenti IA su misura",
+    cosa: "Il cuore: un dipendente digitale preparato sul tuo mestiere, che risponde a clienti e colleghi.",
+  },
+  {
+    nome: "Aree aziendali complete",
+    cosa: "Un'area di lavoro per la tua azienda: postazioni per reparto, cruscotto con i numeri veri, accessi per il personale.",
+  },
+  {
+    nome: "Negozi online",
+    cosa: "Apriamo e colleghiamo il tuo negozio (Shopify): catalogo, ordini e magazzino — con l'agente che risponde ai clienti.",
+  },
+  {
+    nome: "Siti web professionali",
+    cosa: "Vetrine veloci e sobrie, fatte per farsi trovare e per vendere. Senza fronzoli.",
+  },
+  {
+    nome: "Automazioni d'ufficio",
+    cosa: "Le bolle entrano dallo scanner, le etichette escono con il codice a barre, il report serale si scrive da solo.",
+  },
+  {
+    nome: "Collegamenti ai tuoi programmi",
+    cosa: "Posta, fogli di calcolo, calendario, gestionali: CorpAgent legge e scrive dove lavori già.",
+  },
+];
+
+function Servizi() {
+  return (
+    <section id="servizi" className="mt-24 sm:mt-32">
+      <Compare>
+        <p className="font-dato text-[11px] uppercase tracking-[0.12em]" style={{ color: `rgb(${LUCE})` }}>
+          I servizi
+        </p>
+        <h2 className="font-sezione mt-2 text-[clamp(1.9rem,6vw,3rem)] leading-[0.94]">
+          Non solo agenti
+        </h2>
+        <p className="mt-3.5 max-w-[34rem] text-[14.5px] leading-relaxed text-white/55">
+          CorpAgent è una squadra che costruisce strumenti digitali per aziende.
+          L'agente è il pezzo forte, ma il lavoro si prende dove serve.
+        </p>
+      </Compare>
+
+      <Compare>
+        <div className="mt-9 border-t border-white/[0.08]">
+          {SERVIZI.map((s) => (
+            <div
+              key={s.nome}
+              className="flex flex-col gap-1 border-b border-white/[0.08] py-4 sm:flex-row sm:items-baseline sm:gap-6"
+            >
+              <p className="w-56 shrink-0 text-[14px] font-medium text-white">{s.nome}</p>
+              <p className="text-[13px] leading-relaxed text-white/55">{s.cosa}</p>
+            </div>
+          ))}
+        </div>
       </Compare>
     </section>
   );

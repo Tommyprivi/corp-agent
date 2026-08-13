@@ -25,10 +25,14 @@
  */
 
 :root {
-  /* ── Superfici, dalla più lontana alla più vicina ────────────────── */
-  --bg-app: #f7f7f8;
+  /* ── Superfici, dalla più lontana alla più vicina ──────────────────
+     ⚠️ Dal 13 Agosto 2026 i neutri sono CALDI (Tommaso: «cambia colori»):
+     via il grigio-azzurro da software, dentro il grigio-carta. L'accento
+     non è più il grafite: è l'OTTONE (#B8892F / #C89B3C), caldo e da
+     officina seria — l'opposto del ciano neon dei siti fatti con l'IA. */
+  --bg-app: #f6f5f1;
   --bg-card: #ffffff;
-  --bg-sunken: #efeff1;
+  --bg-sunken: #efede7;
 
   /* ── La sidebar: nel chiaro è grafite, nello scuro sparisce nel fondo ─ */
   --side-bg: #0b0b0d;
@@ -45,29 +49,34 @@
   --side-positive: #3ddc97;
 
   /* ── Testo ───────────────────────────────────────────────────────── */
-  --text-primary: #0a0a0b;
-  --text-secondary: #62626b;
-  --text-tertiary: #9a9aa2;
+  --text-primary: #17160f;
+  --text-secondary: #64604f;
+  --text-tertiary: #9b9585;
 
-  /* ── L'azione primaria: grafite pieno, con un velo di luce sopra ──── */
-  --grad-primary: linear-gradient(180deg, #2c2c33 0%, #0a0a0b 100%);
-  --grad-text: linear-gradient(120deg, #0a0a0b 0%, #55555e 100%);
-  --grad-soft: linear-gradient(135deg, rgba(10, 10, 11, 0.05), rgba(10, 10, 11, 0.02));
-  --on-primary: #ffffff;
+  /* ── L'azione primaria: OTTONE PIENO, testo quasi nero. Il gradiente è
+     stato tolto il 13 Agosto 2026 («sembra fatto con l'IA») e il grafite ha
+     ceduto il posto all'ottone. Il nome resta --grad-primary per non
+     toccare cento componenti. ── */
+  --grad-primary: #b8892f;
+  --grad-text: #17160f;
+  --grad-soft: linear-gradient(135deg, rgba(23, 22, 15, 0.05), rgba(23, 22, 15, 0.02));
+  --on-primary: #171106;
 
-  --accent: #0a0a0b;
-  --accent-hover: #26262c;
-  --accent-soft: rgba(10, 10, 11, 0.05);
-  --accent-ring: rgba(10, 10, 11, 0.14);
+  /* L'accento (stati attivi, bordi vivi, link) è l'ottone scurito quanto
+     basta per leggersi su bianco (≈5:1). */
+  --accent: #8f6b1e;
+  --accent-hover: #a87d24;
+  --accent-soft: rgba(168, 125, 36, 0.08);
+  --accent-ring: rgba(168, 125, 36, 0.28);
 
   /* Il colore resta solo dove significa qualcosa. */
   --positive: #0d8a4f;
   --positive-soft: rgba(13, 138, 79, 0.1);
 
   /* ── Bordi e vetro ───────────────────────────────────────────────── */
-  --border: #e7e7ea;
-  --border-strong: #d3d3d8;
-  --fill-quiet: #f1f1f3;
+  --border: #e7e4dc;
+  --border-strong: #d4d0c4;
+  --fill-quiet: #f1efe9;
   --glass: rgba(255, 255, 255, 0.74);
 
   /* ── Profondità ──────────────────────────────────────────────────── */
@@ -88,8 +97,12 @@
   --fast: 140ms;
   --normal: 240ms;
 
-  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-logo: "Outfit", "Inter", sans-serif;
+  /* ⚠️ Cambiati il 13 Agosto 2026 — Tommaso: «sempre gli stessi font,
+     bisogna prendere font insoliti». Via Inter (il font di ogni sito fatto
+     con l'IA): l'interfaccia parla Familjen Grotesk, self-hosted come gli
+     altri (niente CDN Google). */
+  --font-ui: "Familjen Grotesk", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-logo: "Familjen Grotesk", "Segoe UI", sans-serif;
 
   color-scheme: light;
 }
@@ -99,9 +112,9 @@
  * L'azione primaria diventa bianca su nero: nel buio il bianco è il grafite.
  */
 :root[data-theme="dark"] {
-  --bg-app: #08080a;
-  --bg-card: #101013;
-  --bg-sunken: #17171b;
+  --bg-app: #0b0a08;
+  --bg-card: #14120e;
+  --bg-sunken: #1a1812;
 
   --side-bg: #0b0b0d;
   --side-bg-raised: #1a1a1f;
@@ -110,27 +123,28 @@
   --side-text-dim: rgba(245, 245, 247, 0.45);
   --side-active: rgba(255, 255, 255, 0.09);
 
-  --text-primary: #f5f5f7;
-  --text-secondary: #9d9da6;
-  --text-tertiary: #6c6c76;
+  --text-primary: #f2f0eb;
+  --text-secondary: #a29d90;
+  --text-tertiary: #6f6a5d;
 
-  --grad-primary: linear-gradient(180deg, #ffffff 0%, #d8d8dd 100%);
-  --grad-text: linear-gradient(120deg, #ffffff 0%, #9b9ba4 100%);
+  /* Nel buio l'ottone si accende: pulsante ottone pieno, testo quasi nero. */
+  --grad-primary: #c89b3c;
+  --grad-text: #f2f0eb;
   --grad-soft: linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
-  --on-primary: #0a0a0b;
+  --on-primary: #171106;
 
-  --accent: #f5f5f7;
-  --accent-hover: #ffffff;
-  --accent-soft: rgba(255, 255, 255, 0.07);
-  --accent-ring: rgba(255, 255, 255, 0.16);
+  --accent: #d3a94c;
+  --accent-hover: #e0b85c;
+  --accent-soft: rgba(200, 155, 60, 0.12);
+  --accent-ring: rgba(200, 155, 60, 0.35);
 
   --positive: #2ecc82;
   --positive-soft: rgba(46, 204, 130, 0.12);
 
-  --border: #232328;
-  --border-strong: #32323a;
-  --fill-quiet: #1b1b20;
-  --glass: rgba(16, 16, 19, 0.76);
+  --border: #262319;
+  --border-strong: #383324;
+  --fill-quiet: #1e1b14;
+  --glass: rgba(20, 18, 14, 0.76);
 
   /* Nel buio le ombre non si vedono: la profondità la fa il bordo chiaro. */
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -227,29 +241,26 @@ body {
  *   .ring-grad  il bordo attivo
  */
 
+/* Piatto e fermo: niente ombra portata, niente sollevamento al passaggio.
+   Un pulsante di lavoro cambia solo tono, come in un gestionale. */
 .btn-grad {
   background: var(--grad-primary);
   color: var(--on-primary);
-  box-shadow: var(--shadow-grad);
-  transition:
-    transform var(--fast) var(--ease-out),
-    box-shadow var(--normal) var(--ease-out),
-    filter var(--fast) var(--ease-out);
+  transition: filter var(--fast) var(--ease-out);
 }
 .btn-grad:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 28px rgba(10, 10, 11, 0.28);
-  filter: brightness(1.12);
+  filter: brightness(1.18);
 }
 :root[data-theme="dark"] .btn-grad:hover {
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
-  filter: brightness(0.94);
+  filter: brightness(0.92);
 }
 .btn-grad:active {
-  transform: translateY(0);
+  filter: brightness(0.85);
+}
+:root[data-theme="dark"] .btn-grad:active {
+  filter: brightness(0.85);
 }
 .btn-grad:disabled {
-  box-shadow: none;
   filter: none;
 }
 
@@ -262,18 +273,17 @@ body {
     opacity var(--fast) var(--ease-out);
 }
 .btn-side:hover {
-  transform: translateY(-1px);
   opacity: 0.9;
 }
 .btn-side:active {
-  transform: translateY(0);
+  opacity: 0.8;
 }
 
+/* Non è più un gradiente: la parola che stacca è semplicemente piena e
+   ferma. Il testo sfumato era il marchio di fabbrica dei siti fatti con
+   l'IA — il nome della classe resta per non toccare i componenti. */
 .text-grad {
-  background: var(--grad-text);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--grad-text);
 }
 
 /*
@@ -286,20 +296,17 @@ body {
  * e i componenti continuano a scrivere `.btn-grad` come altrove.
  */
 .on-dark .text-grad {
-  background: linear-gradient(120deg, #ffffff 0%, #8e8e99 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: #ffffff;
 }
 
 .on-dark .btn-grad {
-  background: var(--side-accent);
-  color: var(--side-on-accent);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  /* Sulle zone sempre-scure l'azione primaria è l'ottone acceso: si vede da
+     lontano senza neon, e il testo sopra è quasi nero. */
+  background: #c89b3c;
+  color: #171106;
 }
 .on-dark .btn-grad:hover {
-  filter: brightness(0.94);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  filter: brightness(1.08);
 }
 
 .on-dark .ring-grad {
@@ -312,22 +319,18 @@ body {
   background: var(--bg-card);
 }
 
+/* Il vetro non c'è più: superficie piena, come tutto il resto. */
 .glass {
-  background: var(--glass);
-  backdrop-filter: blur(14px) saturate(1.3);
-  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  background: var(--bg-card);
 }
 
 /*
- * Le sfere sfocate: senza colore diventano luce e ombra. È quello che dà
- * profondità all'hero adesso che non c'è più il viola.
+ * Le sfere sfocate NON ESISTONO PIÙ (13 Agosto 2026): erano il cliché
+ * numero uno dei siti fatti con l'IA. I div .orb nei componenti restano,
+ * ma non disegnano niente.
  */
 .orb {
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(80px);
-  opacity: 0.5;
-  pointer-events: none;
+  display: none;
 }
 .orb-violet {
   background: radial-gradient(circle, rgba(255, 255, 255, 0.16), transparent 70%);
@@ -423,33 +426,28 @@ body {
  * ─────────────────────────────────────────────────────────────────────────
  */
 
+/* Lo scroll-reveal è solo una dissolvenza: niente più blocchi che salgono. */
 .reveal {
   opacity: 0;
-  transform: translateY(26px);
-  transition:
-    opacity 0.7s var(--ease-out),
-    transform 0.7s var(--ease-out);
+  transition: opacity 0.5s var(--ease-out);
 }
 .reveal.is-visible {
   opacity: 1;
-  transform: none;
 }
 
+/* Prima le parole salivano ruotando e sfocate — puro effetto da sito IA.
+   Ora una dissolvenza corta e basta: il titolo appare, non si esibisce. */
 @keyframes word-rise {
   from {
     opacity: 0;
-    transform: translateY(28px) rotate(2deg);
-    filter: blur(6px);
   }
   to {
     opacity: 1;
-    transform: none;
-    filter: blur(0);
   }
 }
 .word-rise {
   display: inline-block;
-  animation: word-rise 0.7s var(--ease-out) both;
+  animation: word-rise 0.4s var(--ease-out) both;
 }
 
 /*
@@ -465,34 +463,18 @@ body {
 .word-rise-w {
   display: inline-block;
   margin-right: 0.26em;
-  animation: word-rise 0.7s var(--ease-out) both;
+  animation: word-rise 0.4s var(--ease-out) both;
 }
 
-/* Il bagliore che segue il mouse: ora è luce bianca, non viola. */
+/* Il bagliore che seguiva il mouse è spento (13 Agosto 2026): la luce che
+   insegue il cursore è un altro dei marchi dei siti fatti con l'IA. */
 .hero-glow {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(
-    620px circle at var(--mx, 50%) var(--my, 35%),
-    rgba(255, 255, 255, 0.09),
-    rgba(255, 255, 255, 0.03) 45%,
-    transparent 70%
-  );
-  transition: background 120ms linear;
+  display: none;
 }
 
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
-}
+/* Niente più oggetti che galleggiano da soli: fermi. */
 .animate-float {
-  animation: float 6s ease-in-out infinite;
+  animation: none;
 }
 
 @keyframes caret {
@@ -707,48 +689,19 @@ body {
   isolation: isolate;
 }
 
-/* L'alone sta DIETRO (z-index negativo) e sfocato: se stesse sopra
-   sporcherebbe il testo, e un testo poco leggibile su un riquadro che brilla
-   è la definizione di pubblicità fastidiosa. */
-.glow-offer::before,
-.glow-warn::before {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  z-index: -1;
-  border-radius: inherit;
-  filter: blur(11px);
-  animation: glow-breathe 3.6s ease-in-out infinite;
-  pointer-events: none;
-}
-
-.glow-offer::before {
-  background: linear-gradient(120deg, #6366f1, #22d3ee 45%, #a855f7);
-}
-
-.glow-warn::before {
-  background: linear-gradient(120deg, #f59e0b, #f97316 60%, #fbbf24);
-  animation-duration: 2.2s;
-}
-
-/* Il bordo vero, sopra l'alone: senza, il riquadro sembra sfocato invece che
-   illuminato. */
+/* ⚠️ RIDIMENSIONATO il 13 Agosto 2026: l'alone sfocato indigo→ciano→viola
+   che respirava era l'elemento più «fatto con l'IA» di tutto il sito.
+   L'informazione resta — il piano consigliato si distingue, i crediti in
+   esaurimento avvertono — ma ora la porta un BORDO fermo e colorato, non
+   una lampada lava. */
 .glow-offer {
-  border-color: rgba(99, 102, 241, 0.55) !important;
+  border-color: rgba(99, 102, 241, 0.65) !important;
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.35);
 }
 
 .glow-warn {
-  border-color: rgba(245, 158, 11, 0.6) !important;
-}
-
-/* ⚠️ Chi ha chiesto meno animazioni al sistema operativo non deve vedere
-   niente pulsare: il bagliore resta, fermo. */
-@media (prefers-reduced-motion: reduce) {
-  .glow-offer::before,
-  .glow-warn::before {
-    animation: none;
-    opacity: 0.8;
-  }
+  border-color: rgba(245, 158, 11, 0.7) !important;
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
 }
 
 
@@ -861,6 +814,39 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   I DUE CARATTERI DELL'INTERFACCIA — 13 Agosto 2026
+   ─────────────────────────────────────────────────────────────────────────
+   Tommaso: «sembra fatto con l'IA, sempre gli stessi font — bisogna prendere
+   font insoliti, non scelte scontate». Via Inter, che è il font di default
+   di ogni sito generato — e niente ripieghi prevedibili:
+
+   · Familjen Grotesk  l'interfaccia di CorpAgent — grottesco svedese con
+                       dettagli suoi (la g, la a): professionale ma
+                       riconoscibile al primo sguardo, e quasi mai visto
+   · Overpass          l'area cliente — nato dal carattere della segnaletica
+                       AUTOSTRADALE americana (Highway Gothic): per
+                       un'azienda di trasporti è IL carattere giusto, e
+                       nessun sito generato lo usa
+
+   Self-hosted come gli altri quattro: nessuna chiamata a un CDN. Tutti e due
+   variabili: UN file woff2 copre tutti i pesi. */
+@font-face {
+  font-family: "Familjen Grotesk";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/familjengrotesk-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Overpass";
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url("/fonts/overpass-latin.woff2") format("woff2");
+}
+
 /* ── Le animazioni in più ────────────────────────────────────────────────
 
    ⚠️ Tutte dietro `prefers-reduced-motion`: chi ha chiesto meno movimento
@@ -897,15 +883,10 @@ body {
 
 .anima-respiro { animation: respiro 14s ease-in-out infinite; }
 
-/* Le card delle funzioni: si sollevano di due pixel e prendono luce. */
+/* Le card delle funzioni: ferme. Al passaggio cambia solo il bordo — il
+   sollevamento è stato tolto il 13 Agosto 2026 («sembra fatto con l'IA»). */
 .card-funzione {
-  transition: transform 260ms cubic-bezier(.16, 1, .3, 1),
-              border-color 260ms, background-color 260ms;
-}
-.card-funzione:hover { transform: translateY(-2px); }
-
-@media (prefers-reduced-motion: reduce) {
-  .card-funzione:hover { transform: none; }
+  transition: border-color 260ms, background-color 260ms;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -926,27 +907,40 @@ body {
   --accent-hover: var(--marchio-primario-scuro);
   --accent-soft: color-mix(in srgb, var(--marchio-primario) 8%, transparent);
   --accent-ring: color-mix(in srgb, var(--marchio-primario) 30%, transparent);
-  --grad-primary: linear-gradient(
-    180deg,
-    var(--marchio-primario) 0%,
-    var(--marchio-primario-scuro) 100%
-  );
+  /* Piatto: il pulsante primario è il verde del marchio e basta, come in un
+     gestionale. Il gradiente verticale è stato tolto il 13 Agosto 2026. */
+  --grad-primary: var(--marchio-primario);
+  --shadow-grad: none;
   --on-primary: var(--marchio-su-primario);
 
-  /* ── IL FONT DELL'AREA CLIENTE — professionale, non giocoso ────────────
-     Voluto da Tommaso: *«lo stile deve essere più professionale e meno
-     giocoso e futuristico, cambia font»*. Via Inter (che sa di startup), qui
-     vince lo stack di sistema con Segoe UI in testa: i dipendenti di Speed
-     lavorano su Windows e sul gestionale Assistant, quindi questo font fa
-     sembrare CorpAgent un software gestionale NATIVO, quello che già usano —
-     non un'app. Zero download (nessuna chiamata a un CDN, bene per la privacy)
-     e reverte da solo alla vetrina quando si esce (data-marchio sparisce).
-     Le cifre sono tabellari: in un gestionale le colonne di numeri si leggono
-     incolonnate, non a larghezze diverse. */
-  --font-ui: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue",
-    Arial, "Liberation Sans", sans-serif;
+  /* ── IL FONT DELL'AREA CLIENTE — 13 Agosto 2026 ────────────────────────
+     Tommaso: «font insoliti, non scelte scontate — anche la UI di Speed».
+     Via anche Segoe (il font di sistema, cioè di nessuno): l'area cliente
+     parla OVERPASS, il carattere nato dalla segnaletica autostradale
+     americana (Highway Gothic). Per un'azienda di TRASPORTI è il carattere
+     di casa: quello dei cartelli sotto cui viaggiano i suoi camion.
+     Self-hosted, zero CDN. Le cifre tabellari restano: in un gestionale le
+     colonne di numeri si leggono incolonnate. */
+  --font-ui: "Overpass", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", Arial, "Liberation Sans", sans-serif;
   font-feature-settings: "tnum" 1, "cv01" 0;
   letter-spacing: -0.005em;
+}
+
+/* ── LA SQUADRATURA DELL'AREA CLIENTE — 13 Agosto 2026 ───────────────────
+   «Come Assistant»: il gestionale che Speed già usa ha angoli quasi vivi,
+   niente ombre portate, niente card che sembrano bolle. Invece di riscrivere
+   novanta classi rounded-* nei componenti, si schiacciano QUI, una volta:
+   dentro l'area marchio ogni angolo «morbido» diventa un 3px netto.
+   ⚠️ rounded-full NON si tocca: avatar, pallini di stato e il pomello del
+   toggle devono restare rotondi per funzionare. */
+:root[data-marchio] :is(.rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl) {
+  border-radius: 3px;
+}
+:root[data-marchio] .shadow-lg {
+  /* I menu a tendina un filo di profondità la vogliono, ma da gestionale:
+     un bordo netto e un'ombra corta, non una nuvola. */
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
 }
 
 /* Nel tema scuro il primario si schiarisce: lo stesso verde che su bianco è
@@ -963,11 +957,9 @@ body {
    il 4,5:1 richiesto: una parola scritta così non si legge. Qui vive come
    filo, bordo, sottolineatura — cose che non si leggono, si vedono. */
 .filo-marchio {
-  background: linear-gradient(
-    90deg,
-    var(--marchio-primario),
-    var(--marchio-secondario)
-  );
+  /* Era un gradiente verde→oro: ora è una riga piena del colore primario,
+     come la barra di intestazione di un gestionale. */
+  background: var(--marchio-primario);
 }
 
 .bordo-marchio {
@@ -1030,27 +1022,14 @@ body {
   }
 }
 
-/* ── Scorrimento e animazioni professionali ───────────────────────────── */
-/* Lo scorrimento morbido quando si salta a una sezione, e una barra di
-   scorrimento sottile: due dettagli che fanno «software curato» senza urlare. */
+/* ── Scorrimento morbido, e basta ─────────────────────────────────────────
+   L'animazione d'ingresso dei contenuti (az-entra) è stata TOLTA il 13
+   Agosto 2026 — «come Assistant»: in un gestionale le schermate appaiono,
+   non entrano. Resta solo lo scorrimento morbido quando si salta a una
+   sezione. */
 @media (prefers-reduced-motion: no-preference) {
   :root[data-densita] main {
     scroll-behavior: smooth;
-  }
-  /* I contenuti che entrano (tabelle, riquadri) salgono di un soffio: 6px e
-     via, mai un rimbalzo — il rimbalzo è da app, non da gestionale. */
-  :root[data-densita] main > * {
-    animation: az-entra 0.22s ease-out both;
-  }
-}
-@keyframes az-entra {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
   }
 }
 
