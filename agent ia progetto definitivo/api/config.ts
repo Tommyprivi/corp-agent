@@ -526,21 +526,38 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
     case "bolle":
       // Le bolle arrivate via posta, coi dati estratti: le vede chi lavora —
       // la banchina deve sapere cosa è arrivato, come per le letture scanner.
+      // Non l'osservatore: sono documenti (a volte fatture), non lavoro.
+      if (chi.ruolo_vero === "osservatore") return json({ error: "Non trovato." }, 404);
       return json({ bolle: await posta.bolle(chi.azienda, 30) }, 200);
 
     case "allegato": {
       // I byte di UNA bolla (immagine o PDF), per aprirla. Risposta binaria.
+      // Le bolle sono chi le vede: chi lavora. Un osservatore no — sono
+      // documenti (a volte fatture con dati sensibili), non lavoro di banchina.
+      if (chi.ruolo_vero === "osservatore") return json({ error: "Non trovato." }, 404);
       const id = Number(url.searchParams.get("id"));
       if (!Number.isFinite(id) || id <= 0) return json({ error: "Serve l'id." }, 400);
       const a = await posta.allegato(chi.azienda, id);
       if (!a) return json({ error: "Non trovato." }, 404);
-      // ⚠️ `inline` e non `attachment`: una bolla si GUARDA, al volo, dal
-      // magazzino; scaricarla resta possibile dal visore del browser.
+      // ⚠️ SICUREZZA (falla ALTA chiusa il 13 Ago 2026): questo allegato ARRIVA
+      // DA UNA MAIL, e la casella scan-to-email è pubblica per definizione —
+      // chiunque può mandarci dentro un file. Un SVG «immagine» può contenere
+      // <script> che, aperto in una scheda sull'origine dell'app, ruberebbe il
+      // gettone di sessione da localStorage. Tre difese, tutte necessarie:
+      //  1. Solo tipi che il browser NON esegue si mostrano nella pagina
+      //     (png/jpeg/webp/gif/pdf); ogni altra cosa si SCARICA e basta.
+      //  2. `nosniff`: il browser non può reinterpretare un .png come HTML.
+      //  3. CSP `default-src 'none'` + sandbox: anche se qualcosa passasse, non
+      //     esegue niente e non parla con nessuno.
+      const tipo = (a.tipo || "").toLowerCase();
+      const mostrabile = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"].includes(tipo);
       return new Response(new Uint8Array(a.dati), {
         status: 200,
         headers: {
-          "Content-Type": a.tipo || "application/octet-stream",
-          "Content-Disposition": `inline; filename="${a.nome.replace(/[^\w. -]/g, "_")}"`,
+          "Content-Type": mostrabile ? tipo : "application/octet-stream",
+          "Content-Disposition": `${mostrabile ? "inline" : "attachment"}; filename="${a.nome.replace(/[^\w. -]/g, "_")}"`,
+          "X-Content-Type-Options": "nosniff",
+          "Content-Security-Policy": "default-src 'none'; sandbox",
           "Cache-Control": "no-store",
         },
       });
@@ -706,7 +723,10 @@ async function areaAzienda(
         // questa riga scrivesse `ruolo_vero`, chiunque si dichiarerebbe
         // titolare e vedrebbe tutto.
         ruolo: String(corpo.ruolo ?? "operatore"),
-        reparto: String(corpo.reparto ?? ""),
+        // ⚠️ Il reparto NON si tocca da qui (az_profilo lo ignora): decide cosa
+        // vede un capo, quindi è un'assegnazione del titolare, non una scelta
+        // propria. Lo si passa solo perché la firma della porta lo prevede.
+        reparto: "",
         foto: typeof corpo.foto === "string" ? corpo.foto : null,
       });
       return json({ ok: true }, 200);
@@ -850,7 +870,9 @@ async function areaAzienda(
         chi.azienda,
         String(corpo.persona),
         String(corpo.ruolo),
-        corpo.attiva !== false
+        corpo.attiva !== false,
+        // Il reparto lo assegna QUI il titolare (o null = lascia com'è).
+        typeof corpo.reparto === "string" ? corpo.reparto : null
       );
       az.segnaAttivita(
         chi.azienda,

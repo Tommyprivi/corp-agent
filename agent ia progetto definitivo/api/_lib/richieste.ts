@@ -82,9 +82,18 @@ export function esca(valore: unknown): boolean {
  * sorvegliare.
  */
 export function improntaProvenienza(request: Request): string | null {
+  // ⚠️ SICUREZZA: NON si prende il PRIMO valore di `x-forwarded-for`. Quello lo
+  // scrive il client, e ruotandolo a ogni tentativo il freno anti-bruteforce
+  // (8 tentativi/15 min per provenienza) sembrerebbe ogni volta un posto nuovo.
+  // Si usano prima gli header che mette LA PIATTAFORMA (Vercel imposta
+  // `x-real-ip` / `x-vercel-forwarded-for` all'IP vero della connessione,
+  // sovrascrivendo qualsiasi cosa il client dichiari); solo come ultima
+  // risorsa l'ULTIMO anello di `x-forwarded-for` — quello aggiunto dal proxio
+  // fidato più vicino a noi, non quello dichiarato dal client in testa.
   const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
+    request.headers.get("x-real-ip")?.trim() ||
+    request.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-forwarded-for")?.split(",").pop()?.trim() ||
     null;
   if (!ip) return null;
   const sale = process.env.CONNECTORS_KEY ?? "corpagent";

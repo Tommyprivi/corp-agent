@@ -25,6 +25,8 @@
 
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { cifra, decifra } from "./connectors.js";
 import { getPool } from "./db.js";
 
@@ -60,6 +62,18 @@ export interface ArrivoPosta {
  *  deve far scadere la funzione (60s su Vercel). Il resto arriva al giro dopo. */
 const MASSIMO_PER_PASSATA = 15;
 
+/** I soli tipi di allegato che si tengono: quelli che una multifunzione
+ *  produce e che il browser non esegue MAI. ⚠️ NON usare `image/*`: includerebbe
+ *  `image/svg+xml`, che è HTML+script travestito da immagine. */
+const TIPI_BOLLA = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/tiff",
+  "application/pdf",
+]);
+
 function apriClient(c: { host: string; porta: number; utente: string; password: string }) {
   return new ImapFlow({
     host: c.host,
@@ -72,6 +86,50 @@ function apriClient(c: { host: string; porta: number; utente: string; password: 
     socketTimeout: 25_000,
     greetingTimeout: 15_000,
   });
+}
+
+/**
+ * Un indirizzo IP «di casa»: loopback, rete privata, link-local. Verso questi
+ * non ci si collega MAI — non c'è un server di posta lì, c'è la rete interna.
+ */
+function ipInterno(ip: string): boolean {
+  const v = ip.toLowerCase();
+  if (v === "::1" || v === "0.0.0.0" || v.startsWith("127.")) return true; // loopback
+  if (v.startsWith("10.") || v.startsWith("192.168.")) return true; // privati
+  if (v.startsWith("169.254.") || v.startsWith("fe80:")) return true; // link-local
+  if (v.startsWith("fc") || v.startsWith("fd")) return true; // ULA IPv6 (fc00::/7)
+  const m = v.match(/^172\.(\d+)\./); // 172.16.0.0 – 172.31.255.255
+  if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return true;
+  if (v.startsWith("::ffff:")) return ipInterno(v.slice(7)); // IPv4 mappato in IPv6
+  return false;
+}
+
+/**
+ * ⚠️ SICUREZZA (SSRF): host e porta li sceglie il titolare, e questa funzione
+ * gira dentro la rete di Vercel. Senza controllo, «collega la posta» a
+ * `10.0.0.5:6379` diventa una sonda per scoprire e raggiungere servizi interni.
+ * Qui si RISOLVE l'host e si rifiutano gli indirizzi di casa; e la porta può
+ * essere solo quella della posta (993 o 143). Un server di posta vero non
+ * vive su un indirizzo privato né su una porta a caso.
+ */
+async function controllaBersaglio(host: string, porta: number): Promise<void> {
+  if (porta !== 993 && porta !== 143) {
+    throw new Error("La porta della posta è 993 (o 143). Un'altra porta non è una casella.");
+  }
+  const pulito = host.trim().toLowerCase();
+  if (!pulito || pulito === "localhost" || pulito.endsWith(".localhost") || pulito.endsWith(".internal")) {
+    throw new Error("Indirizzo del server non valido.");
+  }
+  // Se è già un IP, si controlla direttamente; se è un nome, si risolve.
+  const indirizzi: string[] = isIP(pulito)
+    ? [pulito]
+    : (await lookup(pulito, { all: true }).catch(() => {
+        throw new Error("Server non trovato: controlla l'indirizzo (es. imap.gmail.com).");
+      })).map((r) => r.address);
+  if (indirizzi.length === 0) throw new Error("Server non trovato: controlla l'indirizzo.");
+  if (indirizzi.some(ipInterno)) {
+    throw new Error("Questo indirizzo non è un server di posta raggiungibile da internet.");
+  }
 }
 
 /**
@@ -93,6 +151,7 @@ async function connettiSicuro(client: ImapFlow): Promise<void> {
  * italiano comprensibile — è quello che il titolare leggerà.
  */
 export async function provaPosta(c: ConfigPosta): Promise<{ messaggi: number }> {
+  await controllaBersaglio(c.host, c.porta);
   const client = apriClient(c);
   try {
     await connettiSicuro(client);
@@ -174,6 +233,17 @@ export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; er
     return { nuovi: 0, errore };
   }
 
+  // Anche qui si controlla il bersaglio: l'host fu validato al salvataggio, ma
+  // un nome DNS può cambiare indirizzo nel frattempo (rebinding). Costa una
+  // risoluzione, e chiude la porta a chi salvasse un host che diventa interno.
+  try {
+    await controllaBersaglio(cred.host, cred.porta);
+  } catch (e) {
+    const errore = e instanceof Error ? e.message : "Server non valido.";
+    await getPool().query("select public.az_posta_esito($1,$2,$3)", [azienda, errore, 0]);
+    return { nuovi: 0, errore };
+  }
+
   const client = apriClient({ ...cred, password });
   let nuovi = 0;
   // Da dove si riparte, e fin dove si è arrivati in QUESTA passata: si salva
@@ -227,12 +297,18 @@ export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; er
           if (arrivoId != null) {
             nuovi++;
             // ⚠️ Gli allegati si salvano COI BYTE: sono le bolle scannerizzate,
-            // e senza i byte non c'è niente da leggere. Solo immagini e PDF,
-            // fino a 4 MB l'uno e 5 per messaggio: una foto da 40 MB non è una
-            // bolla, è un errore di qualcuno.
+            // e senza i byte non c'è niente da leggere. Fino a 4 MB l'uno e 5
+            // per messaggio: una foto da 40 MB non è una bolla, è un errore.
+            //
+            // ⚠️ SICUREZZA: WHITELIST esatta dei tipi, NON `image/*`. La casella
+            // è pubblica (scan-to-email), quindi il tipo lo decide un estraneo:
+            // un `image/svg+xml` è un'immagine per il filtro ma un documento
+            // che ESEGUE SCRIPT per il browser. Si accettano solo i formati
+            // che una multifunzione produce davvero e che il browser non
+            // esegue mai.
             for (const a of (posta.attachments ?? []).slice(0, 5)) {
               const tipo = (a.contentType || "").toLowerCase();
-              const buono = tipo.startsWith("image/") || tipo === "application/pdf";
+              const buono = TIPI_BOLLA.has(tipo);
               if (!buono || !a.content || a.content.length > 4_000_000) continue;
               await getPool().query(
                 "select public.az_posta_allegato_salva($1,$2,$3,$4,$5)",

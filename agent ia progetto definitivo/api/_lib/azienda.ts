@@ -136,6 +136,25 @@ export function verifica(password: string, salvata: string): boolean {
   }
 }
 
+/**
+ * Un'impronta finta, per bruciare lo STESSO tempo di uno scrypt vero quando
+ * l'email non esiste.
+ *
+ * ⚠️ Senza, l'ingresso tradiva quali email sono registrate col cronometro:
+ * email vera → si esegue scrypt (~100 ms), email inventata → si tornava subito.
+ * Il messaggio d'errore è uguale per tutti di proposito; il tempo non lo era.
+ * `civetta()` fa un lavoro scrypt identico e butta il risultato, così ogni
+ * tentativo — riuscito o no, email vera o finta — costa uguale.
+ */
+const IMPRONTA_CIVETTA = impasta("——civetta-a-tempo-costante——");
+export function civetta(password: string): void {
+  try {
+    verifica(password, IMPRONTA_CIVETTA);
+  } catch {
+    /* il tempo è già stato speso: è tutto ciò che serve */
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // ENTRARE
 // ─────────────────────────────────────────────────────────────────────────
@@ -186,7 +205,10 @@ export async function entra(
   let id: string;
   if (trovata.rows[0]) {
     const r = trovata.rows[0];
-    if (!r.attiva) return { errore: "Questa postazione è stata chiusa. Chiedi in ufficio." };
+    if (!r.attiva) {
+      civetta(password);
+      return { errore: "Questa postazione è stata chiusa. Chiedi in ufficio." };
+    }
     if (!verifica(password, r.segreto)) {
       await pool
         .query("select public.az_freno_segna($1, $2, $3)", [azienda, ipHash, email])
@@ -198,6 +220,7 @@ export async function entra(
     id = r.id;
   } else {
     if (password.length < 8) {
+      civetta(password); // stesso tempo del ramo «email esiste»
       return { errore: "La password deve essere di almeno 8 caratteri." };
     }
     const emailPulita = email.trim().toLowerCase();
@@ -223,6 +246,7 @@ export async function entra(
       );
       const ruolo = inv.rows[0]?.az_invito_prendi ?? null;
       if (!ruolo) {
+        civetta(password); // niente scrypt su questo ramo: lo si simula
         await pool
           .query("select public.az_freno_segna($1, $2, $3)", [azienda, ipHash, email])
           .catch(() => {});
@@ -278,14 +302,19 @@ export async function salvaProfilo(
   persona: string,
   d: { nome: string; ruolo: string; reparto: string; foto: string | null }
 ): Promise<void> {
+  // ⚠️ La foto deve essere un'immagine INCORPORATA (data:image/...), non un
+  // indirizzo. Un URL esterno qui dentro farebbe chiamare quel sito dal
+  // browser di CHIUNQUE veda la foto — un faro di tracciamento silenzioso.
+  // E deve stare sotto i 120 KB: una foto a 256px in JPEG ci sta comoda,
+  // oltre è un altro formato o un tentativo di usare il database come disco.
+  const foto =
+    d.foto && d.foto.length < 120_000 && /^data:image\//i.test(d.foto) ? d.foto : null;
   await getPool().query("select public.az_profilo($1, $2, $3, $4, $5)", [
     persona,
     d.nome,
     d.ruolo,
     d.reparto,
-    // Una foto a 256px in JPEG sta sotto i 40 KB: oltre, è un altro formato o
-    // un tentativo di usare il database come disco.
-    d.foto && d.foto.length < 120_000 ? d.foto : null,
+    foto,
   ]);
 }
 
@@ -325,15 +354,20 @@ export async function cambiaRuolo(
   azienda: string,
   persona: string,
   ruolo: string,
-  attiva: boolean
+  attiva: boolean,
+  reparto: string | null = null
 ): Promise<void> {
   const ammessi = ["titolare", "amministratore", "capo", "operatore", "osservatore"];
   if (!ammessi.includes(ruolo)) throw new Error("Ruolo sconosciuto.");
-  await getPool().query("select public.az_ruolo($1, $2, $3, $4)", [
+  // ⚠️ Il reparto è un'assegnazione del titolare, non una scelta di chi lo
+  // abita: qui è l'unico punto (con l'invito) da cui si scrive. null = lascia
+  // com'è, per non azzerarlo quando si cambia solo il ruolo.
+  await getPool().query("select public.az_ruolo($1, $2, $3, $4, $5)", [
     azienda,
     persona,
     ruolo,
     attiva,
+    reparto,
   ]);
 }
 
