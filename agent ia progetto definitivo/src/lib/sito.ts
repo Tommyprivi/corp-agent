@@ -12,7 +12,10 @@
 
 // ── I pezzi ordinabili ──────────────────────────────────────────────────
 
-/** Le voci della barra in alto, nell'ordine di default. */
+/** Le voci della barra in alto, nell'ordine di default.
+ *  ⚠️ Riordinate da Tommaso il 13 Agosto 2026: prima le postazioni dove si
+ *  lavora, poi l'archivio (clienti, documenti), in fondo le liste di
+ *  amministrazione (mezzi, persone, attività). */
 export const VOCI_DEF = [
   "cruscotto",
   "traffico",
@@ -20,21 +23,25 @@ export const VOCI_DEF = [
   "autisti",
   "ammin",
   "clienti",
+  "documenti",
   "mezzi",
   "persone",
   "attivita",
-  "documenti",
 ] as const;
 
-/** I blocchi del cruscotto, nell'ordine di default. */
+/** I blocchi del cruscotto, nell'ordine di default.
+ *  ⚠️ Riordinati da Tommaso il 13 Agosto 2026 in ordine OPERATIVO: prima
+ *  quello che aspetta una sua decisione, poi i numeri secchi di oggi e il
+ *  lavoro registrato; i grafici raccontano dopo, e chiudono le fasce che
+ *  aspettano i collegamenti. */
 export const BLOCCHI_DEF = [
-  "direzione", // l'agente di direzione
-  "guadagni", // i soldi (in attesa del gestionale)
+  "aspetta", // le cose da decidere: PRIME
   "oggi", // i 4 numeri dell'agente oggi
+  "magazzino", // registrato dai magazzinieri
+  "direzione", // il punto del giorno (report serale)
   "giornata", // barre ora per ora
   "settimana", // la linea + postazioni
-  "aspetta", // aspetta te
-  "magazzino", // registrato dai magazzinieri
+  "guadagni", // i soldi (in attesa del gestionale)
   "attesa", // le fasce in attesa dei collegamenti
 ] as const;
 
@@ -132,7 +139,7 @@ export const TEMPLATE: Record<string, { nome: string; sotto: string; sito: Parti
       template: "operativo",
       densita: "compatto",
       minimal: ["saluti"],
-      blocchi: ["aspetta", "direzione", "oggi", "magazzino", "giornata", "settimana", "guadagni", "attesa"],
+      blocchi: ["aspetta", "oggi", "magazzino", "direzione", "giornata", "settimana", "guadagni", "attesa"],
     },
   },
   essenziale: {
