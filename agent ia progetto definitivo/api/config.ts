@@ -563,6 +563,17 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       });
     }
 
+    case "posta-risposte": {
+      // Le risposte dell'agente alle mail: cosa ha classificato facile (bozza)
+      // e cosa ha girato a una persona. La vede chi amministra.
+      if (!titolare && chi.ruolo_vero !== "amministratore") return soloTitolare();
+      const [auto, elenco] = await Promise.all([
+        posta.statoAuto(chi.azienda),
+        posta.risposte(chi.azienda, 30),
+      ]);
+      return json({ auto, risposte: elenco }, 200);
+    }
+
     case "posta": {
       // La casella collegata: stato (MAI il segreto, nemmeno cifrato) e gli
       // ultimi arrivi. La vede chi amministra: titolare e amministrazione.
@@ -949,7 +960,34 @@ async function areaAzienda(
       } catch {
         /* la lettura non deve far fallire lo scarico: si riproverà */
       }
-      return json({ ok: true, nuovi: esito.nuovi, ...bolle }, 200);
+      // E si elaborano le mail: l'agente classifica e (se acceso) risponde.
+      let risposte = { bozze: 0, mandate: 0, umane: 0 };
+      try {
+        risposte = await posta.elaboraPosta(chi.azienda, 5);
+      } catch {
+        /* niente: si riprova al giro dopo */
+      }
+      return json({ ok: true, nuovi: esito.nuovi, ...bolle, ...risposte }, 200);
+    }
+
+    case "posta-auto": {
+      // Accende/spegne le risposte automatiche e sceglie le categorie facili.
+      // Solo il titolare: è lui che decide se l'agente parla ai clienti.
+      if (!titolare) return negato();
+      const modo = String(corpo.modo ?? "prova") as posta.ModoAuto;
+      const categorie = Array.isArray(corpo.categorie) ? corpo.categorie.map(String) : [];
+      await posta.salvaAuto(chi.azienda, modo, categorie);
+      az.segnaAttivita(chi.azienda, chi.persona, "posta-auto", modo);
+      return json({ ok: true }, 200);
+    }
+
+    case "posta-manda": {
+      // Manda a mano una bozza (in prova): il titolare l'ha letta e la spedisce.
+      if (!titolare && chi.ruolo_vero !== "amministratore") return negato();
+      const esito = await posta.mandaBozza(chi.azienda, Number(corpo.id));
+      if (!esito.ok) return json({ error: esito.errore ?? "Invio non riuscito." }, 400);
+      az.segnaAttivita(chi.azienda, chi.persona, "posta-risposta");
+      return json({ ok: true }, 200);
     }
 
     case "posta-leggi": {

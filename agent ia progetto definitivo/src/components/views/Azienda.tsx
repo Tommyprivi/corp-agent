@@ -4427,7 +4427,230 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
           {esito.testo}
         </p>
       )}
+
+      {/* Le risposte automatiche: compaiono quando la casella è collegata. */}
+      {stato && !modifica && <RisposteAuto seScaduta={seScaduta} />}
     </Sez>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LE RISPOSTE AUTOMATICHE — l'agente che gestisce le mail facili
+// ─────────────────────────────────────────────────────────────────────────
+
+interface StatoAuto {
+  auto_modo: "spento" | "prova" | "acceso";
+  auto_categorie: string[];
+  smtp_host: string | null;
+  smtp_porta: number | null;
+}
+interface RispostaMail {
+  id: string;
+  ricevuto: string | null;
+  mittente: string;
+  oggetto: string;
+  classe: string | null;
+  bozza: string | null;
+  risposta_stato: string;
+  risposta_quando: string | null;
+}
+
+const CATEGORIE_POSTA: { id: string; nome: string; sotto: string }[] = [
+  { id: "conferme", nome: "Conferme e «ricevuto»", sotto: "risposte cortesi, rischio zero" },
+  { id: "info", nome: "Orari e info standard", sotto: "cose scritte nei documenti" },
+  { id: "stato", nome: "Dov'è il carico", sotto: "risponde se ha il dato, se no gira a te" },
+  { id: "prenotazione", nome: "Prenotazioni di ritiro", sotto: "prende l'appuntamento, mai prezzi" },
+];
+
+function RisposteAuto({ seScaduta }: { seScaduta: (e: unknown) => void }) {
+  const [auto, setAuto] = useState<StatoAuto | null>(null);
+  const [risposte, setRisposte] = useState<RispostaMail[]>([]);
+  const [caricato, setCaricato] = useState(false);
+  const [inCorso, setInCorso] = useState(false);
+  const [nota, setNota] = useState<string | null>(null);
+
+  const carica = useCallback(async () => {
+    try {
+      const r = await leggi<{ auto: StatoAuto | null; risposte: RispostaMail[] }>("posta-risposte");
+      setAuto(r.auto);
+      setRisposte(r.risposte);
+    } catch (e) {
+      if (e instanceof SessioneScaduta) seScaduta(e);
+    } finally {
+      setCaricato(true);
+    }
+  }, [seScaduta]);
+
+  useEffect(() => {
+    void carica();
+  }, [carica]);
+
+  async function salva(modo: StatoAuto["auto_modo"], categorie: string[]) {
+    setInCorso(true);
+    setNota(null);
+    try {
+      await manda({ az: "posta-auto", modo, categorie });
+      setAuto((a) => (a ? { ...a, auto_modo: modo, auto_categorie: categorie } : a));
+    } catch (e) {
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setNota("Non sono riuscito a salvare.");
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  async function mandaBozza(id: string) {
+    setInCorso(true);
+    setNota(null);
+    try {
+      await manda({ az: "posta-manda", id });
+      setNota("Mandata.");
+      await carica();
+    } catch (e) {
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setNota(e instanceof Error ? e.message : "Invio non riuscito.");
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  if (!caricato || !auto) return null;
+  const modo = auto.auto_modo;
+  const cat = new Set(auto.auto_categorie);
+  const toggleCat = (id: string) => {
+    const nuove = cat.has(id) ? [...cat].filter((c) => c !== id) : [...cat, id];
+    void salva(modo, nuove);
+  };
+
+  return (
+    <div className="mt-6 border-t border-[var(--border)] pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-[13.5px] font-semibold">Risposte automatiche</h3>
+          <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">
+            L'agente legge le mail e risponde alle facili. Prezzi, sconti e reclami li gira sempre a te.
+          </p>
+        </div>
+        {/* L'interruttore a tre stati */}
+        <div className="flex rounded-md border border-[var(--border)] p-0.5">
+          {(
+            [
+              ["spento", "Spento"],
+              ["prova", "In prova"],
+              ["acceso", "Acceso"],
+            ] as const
+          ).map(([id, et]) => (
+            <button
+              key={id}
+              onClick={() => void salva(id, auto.auto_categorie)}
+              disabled={inCorso}
+              className={`cursor-pointer rounded px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
+                modo === id
+                  ? "bg-[var(--accent-soft)] text-[var(--text-primary)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              {et}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {modo === "prova" && (
+        <p className="mt-3 rounded-md border-l-2 bg-[var(--fill-quiet)] px-3.5 py-2 text-[12px] leading-relaxed" style={{ borderColor: "var(--accent)" }}>
+          In prova: l'agente prepara le risposte ma NON le manda. Leggile qui sotto; quando ti fidi, passa ad «Acceso» o mandale a mano con «Manda».
+        </p>
+      )}
+      {modo === "acceso" && (
+        <p className="mt-3 rounded-md border-l-2 bg-[var(--fill-quiet)] px-3.5 py-2 text-[12px] leading-relaxed" style={{ borderColor: "var(--positive)" }}>
+          Acceso: l'agente risponde DA SOLO alle categorie spuntate qui sotto. Le altre mail le trovi comunque girate a te.
+        </p>
+      )}
+
+      {/* Le categorie che l'agente può gestire da solo */}
+      {modo !== "spento" && (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {CATEGORIE_POSTA.map((c) => {
+            const on = cat.has(c.id);
+            return (
+              <button
+                key={c.id}
+                onClick={() => toggleCat(c.id)}
+                disabled={inCorso}
+                className={`flex items-start gap-2.5 rounded-md border px-3 py-2 text-left transition-colors ${
+                  on ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--border)] hover:border-[var(--accent)]"
+                }`}
+              >
+                <span
+                  aria-hidden
+                  className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border"
+                  style={{ borderColor: on ? "var(--accent)" : "var(--border-strong)", background: on ? "var(--accent)" : "transparent" }}
+                >
+                  {on && (
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--on-primary)" strokeWidth="3">
+                      <path d="M5 12l4 4 10-10" />
+                    </svg>
+                  )}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-medium">{c.nome}</span>
+                  <span className="block text-[11.5px] text-[var(--text-secondary)]">{c.sotto}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {nota && <p className="mt-2.5 text-[12px] text-[var(--text-secondary)]">{nota}</p>}
+
+      {/* Cosa ha fatto l'agente: le bozze e le girate. Le mail «ignorate»
+          (nostre risposte rientrate, no-reply) non si mostrano: non servono. */}
+      {risposte.filter((r) => r.risposta_stato !== "ignorata").length > 0 && (
+        <div className="mt-5">
+          <p className="mb-2 text-[12px] font-medium text-[var(--text-secondary)]">Ultime mail elaborate</p>
+          <div className="space-y-2">
+            {risposte.filter((r) => r.risposta_stato !== "ignorata").map((r) => (
+              <div key={r.id} className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="min-w-0 flex-1 truncate text-[13px]">
+                    <span className="font-medium">{r.mittente || "Sconosciuto"}</span>
+                    <span className="text-[var(--text-secondary)]"> · {r.oggetto || "(senza oggetto)"}</span>
+                  </span>
+                  <span className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-medium ${
+                    r.risposta_stato === "mandata" ? "text-[var(--positive)]" :
+                    r.risposta_stato === "umano" ? "text-[#b3261e]" : "text-[var(--text-secondary)]"
+                  }`}>
+                    {r.risposta_stato === "mandata" ? "Mandata" : r.risposta_stato === "umano" ? "Girata a te" : "Bozza pronta"}
+                  </span>
+                </div>
+                {r.bozza && (
+                  <>
+                    <p className="mt-2 whitespace-pre-wrap rounded bg-[var(--bg-app)] px-3 py-2 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+                      {r.bozza}
+                    </p>
+                    {r.risposta_stato === "bozza" && (
+                      <button
+                        onClick={() => void mandaBozza(r.id)}
+                        disabled={inCorso}
+                        className="btn-grad mt-2 cursor-pointer rounded-md px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50"
+                      >
+                        Manda questa
+                      </button>
+                    )}
+                  </>
+                )}
+                {r.risposta_stato === "umano" && (
+                  <p className="mt-1.5 text-[12px] text-[var(--text-secondary)]">
+                    Roba delicata (prezzi, reclami o poco chiara): decidi tu come rispondere.
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

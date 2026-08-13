@@ -358,6 +358,9 @@ export async function scaricaPostaTutte(): Promise<{ azienda: string; nuovi: num
       errore: traduciErrore(e),
     }));
     await leggiBolle(azienda, 6).catch(() => {});
+    // E l'agente elabora le mail: classifica, scrive le bozze e — se acceso —
+    // risponde alle facili. In prova prepara e basta.
+    await elaboraPosta(azienda, 6).catch(() => {});
     esiti.push({ azienda, ...esito });
   }
   return esiti;
@@ -644,4 +647,319 @@ export async function allegato(
   const dati = decifraByte(a.dati);
   if (!dati) return null;
   return { nome: a.nome, tipo: a.tipo, dati };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// L'AGENTE CHE RISPONDE ALLE MAIL FACILI
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Tommaso: «senza approvare, legge le mail e risponde a quelle facili». Il
+// confine non è l'approvazione a mano — è che l'agente risponde DA SOLO solo
+// alle categorie facili, e le difficili (prezzi, sconti, reclami) le gira a
+// una persona. Non manda cavolate perché non tocca mai le cose delicate.
+
+import nodemailer from "nodemailer";
+
+export type ModoAuto = "spento" | "prova" | "acceso";
+export interface StatoAuto {
+  auto_modo: ModoAuto;
+  auto_categorie: string[];
+  smtp_host: string | null;
+  smtp_porta: number | null;
+}
+export interface RispostaMail {
+  id: string;
+  ricevuto: string | null;
+  mittente: string;
+  oggetto: string;
+  classe: string | null;
+  bozza: string | null;
+  risposta_stato: string; // bozza | mandata | umano
+  risposta_quando: string | null;
+}
+
+/** Le categorie a cui l'agente PUÒ rispondere da solo. Tutto il resto è «umano». */
+const CATEGORIE_FACILI = new Set(["conferme", "info", "stato", "prenotazione"]);
+
+/** L'indirizzo email dentro un mittente tipo `Nome <mail@x.it>`, minuscolo. */
+function estraiEmail(mittente: string): string {
+  const m = mittente.match(/<([^>]+)>/);
+  return (m ? m[1] : mittente).trim().toLowerCase();
+}
+
+/**
+ * ⚠️ NON si risponde a questi, MAI — o si innesca un ping-pong senza fine:
+ * - il PROPRIO indirizzo (una nostra risposta rientrata in casella): l'agente
+ *   risponderebbe a sé stesso all'infinito. È il classico loop dei risponditori
+ *   automatici, e l'abbiamo visto succedere davvero in collaudo;
+ * - i mittenti automatici (no-reply, mailer-daemon, postmaster…): dietro non
+ *   c'è nessuno che legge, e spesso rimbalzano a loro volta.
+ */
+function daIgnorare(mittente: string, nostro: string): boolean {
+  const email = estraiEmail(mittente);
+  if (!email) return true;
+  if (nostro && email === nostro.trim().toLowerCase()) return true;
+  return /no.?reply|do.?not.?reply|mailer-daemon|postmaster|mail.?delivery|notifications?@|automated/.test(email);
+}
+
+/**
+ * Dall'indirizzo IMAP a quello SMTP dello stesso fornitore. La casella è la
+ * stessa (stesso utente e password): cambia solo la porta di uscita.
+ */
+function smtpDaImap(host: string): { host: string; porta: number; sicuro: boolean } {
+  const h = host.trim().toLowerCase();
+  if (h.includes("gmail")) return { host: "smtp.gmail.com", porta: 587, sicuro: false };
+  if (h.includes("office365") || h.includes("outlook")) return { host: "smtp.office365.com", porta: 587, sicuro: false };
+  if (h.includes("pec.aruba")) return { host: "smtps.pec.aruba.it", porta: 465, sicuro: true };
+  if (h.includes("aruba")) return { host: "smtps.aruba.it", porta: 465, sicuro: true };
+  // Generico: imap.dominio → smtp.dominio, STARTTLS su 587.
+  return { host: h.replace(/^imaps?\./, "smtp."), porta: 587, sicuro: false };
+}
+
+/** I documenti dell'azienda in chiaro (decifrati): il contesto per rispondere. */
+async function documentiInChiaro(azienda: string): Promise<{ titolo: string; testo: string }[]> {
+  const r = await getPool().query<{ titolo: string; testo: string }>(
+    "select * from public.az_documenti($1)",
+    [azienda]
+  );
+  return r.rows.map((d) => ({ titolo: d.titolo, testo: decifra(d.testo) ?? d.testo }));
+}
+
+const ISTRUZIONI_RISPOSTA = [
+  "Sei l'assistente della posta di Speed Trasporti, azienda di trasporti e",
+  "logistica di Torino. Leggi una mail arrivata e decidi se puoi rispondere TU,",
+  "da solo, oppure se va girata a una persona.",
+  "",
+  "Rispondi SOLO con un oggetto JSON:",
+  '{"classe":"conferme|info|stato|prenotazione|umano","bozza":string|null}',
+  "",
+  "LE CATEGORIE A CUI PUOI RISPONDERE DA SOLO:",
+  "- conferme: ringraziamenti, «avete ricevuto?», conferme di ricezione.",
+  "- info: orari, indirizzo, come funziona un ritiro — cose scritte nei documenti.",
+  "- stato: «dov'è la mia spedizione?». Rispondi SOLO se l'informazione è nei",
+  "  documenti/dati qui sotto; se non ce l'hai, scrivi una bozza interlocutoria",
+  "  («stiamo verificando, le facciamo sapere a breve») — MAI inventare una posizione.",
+  "- prenotazione: «potete passare martedì?» — conferma la presa in carico della",
+  "  richiesta di ritiro, SENZA promettere un orario preciso se non è certo.",
+  "",
+  "METTI SEMPRE 'umano' (e bozza null) SE la mail riguarda:",
+  "- prezzi, preventivi, sconti, trattative economiche;",
+  "- reclami, contestazioni, danni, ritardi contestati;",
+  "- questioni legali, contratti, pagamenti;",
+  "- qualsiasi cosa ambigua o che non sai rispondere con CERTEZZA dai documenti.",
+  "Nel dubbio, 'umano'. È sempre meglio far rispondere una persona che sbagliare.",
+  "",
+  "REGOLE PER LA BOZZA (se rispondi tu):",
+  "- Italiano, cortese e corto, come un impiegato sveglio dell'ufficio.",
+  "- Firma «Speed Trasporti». Niente numeri, prezzi, date o impegni inventati.",
+  "- Usa solo ciò che è scritto nei documenti qui sotto.",
+].join("\n");
+
+/** Classifica una mail e, se facile, scrive la bozza. Ritorna null se il modello è spento/muto. */
+async function classificaEbozza(
+  mail: { mittente: string; oggetto: string; corpo: string },
+  documenti: { titolo: string; testo: string }[]
+): Promise<{ classe: string; bozza: string | null } | null> {
+  const chiave = process.env.OPENROUTER_API_KEY;
+  if (!chiave) return null;
+  const contesto = documenti.length
+    ? documenti.map((d) => `### ${d.titolo}\n${d.testo}`).join("\n\n").slice(0, 6000)
+    : "(nessun documento aziendale caricato)";
+  const utente =
+    `DOCUMENTI DELL'AZIENDA:\n${contesto}\n\n` +
+    `MAIL ARRIVATA:\nDa: ${mail.mittente}\nOggetto: ${mail.oggetto}\n\n${(mail.corpo || "").slice(0, 3000)}`;
+  try {
+    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${chiave}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://corpagent.vercel.app",
+        "X-Title": "CorpAgent · Risposte posta",
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        max_tokens: 500,
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: ISTRUZIONI_RISPOSTA },
+          { role: "user", content: utente },
+        ],
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const body = (await r.json()) as { choices?: { message?: { content?: string } }[] };
+    const grezzo = body.choices?.[0]?.message?.content?.trim();
+    if (!grezzo) return null;
+    const j = JSON.parse(grezzo) as { classe?: string; bozza?: string | null };
+    const classe = typeof j.classe === "string" ? j.classe : "umano";
+    const bozza = typeof j.bozza === "string" && j.bozza.trim() ? j.bozza.trim() : null;
+    // ⚠️ Rete di sicurezza: se il modello mette una categoria facile ma senza
+    // bozza, o una categoria che non conosciamo, si gira a una persona.
+    if (!CATEGORIE_FACILI.has(classe) || !bozza) return { classe: "umano", bozza: null };
+    return { classe, bozza };
+  } catch {
+    return null;
+  }
+}
+
+/** Manda davvero una mail via SMTP (stessa casella IMAP). */
+async function mandaMail(
+  cred: { host: string; utente: string; password: string },
+  a: { destinatario: string; oggetto: string; corpo: string }
+): Promise<void> {
+  const s = smtpDaImap(cred.host);
+  const transport = nodemailer.createTransport({
+    host: s.host,
+    port: s.porta,
+    secure: s.sicuro,
+    requireTLS: !s.sicuro, // su 587 si pretende STARTTLS: la password non viaggia in chiaro
+    auth: { user: cred.utente, pass: cred.password },
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+  });
+  await transport.sendMail({
+    from: cred.utente,
+    to: a.destinatario,
+    subject: a.oggetto,
+    text: a.corpo,
+  });
+}
+
+/**
+ * Elabora le mail nuove di un'azienda: le classifica, scrive le bozze e — solo
+ * se la modalità è «acceso» e la categoria è abilitata — le manda. In «prova»
+ * scrive e basta; le difficili le gira sempre a una persona.
+ */
+export async function elaboraPosta(azienda: string, massimo = 5): Promise<{ bozze: number; mandate: number; umane: number }> {
+  const cfg = await getPool().query<StatoAuto>("select * from public.az_posta_auto_stato($1)", [azienda]);
+  const stato = cfg.rows[0];
+  if (!stato || stato.auto_modo === "spento") return { bozze: 0, mandate: 0, umane: 0 };
+
+  const nuove = await getPool().query<{ id: string; mittente: string; oggetto: string; corpo: string }>(
+    "select * from public.az_posta_da_elaborare($1,$2)",
+    [azienda, massimo]
+  );
+  if (nuove.rows.length === 0) return { bozze: 0, mandate: 0, umane: 0 };
+
+  const documenti = await documentiInChiaro(azienda);
+  const categorie = new Set(stato.auto_categorie ?? []);
+
+  // Le credenziali: l'utente serve SEMPRE (per non rispondere a sé stessi); la
+  // password solo se si manda davvero (modalità acceso).
+  const cr = await getPool().query<{ host: string; utente: string; segreto_cifrato: string }>(
+    "select * from public.az_posta_credenziali($1)",
+    [azienda]
+  );
+  const c = cr.rows[0];
+  const nostro = c?.utente ?? "";
+  let cred: { host: string; utente: string; password: string } | null = null;
+  if (stato.auto_modo === "acceso" && c) {
+    const pw = decifra(c.segreto_cifrato);
+    if (pw) cred = { host: c.host, utente: c.utente, password: pw };
+  }
+
+  let bozze = 0, mandate = 0, umane = 0;
+  for (const mail of nuove.rows) {
+    // ⚠️ Prima di tutto: non è una mail a cui si risponde (nostra, o automatica)?
+    if (daIgnorare(mail.mittente, nostro)) {
+      await getPool().query("select public.az_posta_risposta_salva($1,$2,$3,$4,$5)", [
+        azienda, Number(mail.id), "ignorata", null, "ignorata",
+      ]);
+      continue;
+    }
+    const esito = await classificaEbozza(mail, documenti).catch(() => null);
+    if (!esito) continue; // modello muto: si riproverà al giro dopo (resta 'nuovo')
+    if (esito.classe === "umano" || !esito.bozza) {
+      await getPool().query("select public.az_posta_risposta_salva($1,$2,$3,$4,$5)", [
+        azienda, Number(mail.id), "umano", null, "umano",
+      ]);
+      umane++;
+      continue;
+    }
+    // Categoria facile con bozza. Si manda solo se ACCESO e categoria abilitata.
+    const puoMandare = stato.auto_modo === "acceso" && categorie.has(esito.classe) && cred;
+    if (puoMandare && cred) {
+      try {
+        await mandaMail(cred, {
+          destinatario: mail.mittente,
+          oggetto: mail.oggetto.toLowerCase().startsWith("re:") ? mail.oggetto : `Re: ${mail.oggetto}`,
+          corpo: esito.bozza,
+        });
+        await getPool().query("select public.az_posta_risposta_salva($1,$2,$3,$4,$5)", [
+          azienda, Number(mail.id), esito.classe, cifra(esito.bozza), "mandata",
+        ]);
+        mandate++;
+      } catch {
+        // Invio fallito: si tiene la bozza (non si perde il lavoro dell'agente).
+        await getPool().query("select public.az_posta_risposta_salva($1,$2,$3,$4,$5)", [
+          azienda, Number(mail.id), esito.classe, cifra(esito.bozza), "bozza",
+        ]);
+        bozze++;
+      }
+    } else {
+      // Prova, o categoria non abilitata: si salva la bozza, non si manda.
+      await getPool().query("select public.az_posta_risposta_salva($1,$2,$3,$4,$5)", [
+        azienda, Number(mail.id), esito.classe, cifra(esito.bozza), "bozza",
+      ]);
+      bozze++;
+    }
+  }
+  return { bozze, mandate, umane };
+}
+
+export async function statoAuto(azienda: string): Promise<StatoAuto | null> {
+  const r = await getPool().query<StatoAuto>("select * from public.az_posta_auto_stato($1)", [azienda]);
+  return r.rows[0] ?? null;
+}
+
+export async function salvaAuto(azienda: string, modo: ModoAuto, categorie: string[]): Promise<void> {
+  // L'SMTP si deriva dalla casella IMAP e si salva per mostrarlo/usarlo.
+  const cr = await getPool().query<{ host: string }>("select host from public.az_posta_credenziali($1)", [azienda]);
+  const host = cr.rows[0]?.host ?? "";
+  const s = host ? smtpDaImap(host) : { host: null as string | null, porta: null as number | null };
+  await getPool().query("select public.az_posta_auto_salva($1,$2,$3,$4,$5)", [
+    azienda,
+    modo,
+    categorie.filter((c) => CATEGORIE_FACILI.has(c)),
+    s.host,
+    s.porta,
+  ]);
+}
+
+export async function risposte(azienda: string, limite = 30): Promise<RispostaMail[]> {
+  const r = await getPool().query<RispostaMail>("select * from public.az_posta_risposte($1,$2)", [azienda, limite]);
+  // La bozza è cifrata: si decifra per mostrarla.
+  return r.rows.map((x) => ({ ...x, bozza: x.bozza ? decifra(x.bozza) : null }));
+}
+
+/** Manda a mano una bozza (in prova): il titolare l'ha letta e vuole spedirla. */
+export async function mandaBozza(azienda: string, id: number): Promise<{ ok: boolean; errore: string | null }> {
+  const r = await getPool().query<{ mittente: string; oggetto: string; bozza: string; classe: string; risposta_stato: string }>(
+    "select * from public.az_posta_bozza($1,$2)",
+    [azienda, id]
+  );
+  const b = r.rows[0];
+  if (!b) return { ok: false, errore: "Bozza non trovata." };
+  if (b.risposta_stato === "mandata") return { ok: false, errore: "Già mandata." };
+  const testo = b.bozza ? decifra(b.bozza) : null;
+  if (!testo) return { ok: false, errore: "Bozza vuota o illeggibile." };
+  const cr = await getPool().query<{ host: string; utente: string; segreto_cifrato: string }>(
+    "select * from public.az_posta_credenziali($1)",
+    [azienda]
+  );
+  const c = cr.rows[0];
+  const pw = c ? decifra(c.segreto_cifrato) : null;
+  if (!c || !pw) return { ok: false, errore: "Casella non collegata." };
+  try {
+    await mandaMail(
+      { host: c.host, utente: c.utente, password: pw },
+      { destinatario: b.mittente, oggetto: b.oggetto.toLowerCase().startsWith("re:") ? b.oggetto : `Re: ${b.oggetto}`, corpo: testo }
+    );
+    await getPool().query("select public.az_posta_mandata($1,$2)", [azienda, id]);
+    return { ok: true, errore: null };
+  } catch (e) {
+    return { ok: false, errore: e instanceof Error ? traduciErrore(e) : "Invio non riuscito." };
+  }
 }
