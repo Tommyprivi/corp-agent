@@ -103,7 +103,15 @@ export default function Richiesta() {
           <span className="text-[15px] font-medium tracking-[-0.01em]">CorpAgent</span>
         </div>
         {/* ⚠️ Nessun «Entra». Vedi il commento in cima al file. */}
-        <span className="font-dato text-[11px] uppercase tracking-[0.1em] text-white/55">Su invito</span>
+        <div className="flex items-center gap-4">
+          <a
+            href="#servizi"
+            className="font-dato cursor-pointer text-[11px] uppercase tracking-[0.1em] text-white/55 transition-colors hover:text-white"
+          >
+            Servizi e prezzi
+          </a>
+          <span className="font-dato text-[11px] uppercase tracking-[0.1em] text-white/55">Su invito</span>
+        </div>
       </header>
 
       <main className="relative z-10 mx-auto max-w-[1100px] px-5 pb-20 sm:px-6 sm:pb-24">
@@ -216,6 +224,26 @@ function Hero() {
               quando non sa, lo dice e chiama te.
             </span>
           </p>
+        </Compare>
+
+        <Compare ritardo={220}>
+          {/* Il tasto che porta dritto al listino — chiesto da Tommaso il 13
+              Agosto: «all'inizio metti il tasto che rimanda subito ai servizi».
+              Chi arriva deciso non deve scorrere mezza pagina per i prezzi. */}
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <a
+              href="#servizi"
+              className="btn-grad inline-block cursor-pointer rounded-lg px-6 py-3 text-[14px] font-medium"
+            >
+              Servizi e prezzi →
+            </a>
+            <a
+              href="#form"
+              className="inline-block cursor-pointer rounded-lg border border-white/20 px-6 py-3 text-[14px] font-medium text-white/85 hover:border-white/45 hover:text-white"
+            >
+              Raccontaci il problema
+            </a>
+          </div>
         </Compare>
 
         <Compare ritardo={240}>
@@ -992,6 +1020,41 @@ const LISTINO: {
     cosa: "Posta, fogli di calcolo, calendario, gestionali: CorpAgent legge e scrive dove lavori già.",
     pieno: "199 € l'uno",
     lancio: "99 € l'uno",
+  },
+  {
+    id: "whatsapp",
+    nome: "Agente su WhatsApp",
+    cosa: "L'agente risponde ai clienti direttamente su WhatsApp Business: preventivi, orari, stato delle consegne.",
+    pieno: "299 € di avvio",
+    lancio: "149 € di avvio",
+  },
+  {
+    id: "scanner",
+    nome: "Scanner e codici a barre",
+    cosa: "Colleghiamo i palmari del magazzino e stampiamo le etichette: quello che scansioni entra da solo.",
+    pieno: "399 € di avvio",
+    lancio: "199 € di avvio",
+  },
+  {
+    id: "formazione",
+    nome: "Formazione del personale",
+    cosa: "Mezza giornata, in azienda o in call, per mettere l'ufficio a suo agio con l'agente e l'area di lavoro.",
+    pieno: "299 €",
+    lancio: "149 € una tantum",
+  },
+  {
+    id: "assistenza",
+    nome: "Assistenza prioritaria",
+    cosa: "Un canale diretto con noi: risposte in giornata, piccole modifiche incluse, aggiornamenti seguiti.",
+    pieno: "99 €/mese",
+    lancio: "49 €/mese",
+  },
+  {
+    id: "dominio",
+    nome: "Dominio ed email aziendali",
+    cosa: "Il tuo dominio (.it o .com) e le caselle col nome dell'azienda, configurate e funzionanti.",
+    pieno: "149 € il primo anno",
+    lancio: "79 € il primo anno",
   },
 ];
 

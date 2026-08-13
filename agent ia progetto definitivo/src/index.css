@@ -537,6 +537,14 @@ body {
   border-radius: 8px;
 }
 
+/* Le ancore («Servizi e prezzi» in cima alla home) scivolano invece di
+   saltare — ma non per chi ha chiesto meno movimento al sistema. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

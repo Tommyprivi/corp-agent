@@ -86,6 +86,39 @@ export const LISTINO: Record<string, VoceListino> = Object.assign(
     pieno: "199 € l'uno",
     centesimi: 9900,
   },
+  // ── Aggiunti il 13 Agosto sera («metti più servizi») — tutti consegnabili
+  //    OGGI: WhatsApp e scanner sono già costruiti (api/whatsapp.ts, ingresso
+  //    scanner di Speed), formazione/assistenza/dominio sono lavoro nostro.
+  whatsapp: {
+    nome: "Agente su WhatsApp",
+    lancio: "149 € di avvio",
+    pieno: "299 € di avvio",
+    centesimi: 14900,
+  },
+  scanner: {
+    nome: "Scanner e codici a barre",
+    lancio: "199 € di avvio",
+    pieno: "399 € di avvio",
+    centesimi: 19900,
+  },
+  formazione: {
+    nome: "Formazione del personale",
+    lancio: "149 € una tantum",
+    pieno: "299 € una tantum",
+    centesimi: 14900,
+  },
+  assistenza: {
+    nome: "Assistenza prioritaria",
+    lancio: "49 €/mese",
+    pieno: "99 €/mese",
+    centesimi: 0,
+  },
+  dominio: {
+    nome: "Dominio ed email aziendali",
+    lancio: "79 € il primo anno",
+    pieno: "149 € il primo anno",
+    centesimi: 7900,
+  },
   }
 );
 
