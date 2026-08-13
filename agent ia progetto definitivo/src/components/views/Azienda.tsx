@@ -3963,8 +3963,288 @@ function Impostazioni({
             {salvaBtn}
           </button>
         </div>
+
+        <PannelloPosta seScaduta={seScaduta} />
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// I COLLEGAMENTI — la casella email (il primo connettore)
+// ─────────────────────────────────────────────────────────────────────────
+
+interface StatoPosta {
+  host: string;
+  porta: number;
+  utente: string;
+  cartella: string;
+  attivo: boolean;
+  ultimo_controllo: string | null;
+  ultimo_errore: string | null;
+  scaricati: number;
+}
+
+interface ArrivoPosta {
+  id: string;
+  ricevuto: string | null;
+  mittente: string;
+  oggetto: string;
+  allegati: string[];
+  corpo: string;
+}
+
+/**
+ * La casella collegata: è da qui che entrano da sole le bolle che la
+ * multifunzione manda via email (scan-to-email) e le richieste dei clienti.
+ * Voluto da Tommaso il 13 Agosto 2026: «dobbiamo collegare tutti i
+ * connettori per fare gli agenti».
+ *
+ * ⚠️ La password si SCRIVE e basta: non torna mai indietro dal server,
+ * nemmeno per mostrarla mascherata. Per cambiarla si ricollega.
+ */
+function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
+  const [stato, setStato] = useState<StatoPosta | null>(null);
+  const [arrivi, setArrivi] = useState<ArrivoPosta[]>([]);
+  const [caricato, setCaricato] = useState(false);
+  const [modifica, setModifica] = useState(false);
+  const [host, setHost] = useState("");
+  const [porta, setPorta] = useState("993");
+  const [utente, setUtente] = useState("");
+  const [password, setPassword] = useState("");
+  const [cartella, setCartella] = useState("INBOX");
+  const [inCorso, setInCorso] = useState(false);
+  const [esito, setEsito] = useState<{ tipo: "ok" | "errore"; testo: string } | null>(null);
+
+  const carica = useCallback(async () => {
+    try {
+      const r = await leggi<{ stato: StatoPosta | null; arrivi: ArrivoPosta[] }>("posta");
+      setStato(r.stato);
+      setArrivi(r.arrivi);
+      if (r.stato) {
+        setHost(r.stato.host);
+        setPorta(String(r.stato.porta));
+        setUtente(r.stato.utente);
+        setCartella(r.stato.cartella);
+      }
+    } catch (e) {
+      seScaduta(e);
+    } finally {
+      setCaricato(true);
+    }
+  }, [seScaduta]);
+
+  useEffect(() => {
+    void carica();
+  }, [carica]);
+
+  async function collega() {
+    setInCorso(true);
+    setEsito(null);
+    try {
+      const r = await manda<{ ok?: boolean; messaggi?: number; error?: string }>({
+        az: "posta-salva",
+        host,
+        porta: Number(porta) || 993,
+        utente,
+        password,
+        cartella,
+      });
+      setEsito({
+        tipo: "ok",
+        testo: `Collegata: nella cartella ci sono ${r.messaggi ?? 0} messaggi.`,
+      });
+      setPassword("");
+      setModifica(false);
+      await carica();
+    } catch (e) {
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setEsito({ tipo: "errore", testo: e instanceof Error ? e.message : "Collegamento non riuscito." });
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  async function controlla() {
+    setInCorso(true);
+    setEsito(null);
+    try {
+      const r = await manda<{ nuovi: number }>({ az: "posta-scarica" });
+      setEsito({
+        tipo: "ok",
+        testo: r.nuovi > 0 ? `Portati dentro ${r.nuovi} messaggi nuovi.` : "Niente di nuovo nella casella.",
+      });
+      await carica();
+    } catch (e) {
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setEsito({ tipo: "errore", testo: e instanceof Error ? e.message : "Controllo non riuscito." });
+      await carica();
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  async function stacca() {
+    if (!window.confirm("Staccare la casella? Le credenziali vengono cancellate; quello che è già entrato resta.")) return;
+    setInCorso(true);
+    setEsito(null);
+    try {
+      await manda({ az: "posta-stacca" });
+      setStato(null);
+      setHost("");
+      setUtente("");
+      setPassword("");
+      setPorta("993");
+      setCartella("INBOX");
+    } catch (e) {
+      seScaduta(e);
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  const campo =
+    "mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13.5px] outline-none focus:border-[var(--accent)]";
+
+  return (
+    <Sez
+      titolo="Collegamenti · La posta"
+      sotto="CorpAgent legge la casella: le scansioni della multifunzione e le mail dei clienti entrano da sole."
+    >
+      {!caricato ? (
+        <p className="text-[12.5px] text-[var(--text-secondary)]">Carico…</p>
+      ) : stato && !modifica ? (
+        <div className="rounded-md border border-[var(--border)] bg-[var(--bg-card)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+            <div>
+              <p className="text-[13.5px] font-medium">
+                {stato.utente} <span className="text-[var(--text-secondary)]">· {stato.host}</span>
+              </p>
+              <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">
+                {stato.ultimo_errore ? (
+                  <span className="text-[#b3261e]">Guasto: {stato.ultimo_errore}</span>
+                ) : stato.ultimo_controllo ? (
+                  <>
+                    Ultimo controllo {new Date(stato.ultimo_controllo).toLocaleString("it-IT")} ·{" "}
+                    {stato.scaricati} portati dentro in tutto
+                  </>
+                ) : (
+                  "Collegata. Il primo controllo parte col giro serale, o adesso col tasto."
+                )}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => void controlla()}
+                disabled={inCorso}
+                className="btn-grad cursor-pointer rounded-md px-3.5 py-2 text-[12.5px] font-medium disabled:opacity-50"
+              >
+                {inCorso ? "Controllo…" : "Controlla adesso"}
+              </button>
+              <button
+                onClick={() => setModifica(true)}
+                className="cursor-pointer rounded-md border border-[var(--border)] px-3.5 py-2 text-[12.5px] hover:border-[var(--accent)]"
+              >
+                Modifica
+              </button>
+              <button
+                onClick={() => void stacca()}
+                disabled={inCorso}
+                className="cursor-pointer rounded-md border border-[var(--border)] px-3.5 py-2 text-[12.5px] text-[var(--text-secondary)] hover:text-[#b3261e]"
+              >
+                Stacca
+              </button>
+            </div>
+          </div>
+
+          {arrivi.length === 0 ? (
+            <p className="px-4 py-3 text-[12.5px] text-[var(--text-secondary)]">
+              Ancora nessun messaggio portato dentro.
+            </p>
+          ) : (
+            <div className="divide-y divide-[var(--border)]">
+              {arrivi.slice(0, 8).map((a) => (
+                <div key={a.id} className="flex items-baseline gap-3 px-4 py-2.5">
+                  <span className="w-32 shrink-0 text-[11.5px] text-[var(--text-secondary)]">
+                    {a.ricevuto ? new Date(a.ricevuto).toLocaleString("it-IT") : "—"}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[13px]">
+                    <span className="font-medium">{a.mittente || "Sconosciuto"}</span>
+                    <span className="text-[var(--text-secondary)]"> · {a.oggetto || "(senza oggetto)"}</span>
+                  </span>
+                  {a.allegati.length > 0 && (
+                    <span className="shrink-0 text-[11.5px] text-[var(--text-secondary)]">
+                      {a.allegati.length} allegat{a.allegati.length === 1 ? "o" : "i"}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block sm:col-span-1">
+              <span className="text-[12px] text-[var(--text-secondary)]">Server IMAP</span>
+              <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="es. imap.gmail.com, outlook.office365.com" className={campo} />
+            </label>
+            <label className="block">
+              <span className="text-[12px] text-[var(--text-secondary)]">Porta</span>
+              <input value={porta} onChange={(e) => setPorta(e.target.value)} inputMode="numeric" className={campo} />
+            </label>
+            <label className="block">
+              <span className="text-[12px] text-[var(--text-secondary)]">Utente (l'indirizzo email)</span>
+              <input value={utente} onChange={(e) => setUtente(e.target.value)} placeholder="es. ufficio@speedtrasporti.it" className={campo} />
+            </label>
+            <label className="block">
+              <span className="text-[12px] text-[var(--text-secondary)]">Password</span>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={campo} />
+            </label>
+            <label className="block">
+              <span className="text-[12px] text-[var(--text-secondary)]">Cartella</span>
+              <input value={cartella} onChange={(e) => setCartella(e.target.value)} className={campo} />
+            </label>
+          </div>
+          <p className="az-spiega mt-2.5 text-[12px] leading-relaxed text-[var(--text-secondary)]">
+            Per Gmail e Outlook non va la password normale: serve una «password per le app»,
+            che si crea nelle impostazioni di sicurezza dell'account in un minuto.
+            Prima di salvare proviamo davvero a entrare: se qualcosa è storto te lo diciamo subito.
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              onClick={() => void collega()}
+              disabled={inCorso || !host.trim() || !utente.trim() || !password}
+              className="btn-grad cursor-pointer rounded-md px-4 py-2 text-[13px] font-medium disabled:opacity-50"
+            >
+              {inCorso ? "Provo…" : "Prova e collega"}
+            </button>
+            {stato && (
+              <button
+                onClick={() => {
+                  setModifica(false);
+                  setEsito(null);
+                }}
+                className="cursor-pointer rounded-md border border-[var(--border)] px-4 py-2 text-[13px]"
+              >
+                Annulla
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {esito && (
+        <p
+          className={`mt-2.5 rounded-md border-l-2 bg-[var(--fill-quiet)] px-3.5 py-2 text-[12.5px] ${
+            esito.tipo === "errore" ? "text-[#b3261e]" : ""
+          }`}
+          style={{ borderColor: esito.tipo === "errore" ? "#b3261e" : "var(--accent)" }}
+        >
+          {esito.testo}
+        </p>
+      )}
+    </Sez>
   );
 }
 

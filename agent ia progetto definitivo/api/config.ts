@@ -30,6 +30,7 @@ import { authMissing, availableProviders } from "./_lib/auth.js";
 import { dbConfigured } from "./_lib/db.js";
 import { chooseModel, fetchCatalog } from "./_lib/openrouter.js";
 import * as az from "./_lib/azienda.js";
+import * as posta from "./_lib/posta.js";
 import { attrezziAzienda, eseguiAttrezzo } from "./_lib/attrezzi.js";
 import {
   avvisaTommaso,
@@ -505,6 +506,17 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       if (!titolare) return soloTitolare();
       return json({ chiave: await az.ingressoChiave(chi.azienda) }, 200);
 
+    case "posta": {
+      // La casella collegata: stato (MAI il segreto, nemmeno cifrato) e gli
+      // ultimi arrivi. La vede chi amministra: titolare e amministrazione.
+      if (!titolare && chi.ruolo_vero !== "amministratore") return soloTitolare();
+      const [stato, arrivi] = await Promise.all([
+        posta.statoPosta(chi.azienda),
+        posta.arriviPosta(chi.azienda, 20),
+      ]);
+      return json({ stato, arrivi }, 200);
+    }
+
     case "cerca": {
       const q = (url.searchParams.get("q") ?? "").trim();
       if (q.length < 2) return json({ risultati: [] }, 200);
@@ -834,6 +846,48 @@ async function areaAzienda(
       az.segnaAttivita(chi.azienda, chi.persona, "supporto", testo.slice(0, 80));
       return json({ ok: true }, 200);
     }
+
+    case "posta-salva": {
+      // Collega (o ricollega) la casella email. Solo il titolare: la password
+      // della posta aziendale è sua. Si PROVA prima di salvare — se le
+      // credenziali sono storte, l'errore torna subito e non si scrive niente.
+      if (!titolare) return negato();
+      const host = String(corpo.host ?? "").trim();
+      const utente = String(corpo.utente ?? "").trim();
+      const password = String(corpo.password ?? "");
+      const porta2 = Number(corpo.porta ?? 993) || 993;
+      const cartella = String(corpo.cartella ?? "INBOX");
+      if (!host || !utente || !password)
+        return json({ error: "Servono server, utente e password." }, 400);
+      try {
+        const esito = await posta.salvaPosta(chi.azienda, {
+          host,
+          porta: porta2,
+          utente,
+          password,
+          cartella,
+        });
+        az.segnaAttivita(chi.azienda, chi.persona, "posta-collegata", utente);
+        return json({ ok: true, messaggi: esito.messaggi }, 200);
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : "Collegamento non riuscito." }, 400);
+      }
+    }
+
+    case "posta-scarica": {
+      // Controlla la casella ADESSO, senza aspettare il giro serale.
+      if (!titolare && chi.ruolo_vero !== "amministratore") return negato();
+      const esito = await posta.scaricaPosta(chi.azienda);
+      if (esito.errore) return json({ error: esito.errore, nuovi: esito.nuovi }, 400);
+      return json({ ok: true, nuovi: esito.nuovi }, 200);
+    }
+
+    case "posta-stacca":
+      // Via credenziali e stato; gli arrivi già portati dentro restano.
+      if (!titolare) return negato();
+      await posta.staccaPosta(chi.azienda);
+      az.segnaAttivita(chi.azienda, chi.persona, "posta-staccata");
+      return json({ ok: true }, 200);
 
     case "chat":
       return await parlaConAgente(chi, corpo);

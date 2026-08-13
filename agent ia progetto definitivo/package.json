@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "better-auth": "^1.6.25",
+    "imapflow": "^1.7.0",
     "lucide-react": "^1.28.0",
+    "mailparser": "^3.9.15",
     "mammoth": "^1.12.0",
     "pdfjs-dist": "^6.2.108",
     "pg": "^8.22.0",
@@ -23,6 +25,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^24.13.3",
     "@types/pg": "^8.20.3",
     "@types/react": "^19.2.17",

@@ -43,6 +43,7 @@ import {
   watchdog,
 } from "./_lib/whatsapp.js";
 import { generaReportSerale } from "./_lib/azienda.js";
+import { scaricaPostaTutte } from "./_lib/posta.js";
 import {
   embeddingConfigured,
   indexText,
@@ -123,7 +124,17 @@ export default {
           } catch (e) {
             console.error("Report serale azienda fallito:", e);
           }
-          return new Response(JSON.stringify({ giorno, ...esito, report }), {
+          // ── La posta delle aziende ──────────────────────────────────────
+          // Stesso giro: si controllano le caselle collegate e si portano
+          // dentro le bolle/mail arrivate in giornata. ⚠️ Vercel Hobby ammette
+          // solo lavori giornalieri: chi vuole prima usa «Controlla adesso».
+          let postaEsiti: { azienda: string; nuovi: number; errore: string | null }[] = [];
+          try {
+            postaEsiti = await scaricaPostaTutte();
+          } catch (e) {
+            console.error("Scarico posta serale fallito:", e);
+          }
+          return new Response(JSON.stringify({ giorno, ...esito, report, posta: postaEsiti }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
