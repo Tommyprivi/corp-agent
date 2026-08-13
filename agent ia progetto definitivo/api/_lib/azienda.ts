@@ -21,7 +21,7 @@
  * @see db/migrations/0018_azienda.sql
  */
 
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { getPool } from "./db.js";
 
 /**
@@ -241,22 +241,37 @@ export async function entra(
   }
 
   const token = randomBytes(32).toString("base64url");
-  await pool.query("select public.az_sessione_apri($1, $2)", [id, token]);
+  // ⚠️ Nel database va l'IMPRONTA del gettone, non il gettone. Il gettone vero
+  // lo tiene solo il browser (in localStorage). Così un dump del database non
+  // contiene chiavi d'ingresso pronte all'uso: da un'impronta SHA-256 non si
+  // risale al gettone, e senza il gettone non si entra. È la stessa logica di
+  // una password, che infatti non si salva mai in chiaro.
+  await pool.query("select public.az_sessione_apri($1, $2)", [id, improntaGettone(token)]);
   const persona = await sessione(token);
   if (!persona) return { errore: "Non sono riuscito ad aprire la sessione." };
   return { token, persona };
 }
 
+/** L'impronta di un gettone: SHA-256, la stessa a ogni chiamata (non salata),
+ *  perché serve a RITROVARE la riga, non a nascondere una password debole —
+ *  un gettone di 256 bit casuali non ha bisogno del sale. */
+function improntaGettone(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
 export async function sessione(token: string | null | undefined): Promise<Persona | null> {
   if (!token) return null;
-  const r = await getPool().query<Persona>("select * from public.az_sessione($1)", [token]);
+  // Si cerca per impronta: nel database non c'è mai il gettone in chiaro.
+  const r = await getPool().query<Persona>("select * from public.az_sessione($1)", [
+    improntaGettone(token),
+  ]);
   const p = r.rows[0];
   if (!p || !p.attiva) return null;
   return p;
 }
 
 export async function esci(token: string): Promise<void> {
-  await getPool().query("select public.az_esci($1)", [token]);
+  await getPool().query("select public.az_esci($1)", [improntaGettone(token)]);
 }
 
 export async function salvaProfilo(
