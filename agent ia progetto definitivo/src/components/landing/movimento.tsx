@@ -62,7 +62,11 @@ export function Compare({
   return (
     <div
       ref={ref}
-      className={className}
+      // ⚠️ `in-vista` è il segnale per i FIGLI: righe che si disegnano, elenchi
+      // che entrano scalati (classi .riga-titolo / .riga-anim in index.css).
+      // Il contenitore fa il suo solito fade+salita; i dettagli dentro
+      // partono da questa classe, con i loro ritardi.
+      className={`${className ?? ""} ${dentro ? "in-vista" : ""}`.trim()}
       style={{
         opacity: dentro ? 1 : 0,
         transform: dentro ? "none" : "translateY(14px)",

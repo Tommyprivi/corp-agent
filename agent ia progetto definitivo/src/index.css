@@ -426,28 +426,36 @@ body {
  * ─────────────────────────────────────────────────────────────────────────
  */
 
-/* Lo scroll-reveal è solo una dissolvenza: niente più blocchi che salgono. */
+/* Lo scroll-reveal: dissolvenza con una salita misurata di 12px. */
 .reveal {
   opacity: 0;
-  transition: opacity 0.5s var(--ease-out);
+  transform: translateY(12px);
+  transition:
+    opacity 0.55s var(--ease-out),
+    transform 0.55s var(--ease-out);
 }
 .reveal.is-visible {
   opacity: 1;
+  transform: none;
 }
 
-/* Prima le parole salivano ruotando e sfocate — puro effetto da sito IA.
-   Ora una dissolvenza corta e basta: il titolo appare, non si esibisce. */
+/* Le parole salgono di poco e si posano — niente rotazioni né sfocature
+   (quelle erano il vestito da sito IA): una salita corta è il movimento
+   professionale, tipo Linear. Rimessa il 13 Agosto sera («più animazioni,
+   ma professionali»). */
 @keyframes word-rise {
   from {
     opacity: 0;
+    transform: translateY(14px);
   }
   to {
     opacity: 1;
+    transform: none;
   }
 }
 .word-rise {
   display: inline-block;
-  animation: word-rise 0.4s var(--ease-out) both;
+  animation: word-rise 0.55s var(--ease-out) both;
 }
 
 /*
@@ -930,10 +938,111 @@ body {
 
 .anima-respiro { animation: respiro 14s ease-in-out infinite; }
 
-/* Le card delle funzioni: ferme. Al passaggio cambia solo il bordo — il
-   sollevamento è stato tolto il 13 Agosto 2026 («sembra fatto con l'IA»). */
+/* Le card delle funzioni: al passaggio il bordo si accende e la card si
+   solleva di UN filo. (Il sollevamento era stato tolto nella pulizia
+   anti-IA; il 13 sera Tommaso ha chiesto «più animazioni, professionali» —
+   2px con una curva seria sono il movimento da prodotto premium, non da
+   sito generato. Quello che NON torna: rotazioni, blur, scale vistose.) */
 .card-funzione {
-  transition: border-color 260ms, background-color 260ms;
+  transition:
+    transform 240ms var(--ease-out),
+    border-color 240ms,
+    background-color 240ms;
+}
+.card-funzione:hover {
+  transform: translateY(-2px);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   LE ANIMAZIONI PROFESSIONALI DELLA VETRINA — 13 Agosto 2026, sera
+   ─────────────────────────────────────────────────────────────────────────
+   Chieste da Tommaso: «più professionale e con più animazioni». Tutte
+   partono da `.in-vista`, che Compare mette sul contenitore quando entra
+   nello schermo: niente si muove da solo all'infinito, tutto si muove UNA
+   volta, quando arriva sotto gli occhi. */
+
+/* La riga sotto i titoli di sezione: si disegna da sinistra, in ottone. */
+.riga-titolo {
+  display: block;
+  margin-top: 14px;
+  height: 2px;
+  width: 56px;
+  background: #c89b3c;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.7s var(--ease-out) 0.15s;
+}
+.in-vista .riga-titolo {
+  transform: scaleX(1);
+}
+
+/* Le righe di un elenco entrano una dopo l'altra: il ritardo lo mette il
+   componente con transitionDelay, perché dipende da quante sono. */
+.riga-anim {
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 0.5s var(--ease-out),
+    transform 0.5s var(--ease-out);
+}
+.in-vista .riga-anim {
+  opacity: 1;
+  transform: none;
+}
+
+/* Le card dei servizi: il bordo si accende e salgono di 3px, senza ombre. */
+.card-servizio {
+  transition:
+    transform 220ms var(--ease-out),
+    border-color 220ms,
+    background-color 220ms;
+}
+.card-servizio:hover {
+  transform: translateY(-3px);
+}
+
+/* La freccia dei tasti che portano altrove: al passaggio fa un passo avanti. */
+.freccia {
+  display: inline-block;
+  transition: transform 200ms var(--ease-out);
+}
+a:hover > .freccia,
+button:hover > .freccia {
+  transform: translateX(4px);
+}
+
+/* La risposta di una FAQ che si apre: scende e si posa. */
+@keyframes faq-giu {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+details[open] .faq-corpo {
+  animation: faq-giu 0.32s var(--ease-out);
+}
+
+/* ⚠️ Chi ha chiesto meno movimento vede tutto fermo e GIÀ VISIBILE: un
+   contenuto che resta a opacity 0 per una preferenza di accessibilità
+   sarebbe il contrario dell'accessibilità. */
+@media (prefers-reduced-motion: reduce) {
+  .riga-titolo,
+  .riga-anim {
+    transition: none;
+    transform: none;
+    opacity: 1;
+  }
+  .card-servizio:hover,
+  .card-funzione:hover {
+    transform: none;
+  }
+  details[open] .faq-corpo {
+    animation: none;
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────

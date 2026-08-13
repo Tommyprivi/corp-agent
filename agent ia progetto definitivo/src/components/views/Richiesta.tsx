@@ -235,7 +235,7 @@ function Hero() {
               href="#servizi"
               className="btn-grad inline-block cursor-pointer rounded-lg px-6 py-3 text-[14px] font-medium"
             >
-              Servizi e prezzi →
+              Servizi e prezzi <span aria-hidden className="freccia">→</span>
             </a>
             <a
               href="#form"
@@ -460,6 +460,7 @@ function Form({ onFatto }: { onFatto: (v: { chiave: string; saluto: string }) =>
     <Compare ritardo={400}>
       <section id="form" className="mx-auto max-w-[560px] pt-4 sm:pt-8">
         <h2 className="text-[26px] font-semibold tracking-[-0.025em]">Raccontaci il tuo problema</h2>
+        <span aria-hidden className="riga-titolo" />
         <p className="mt-2 text-[14px] leading-relaxed text-white/50">
           Ti facciamo tre domande, poi ti scriviamo noi. Nessun impegno, nessun listino da leggere.
         </p>
@@ -537,14 +538,14 @@ function Form({ onFatto }: { onFatto: (v: { chiave: string; saluto: string }) =>
           </p>
         )}
 
+        {/* ⚠️ Piatto: era rimasto un gradiente verticale con alone (e il testo
+            del vecchio ciano, #04252c, illeggibile sull'ottone). Ottone pieno,
+            inchiostro caldo sopra — la stessa regola di tutti i pulsanti. */}
         <PulsanteMagnetico
           onClick={() => void invia()}
           disabled={!pieno || attesa}
-          className="mt-6 w-full cursor-pointer rounded-xl px-5 py-4 text-[15.5px] font-medium text-[#04252c] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#050507] disabled:cursor-not-allowed disabled:opacity-35 sm:py-3.5 sm:text-[15px]"
-          style={{
-            background: `linear-gradient(180deg, rgb(${LUCE}), rgba(${LUCE},0.82))`,
-            boxShadow: pieno && !attesa ? `0 0 40px rgba(${LUCE}, 0.32)` : "none",
-          }}
+          className="mt-6 w-full cursor-pointer rounded-xl px-5 py-4 text-[15.5px] font-medium text-[#171106] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0A08] disabled:cursor-not-allowed disabled:opacity-35 sm:py-3.5 sm:text-[15px]"
+          style={{ background: `rgb(${LUCE})` }}
         >
           {attesa ? "Invio…" : "Invia la richiesta"}
         </PulsanteMagnetico>
@@ -895,6 +896,7 @@ function Funzioni() {
           <br />
           è in programma
         </h2>
+        <span aria-hidden className="riga-titolo" />
         <p className="mt-3.5 max-w-[34rem] text-[14.5px] leading-relaxed text-white/55">
           Sono tutte provate e funzionanti oggi. Quello che stiamo ancora costruendo non
           lo trovi elencato qui: se te lo promettessimo e poi non ci fosse, non avresti
@@ -1070,6 +1072,7 @@ function Servizi() {
         <h2 className="font-sezione mt-2 text-[clamp(1.9rem,6vw,3rem)] leading-[0.94]">
           Non solo agenti
         </h2>
+        <span aria-hidden className="riga-titolo" />
         <p className="mt-3.5 max-w-[34rem] text-[14.5px] leading-relaxed text-white/55">
           Siamo appena partiti, e i primi clienti ci servono più dei margini: per
           le <span className="text-white">prime 10 aziende</span> i prezzi sono
@@ -1088,7 +1091,7 @@ function Servizi() {
                 la card — figlia normale — lo copre al centro e l'alone resta
                 solo sui bordi. Trovato dalla verifica avversaria. */}
             <div
-              className={`flex h-full flex-col rounded-xl border p-5 ${
+              className={`card-servizio flex h-full flex-col rounded-xl border p-5 ${
                 s.evidenza ? "border-white/[0.16] bg-[#14120E]" : "border-white/[0.09] bg-white/[0.022]"
               }`}
             >
@@ -1371,6 +1374,7 @@ function Confronto() {
           <br />
           probabilmente, è qui
         </h2>
+        <span aria-hidden className="riga-titolo" />
         <p className="mt-3.5 max-w-[34rem] text-[14.5px] leading-relaxed text-white/55">
           Queste righe vengono da un'azienda vera — trasporti, Torino, 150
           persone — dove stiamo costruendo adesso. Non sono esempi da manuale:
@@ -1388,8 +1392,12 @@ function Confronto() {
               </p>
               <p className="font-dato text-[10.5px] uppercase tracking-[0.1em] text-white/40">Servizio</p>
             </div>
-            {CONFRONTO.map((r) => (
-              <div key={r.problema} className="grid grid-cols-[1fr_1fr_130px] gap-4 border-b border-white/[0.08] py-3.5">
+            {CONFRONTO.map((r, ri) => (
+              <div
+                key={r.problema}
+                className="riga-anim grid grid-cols-[1fr_1fr_130px] gap-4 border-b border-white/[0.08] py-3.5"
+                style={{ transitionDelay: `${ri * 55}ms` }}
+              >
                 <p className="text-[13px] leading-relaxed text-white/55">{r.problema}</p>
                 <p className="text-[13px] leading-relaxed text-white">{r.dopo}</p>
                 <p className="text-[12px] text-white/45">{r.servizio}</p>
@@ -1416,6 +1424,7 @@ function Storia() {
         <h2 className="font-sezione mt-2 text-[clamp(1.9rem,6vw,3rem)] leading-[0.94]">
           Nata in un'azienda vera
         </h2>
+        <span aria-hidden className="riga-titolo" />
         <div className="mt-5 max-w-[38rem] space-y-4 text-[14.5px] leading-relaxed text-white/60">
           <p>
             CorpAgent nasce nel 2026 da una domanda semplice: perché in
@@ -1473,6 +1482,7 @@ function Cantiere() {
           <br />
           150 persone
         </h2>
+        <span aria-hidden className="riga-titolo" />
         <p className="mt-3.5 max-w-[34rem] text-[14.5px] leading-relaxed text-white/55">
           Un'azienda che spedisce dal 1998, col suo gestionale storico e le sue
           abitudini. Non gliele abbiamo cambiate: ci siamo collegati.
@@ -1481,8 +1491,12 @@ function Cantiere() {
 
       <Compare>
         <div className="mt-9 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
-          {fatti.map((f) => (
-            <div key={f.cosa} className="rounded-xl border border-white/[0.09] bg-white/[0.022] p-4">
+          {fatti.map((f, fi) => (
+            <div
+              key={f.cosa}
+              className="riga-anim rounded-xl border border-white/[0.09] bg-white/[0.022] p-4"
+              style={{ transitionDelay: `${fi * 70}ms` }}
+            >
               <p className="font-dato text-[22px]" style={{ color: `rgb(${LUCE})` }}>
                 {f.num}
               </p>
@@ -1552,6 +1566,7 @@ function Faq() {
         <h2 className="font-sezione mt-2 text-[clamp(1.9rem,6vw,3rem)] leading-[0.94]">
           Quello che chiedono tutti
         </h2>
+        <span aria-hidden className="riga-titolo" />
       </Compare>
 
       <Compare>
@@ -1562,7 +1577,7 @@ function Faq() {
                 {f.d}
                 <span aria-hidden className="shrink-0 text-white/40 transition-transform group-open:rotate-45">+</span>
               </summary>
-              <p className="pb-4 pr-8 text-[13.5px] leading-relaxed text-white/55">{f.r}</p>
+              <p className="faq-corpo pb-4 pr-8 text-[13.5px] leading-relaxed text-white/55">{f.r}</p>
             </details>
           ))}
         </div>
