@@ -57,5 +57,5 @@ collegamento assente — scrivi "in attesa del collegamento".
 - **NON si scrive mai su `main`.** Si lavora su un ramo proprio e si apre una
   **Pull Request** (una proposta).
 - Ogni proposta viene riassunta da **CodeRabbit** e deve essere **approvata da
-  Tommaso (@mykernelhub)** prima di andare online. Tu proponi, lui decide.
+  Tommaso (@Tommyprivi)** prima di andare online. Tu proponi, lui decide.
 - Il deploy su Vercel parte **dopo** l'approvazione e il merge in `main`.
