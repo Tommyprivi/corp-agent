@@ -74,6 +74,26 @@ export function attrezziAzienda(): Strumento[] {
         parameters: { type: "object", properties: {}, required: [] },
       },
     },
+    {
+      type: "function",
+      function: {
+        name: "dov_e_spedizione",
+        description:
+          "Cerca dove si trova una spedizione, un collo o un ritiro, per nome del " +
+          "cliente/mittente o per numero, in tutto quello che il sistema sa: ritiri " +
+          "prenotati, movimenti di banchina di oggi, bolle arrivate via mail, letture " +
+          "degli scanner. Usalo per «dov'è il carico di X?», «è arrivata la merce di " +
+          "Y?», «a che punto è il ritiro di Z?».",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            riferimento: { type: "string", description: "Nome del cliente/mittente, o numero di bolla/collo." },
+          },
+          required: ["riferimento"],
+        },
+      },
+    },
   ];
 
   if (process.env.GOOGLE_MAPS_API_KEY) {
@@ -153,6 +173,26 @@ export async function eseguiAttrezzo(
         }
       }
       return righe.join("\n");
+    }
+
+    if (nome === "dov_e_spedizione") {
+      const rif = String(argomenti.riferimento ?? "").trim();
+      if (rif.length < 2) return "Serve un nome o un numero da cercare.";
+      const righe = await az.cercaSpedizione(azienda, rif);
+      if (righe.length === 0) {
+        return (
+          `Non risulta niente per «${rif}» in quello che abbiamo passato dalle nostre mani ` +
+          `(ritiri prenotati, movimenti di oggi, bolle arrivate, scansioni). ` +
+          `Se la merce è in viaggio con un altro sistema, di qui non la vediamo: passa la domanda a una persona.`
+        );
+      }
+      // ⚠️ gpt-4o-mini tende a «arrotondare» date e orari quando riscrive: qui
+      // gli si ordina di copiarli tali e quali. Un orario di ritiro sbagliato
+      // detto a un cliente è peggio di non dirlo.
+      return (
+        `Cosa risulta per «${rif}» (riporta cifre, date e orari ESATTAMENTE come scritti, senza cambiarli):\n` +
+        righe.map((r) => `- ${r}`).join("\n")
+      );
     }
 
     if (nome === "bolle_arrivate") {

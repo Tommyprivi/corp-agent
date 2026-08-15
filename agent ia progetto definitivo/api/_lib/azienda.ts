@@ -681,6 +681,64 @@ export async function ritiri(azienda: string) {
   return r.rows;
 }
 
+/**
+ * «Dov'è il carico di X?» — cerca una spedizione/collo per nome cliente o
+ * numero, in TUTTO quello che il sistema sa davvero: ritiri prenotati,
+ * movimenti di banchina di oggi, bolle arrivate via mail e letture degli
+ * scanner. Ritorna righe in italiano piano.
+ *
+ * ⚠️ Onestà: CorpAgent non è (ancora) collegato al gestionale delle spedizioni,
+ * quindi risponde con ciò che HA passato dalle sue mani — non con una posizione
+ * GPS del pacco. Se non trova niente, chi chiama lo dice, non inventa.
+ */
+export async function cercaSpedizione(azienda: string, termine: string): Promise<string[]> {
+  const t = termine.trim().toLowerCase();
+  if (t.length < 2) return [];
+  const dentro = (s: unknown) => typeof s === "string" && s.toLowerCase().includes(t);
+  const righe: string[] = [];
+
+  const [rit, mov, bol, let2] = await Promise.all([
+    ritiri(azienda) as Promise<{ controparte: string; colli: number | null; previsto: string | null; testo: string }[]>,
+    movimentiOggi(azienda, null) as Promise<{ tipo: string; colli: number | null; controparte: string; creato: string }[]>,
+    getPool().query<{ bolla: { mittente?: string; numero?: string; colli?: number | null } | null; creato: string }>(
+      "select bolla, creato from public.az_posta_bolle($1,$2)",
+      [azienda, 50]
+    ),
+    letture(azienda) as Promise<{ barcode: string; quando: string }[]>,
+  ]);
+
+  for (const r of rit) {
+    if (!dentro(r.controparte)) continue;
+    const quando = r.previsto
+      ? new Date(r.previsto).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" })
+      : "senza orario";
+    righe.push(`Ritiro da ${r.controparte}${r.colli ? `, ${r.colli} colli` : ""}, previsto ${quando}${r.testo ? ` (${r.testo})` : ""} — non ancora fatto.`);
+  }
+  for (const m of mov) {
+    if (!dentro(m.controparte)) continue;
+    // ⚠️ Solo carico/scarico: i ritiri e i reclami arrivano già dalle loro
+    // fonti (sopra e altrove). Senza questo filtro lo STESSO ritiro comparirebbe
+    // due volte — una col «previsto», una con l'ora di quando è stato scritto —
+    // e il modello confonde le due date.
+    if (m.tipo !== "carico" && m.tipo !== "scarico") continue;
+    const ora = new Date(m.creato).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
+    const verbo = m.tipo === "carico" ? "caricati" : "scaricati";
+    righe.push(`Oggi alle ${ora}: ${m.colli ?? "?"} colli ${verbo} per ${m.controparte}.`);
+  }
+  for (const b of bol.rows) {
+    const d = b.bolla;
+    if (!d || !(dentro(d.mittente) || dentro(d.numero))) continue;
+    const data = new Date(b.creato).toLocaleDateString("it-IT");
+    righe.push(`Bolla ${d.numero ? `n. ${d.numero} ` : ""}da ${d.mittente ?? "?"}${d.colli != null ? `, ${d.colli} colli` : ""}, arrivata via mail il ${data}.`);
+  }
+  for (const l of let2) {
+    if (!dentro(l.barcode)) continue;
+    const quando = new Date(l.quando).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    righe.push(`Collo ${l.barcode} letto in banchina il ${quando}.`);
+  }
+  return righe.slice(0, 10);
+}
+
 export async function traffico(azienda: string) {
   const r = await getPool().query<{ az_traffico: unknown }>(
     "select public.az_traffico($1)",

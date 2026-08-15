@@ -28,6 +28,7 @@ import { simpleParser } from "mailparser";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { cifra, cifraByte, decifra, decifraByte } from "./connectors.js";
+import { cercaSpedizione } from "./azienda.js";
 import { getPool } from "./db.js";
 
 export interface ConfigPosta {
@@ -755,10 +756,31 @@ const ISTRUZIONI_RISPOSTA = [
   "- Usa solo ciò che è scritto nei documenti qui sotto.",
 ].join("\n");
 
+/**
+ * Cosa risulta a NOI su chi ha scritto: si cerca nei dati veri (ritiri, bolle,
+ * scansioni) per il nome del mittente e per eventuali numeri citati nella mail.
+ * È ciò che permette all'agente di rispondere a «dov'è il carico» con la
+ * posizione vera invece di un'interlocutoria.
+ */
+async function contestoDatiMail(azienda: string, mail: { mittente: string; oggetto: string; corpo: string }): Promise<string> {
+  const termini = new Set<string>();
+  const nome = mail.mittente.replace(/<[^>]*>/g, "").replace(/["']/g, "").trim();
+  if (nome.length >= 3 && !nome.includes("@")) termini.add(nome);
+  // Numeri lunghi (numero di bolla/collo) nell'oggetto e nel corpo.
+  for (const m of `${mail.oggetto} ${mail.corpo}`.matchAll(/\b[A-Za-z]{0,4}\d{3,}\b/g)) termini.add(m[0]);
+  const righe: string[] = [];
+  for (const t of [...termini].slice(0, 3)) {
+    const r = await cercaSpedizione(azienda, t).catch(() => []);
+    righe.push(...r);
+  }
+  return [...new Set(righe)].slice(0, 8).join("\n");
+}
+
 /** Classifica una mail e, se facile, scrive la bozza. Ritorna null se il modello è spento/muto. */
 async function classificaEbozza(
   mail: { mittente: string; oggetto: string; corpo: string },
-  documenti: { titolo: string; testo: string }[]
+  documenti: { titolo: string; testo: string }[],
+  contestoDati: string
 ): Promise<{ classe: string; bozza: string | null } | null> {
   const chiave = process.env.OPENROUTER_API_KEY;
   if (!chiave) return null;
@@ -767,6 +789,9 @@ async function classificaEbozza(
     : "(nessun documento aziendale caricato)";
   const utente =
     `DOCUMENTI DELL'AZIENDA:\n${contesto}\n\n` +
+    (contestoDati
+      ? `COSA RISULTA A NOI SU CHI HA SCRITTO (usa questo per «dov'è il carico»):\n${contestoDati}\n\n`
+      : "") +
     `MAIL ARRIVATA:\nDa: ${mail.mittente}\nOggetto: ${mail.oggetto}\n\n${(mail.corpo || "").slice(0, 3000)}`;
   try {
     const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -869,7 +894,8 @@ export async function elaboraPosta(azienda: string, massimo = 5): Promise<{ bozz
       ]);
       continue;
     }
-    const esito = await classificaEbozza(mail, documenti).catch(() => null);
+    const contestoDati = await contestoDatiMail(azienda, mail).catch(() => "");
+    const esito = await classificaEbozza(mail, documenti, contestoDati).catch(() => null);
     if (!esito) continue; // modello muto: si riproverà al giro dopo (resta 'nuovo')
     if (esito.classe === "umano" || !esito.bozza) {
       await getPool().query("select public.az_posta_risposta_salva($1,$2,$3,$4,$5)", [
