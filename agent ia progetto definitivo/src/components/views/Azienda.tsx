@@ -4428,9 +4428,201 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
         </p>
       )}
 
-      {/* Le risposte automatiche: compaiono quando la casella è collegata. */}
+      {/* Le risposte automatiche e i solleciti: quando la casella è collegata. */}
       {stato && !modifica && <RisposteAuto seScaduta={seScaduta} />}
+      {stato && !modifica && <SollecitiRitiri seScaduta={seScaduta} />}
     </Sez>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// L'AGENTE SOLLECITI RITIRI
+// ─────────────────────────────────────────────────────────────────────────
+
+interface Sollecito {
+  id: string;
+  ritiro: string;
+  controparte: string;
+  previsto: string | null;
+  destinatario: string;
+  testo: string | null;
+  stato: string; // bozza | mandato | senza_email
+  creato: string;
+}
+
+function SollecitiRitiri({ seScaduta }: { seScaduta: (e: unknown) => void }) {
+  const [modo, setModo] = useState<"spento" | "prova" | "acceso">("spento");
+  const [lista, setLista] = useState<Sollecito[]>([]);
+  const [caricato, setCaricato] = useState(false);
+  const [inCorso, setInCorso] = useState(false);
+  const [nota, setNota] = useState<string | null>(null);
+
+  const carica = useCallback(async () => {
+    try {
+      const r = await leggi<{ modo: "spento" | "prova" | "acceso"; solleciti: Sollecito[] }>("solleciti");
+      setModo(r.modo);
+      setLista(r.solleciti);
+    } catch (e) {
+      if (e instanceof SessioneScaduta) seScaduta(e);
+    } finally {
+      setCaricato(true);
+    }
+  }, [seScaduta]);
+
+  useEffect(() => {
+    void carica();
+  }, [carica]);
+
+  async function salvaModo(m: "spento" | "prova" | "acceso") {
+    setInCorso(true);
+    setNota(null);
+    try {
+      await manda({ az: "solleciti-modo", modo: m });
+      setModo(m);
+    } catch (e) {
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setNota("Non sono riuscito a salvare.");
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  async function controlla() {
+    setInCorso(true);
+    setNota(null);
+    try {
+      const r = await manda<{ preparati: number; mandati: number; senzaEmail: number }>({ az: "solleciti-controlla" });
+      const parti: string[] = [];
+      if (r.mandati) parti.push(`${r.mandati} mandati`);
+      if (r.preparati) parti.push(`${r.preparati} preparati`);
+      if (r.senzaEmail) parti.push(`${r.senzaEmail} senza email`);
+      setNota(parti.length ? parti.join(", ") + "." : "Nessun ritiro da sollecitare adesso.");
+      await carica();
+    } catch (e) {
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setNota(e instanceof Error ? e.message : "Non riuscito.");
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  async function mandaUno(id: string) {
+    setInCorso(true);
+    setNota(null);
+    try {
+      await manda({ az: "solleciti-manda", id });
+      setNota("Mandato.");
+      await carica();
+    } catch (e) {
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setNota(e instanceof Error ? e.message : "Invio non riuscito.");
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  if (!caricato) return null;
+
+  return (
+    <div className="mt-6 border-t border-[var(--border)] pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-[13.5px] font-semibold">Agente solleciti ritiri</h3>
+          <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">
+            Tiene d'occhio i ritiri in arrivo e prepara il promemoria al cliente (con la data esatta del ritiro).
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-md border border-[var(--border)] p-0.5">
+            {(
+              [
+                ["spento", "Spento"],
+                ["prova", "In prova"],
+                ["acceso", "Acceso"],
+              ] as const
+            ).map(([id, et]) => (
+              <button
+                key={id}
+                onClick={() => void salvaModo(id)}
+                disabled={inCorso}
+                className={`cursor-pointer rounded px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
+                  modo === id ? "bg-[var(--accent-soft)] text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                {et}
+              </button>
+            ))}
+          </div>
+          {modo !== "spento" && (
+            <button
+              onClick={() => void controlla()}
+              disabled={inCorso}
+              className="cursor-pointer rounded-md border border-[var(--border)] px-3 py-2 text-[12.5px] hover:border-[var(--accent)] disabled:opacity-50"
+            >
+              {inCorso ? "…" : "Controlla adesso"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {modo === "prova" && (
+        <p className="mt-3 rounded-md border-l-2 bg-[var(--fill-quiet)] px-3.5 py-2 text-[12px] leading-relaxed" style={{ borderColor: "var(--accent)" }}>
+          In prova: prepara i promemoria ma NON li manda. Leggili qui sotto e mandali con «Manda», o passa ad «Acceso».
+        </p>
+      )}
+      {modo === "acceso" && (
+        <p className="mt-3 rounded-md border-l-2 bg-[var(--fill-quiet)] px-3.5 py-2 text-[12px] leading-relaxed" style={{ borderColor: "var(--positive)" }}>
+          Acceso: manda da solo il promemoria ai clienti con l'email in anagrafica, per i ritiri di oggi e domani.
+        </p>
+      )}
+      {nota && <p className="mt-2.5 text-[12px] text-[var(--text-secondary)]">{nota}</p>}
+
+      {lista.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {lista.map((s) => (
+            <div key={s.id} className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 flex-1 truncate text-[13px]">
+                  <span className="font-medium">{s.controparte || "Cliente"}</span>
+                  {s.previsto && (
+                    <span className="text-[var(--text-secondary)]">
+                      {" "}· ritiro {new Date(s.previsto).toLocaleString("it-IT", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  )}
+                </span>
+                <span className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-medium ${
+                  s.stato === "mandato" ? "text-[var(--positive)]" : s.stato === "senza_email" ? "text-[#b3261e]" : "text-[var(--text-secondary)]"
+                }`}>
+                  {s.stato === "mandato" ? "Mandato" : s.stato === "senza_email" ? "Manca l'email" : "Pronto"}
+                </span>
+              </div>
+              {s.stato === "senza_email" ? (
+                <p className="mt-1.5 text-[12px] text-[var(--text-secondary)]">
+                  Non ho l'email di questo cliente in anagrafica: ricordaglielo a mano, o aggiungi l'email in Clienti.
+                </p>
+              ) : (
+                s.testo && (
+                  <>
+                    <p className="mt-2 whitespace-pre-wrap rounded bg-[var(--bg-app)] px-3 py-2 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+                      {s.testo}
+                    </p>
+                    {s.stato === "bozza" && (
+                      <button
+                        onClick={() => void mandaUno(s.id)}
+                        disabled={inCorso}
+                        className="btn-grad mt-2 cursor-pointer rounded-md px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50"
+                      >
+                        Manda questo
+                      </button>
+                    )}
+                  </>
+                )
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -563,6 +563,16 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       });
     }
 
+    case "solleciti": {
+      // L'agente solleciti: i promemoria dei ritiri preparati/mandati.
+      if (!titolare && chi.ruolo_vero !== "amministratore") return soloTitolare();
+      const [modo, elenco] = await Promise.all([
+        posta.statoSolleciti(chi.azienda),
+        posta.solleciti(chi.azienda, 40),
+      ]);
+      return json({ modo, solleciti: elenco }, 200);
+    }
+
     case "posta-risposte": {
       // Le risposte dell'agente alle mail: cosa ha classificato facile (bozza)
       // e cosa ha girato a una persona. La vede chi amministra.
@@ -987,6 +997,31 @@ async function areaAzienda(
       const esito = await posta.mandaBozza(chi.azienda, Number(corpo.id));
       if (!esito.ok) return json({ error: esito.errore ?? "Invio non riuscito." }, 400);
       az.segnaAttivita(chi.azienda, chi.persona, "posta-risposta");
+      return json({ ok: true }, 200);
+    }
+
+    case "solleciti-modo": {
+      // Accende/spegne l'agente solleciti ritiri. Solo il titolare.
+      if (!titolare) return negato();
+      const modo = String(corpo.modo ?? "spento") as posta.ModoAuto;
+      await posta.salvaSollecitiModo(chi.azienda, modo);
+      az.segnaAttivita(chi.azienda, chi.persona, "solleciti-modo", modo);
+      return json({ ok: true }, 200);
+    }
+
+    case "solleciti-controlla": {
+      // Fa girare l'agente ADESSO: guarda i ritiri e prepara/manda i promemoria.
+      if (!titolare && chi.ruolo_vero !== "amministratore") return negato();
+      const esito = await posta.elaboraSolleciti(chi.azienda, Date.now());
+      return json({ ok: true, ...esito }, 200);
+    }
+
+    case "solleciti-manda": {
+      // Manda a mano un promemoria preparato (in prova).
+      if (!titolare && chi.ruolo_vero !== "amministratore") return negato();
+      const esito = await posta.mandaSollecito(chi.azienda, Number(corpo.id));
+      if (!esito.ok) return json({ error: esito.errore ?? "Invio non riuscito." }, 400);
+      az.segnaAttivita(chi.azienda, chi.persona, "sollecito-mandato");
       return json({ ok: true }, 200);
     }
 

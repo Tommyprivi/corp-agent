@@ -362,6 +362,8 @@ export async function scaricaPostaTutte(): Promise<{ azienda: string; nuovi: num
     // E l'agente elabora le mail: classifica, scrive le bozze e — se acceso —
     // risponde alle facili. In prova prepara e basta.
     await elaboraPosta(azienda, 6).catch(() => {});
+    // E l'agente solleciti guarda i ritiri in arrivo e prepara/manda i promemoria.
+    await elaboraSolleciti(azienda, Date.now()).catch(() => {});
     esiti.push({ azienda, ...esito });
   }
   return esiti;
@@ -984,6 +986,143 @@ export async function mandaBozza(azienda: string, id: number): Promise<{ ok: boo
       { destinatario: b.mittente, oggetto: b.oggetto.toLowerCase().startsWith("re:") ? b.oggetto : `Re: ${b.oggetto}`, corpo: testo }
     );
     await getPool().query("select public.az_posta_mandata($1,$2)", [azienda, id]);
+    return { ok: true, errore: null };
+  } catch (e) {
+    return { ok: false, errore: e instanceof Error ? traduciErrore(e) : "Invio non riuscito." };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// L'AGENTE SOLLECITI RITIRI
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Tiene d'occhio i ritiri prenotati e non ancora fatti: quando si avvicina
+// l'ora, prepara — e se acceso manda — un promemoria al cliente. Il testo lo
+// scrive un TEMPLATE con la data ESATTA del ritiro, non il modello: un orario
+// sbagliato a un cliente è peggio di non dirlo.
+
+export interface SollecitoRiga {
+  id: string;
+  ritiro: string;
+  controparte: string;
+  previsto: string | null;
+  destinatario: string;
+  testo: string | null;
+  stato: string; // bozza | mandato | senza_email
+  creato: string;
+}
+
+/** Da un ritiro al testo del promemoria — con la data vera, copiata. */
+function testoSollecito(previsto: string | null, colli: number | null): string {
+  const quando = previsto
+    ? new Date(previsto).toLocaleString("it-IT", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" })
+    : "nella data concordata";
+  return [
+    "Buongiorno,",
+    "",
+    `le ricordiamo il ritiro${colli ? ` di ${colli} colli` : ""} previsto per ${quando}.`,
+    "Se qualcosa è cambiato, ci faccia un cenno e riorganizziamo.",
+    "",
+    "Grazie,",
+    "Speed Trasporti",
+  ].join("\n");
+}
+
+export async function statoSolleciti(azienda: string): Promise<ModoAuto> {
+  const r = await getPool().query<{ az_solleciti_modo: string }>("select public.az_solleciti_modo($1)", [azienda]);
+  return (r.rows[0]?.az_solleciti_modo as ModoAuto) ?? "spento";
+}
+
+export async function salvaSollecitiModo(azienda: string, modo: ModoAuto): Promise<void> {
+  await getPool().query("select public.az_solleciti_modo_salva($1,$2)", [azienda, modo]);
+}
+
+export async function solleciti(azienda: string, limite = 40): Promise<SollecitoRiga[]> {
+  const r = await getPool().query<SollecitoRiga>("select * from public.az_solleciti($1,$2)", [azienda, limite]);
+  return r.rows.map((s) => ({ ...s, testo: s.testo ? decifra(s.testo) : null }));
+}
+
+/**
+ * Il giro dell'agente solleciti: guarda i ritiri prenotati che si avvicinano
+ * (da 12 ore fa a 36 ore avanti — cioè «per oggi/domani»), non ancora
+ * sollecitati, e prepara/manda il promemoria al cliente abbinato per nome.
+ */
+export async function elaboraSolleciti(azienda: string, adesso: number): Promise<{ preparati: number; mandati: number; senzaEmail: number }> {
+  const modo = await statoSolleciti(azienda);
+  if (modo === "spento") return { preparati: 0, mandati: 0, senzaEmail: 0 };
+
+  const [rit, fatti, cli] = await Promise.all([
+    getPool().query<{ id: string; controparte: string; colli: number | null; previsto: string | null }>("select id, controparte, colli, previsto from public.az_ritiri($1)", [azienda]),
+    getPool().query<{ ritiro: string }>("select * from public.az_solleciti_fatti($1)", [azienda]),
+    getPool().query<{ nome: string; email: string }>("select nome, email from public.az_clienti($1,$2)", [azienda, ""]),
+  ]);
+  const giaFatti = new Set(fatti.rows.map((f) => String(f.ritiro)));
+  const clienti = cli.rows.filter((c) => c.email && c.email.includes("@"));
+
+  // Le credenziali per mandare, solo se acceso.
+  let cred: { host: string; utente: string; password: string } | null = null;
+  if (modo === "acceso") {
+    const cr = await getPool().query<{ host: string; utente: string; segreto_cifrato: string }>("select * from public.az_posta_credenziali($1)", [azienda]);
+    const c = cr.rows[0];
+    const pw = c ? decifra(c.segreto_cifrato) : null;
+    if (c && pw) cred = { host: c.host, utente: c.utente, password: pw };
+  }
+
+  const DODICI_ORE = 12 * 3600_000;
+  const TRENTASEI_ORE = 36 * 3600_000;
+  let preparati = 0, mandati = 0, senzaEmail = 0;
+
+  for (const r of rit.rows) {
+    if (giaFatti.has(String(r.id)) || !r.previsto) continue;
+    const t = new Date(r.previsto).getTime();
+    if (t < adesso - DODICI_ORE || t > adesso + TRENTASEI_ORE) continue; // fuori finestra
+
+    // Abbina il cliente per nome (contiene): il primo con un'email.
+    const nome = r.controparte.trim().toLowerCase();
+    const match = clienti.find((c) => nome && (c.nome.toLowerCase().includes(nome) || nome.includes(c.nome.toLowerCase())));
+    const testo = testoSollecito(r.previsto, r.colli);
+
+    if (!match) {
+      // Non so a chi scrivere: lo preparo lo stesso e lo segno «senza email»,
+      // così l'ufficio sa che quel ritiro andrebbe ricordato a mano.
+      await getPool().query("select public.az_sollecito_salva($1,$2,$3,$4,$5,$6,$7)", [azienda, Number(r.id), r.controparte, r.previsto, "", cifra(testo), "senza_email"]);
+      senzaEmail++;
+      continue;
+    }
+
+    if (modo === "acceso" && cred) {
+      try {
+        await mandaMail(cred, { destinatario: match.email, oggetto: "Promemoria ritiro — Speed Trasporti", corpo: testo });
+        await getPool().query("select public.az_sollecito_salva($1,$2,$3,$4,$5,$6,$7)", [azienda, Number(r.id), r.controparte, r.previsto, match.email, cifra(testo), "mandato"]);
+        mandati++;
+      } catch {
+        await getPool().query("select public.az_sollecito_salva($1,$2,$3,$4,$5,$6,$7)", [azienda, Number(r.id), r.controparte, r.previsto, match.email, cifra(testo), "bozza"]);
+        preparati++;
+      }
+    } else {
+      await getPool().query("select public.az_sollecito_salva($1,$2,$3,$4,$5,$6,$7)", [azienda, Number(r.id), r.controparte, r.previsto, match.email, cifra(testo), "bozza"]);
+      preparati++;
+    }
+  }
+  return { preparati, mandati, senzaEmail };
+}
+
+/** Manda a mano un sollecito già preparato (in prova). */
+export async function mandaSollecito(azienda: string, id: number): Promise<{ ok: boolean; errore: string | null }> {
+  const r = await getPool().query<{ destinatario: string; testo: string; controparte: string; stato: string }>("select * from public.az_sollecito_uno($1,$2)", [azienda, id]);
+  const s = r.rows[0];
+  if (!s) return { ok: false, errore: "Sollecito non trovato." };
+  if (s.stato === "mandato") return { ok: false, errore: "Già mandato." };
+  if (!s.destinatario || !s.destinatario.includes("@")) return { ok: false, errore: "Nessuna email per questo cliente: ricordaglielo a mano." };
+  const testo = s.testo ? decifra(s.testo) : null;
+  if (!testo) return { ok: false, errore: "Promemoria illeggibile." };
+  const cr = await getPool().query<{ host: string; utente: string; segreto_cifrato: string }>("select * from public.az_posta_credenziali($1)", [azienda]);
+  const c = cr.rows[0];
+  const pw = c ? decifra(c.segreto_cifrato) : null;
+  if (!c || !pw) return { ok: false, errore: "Casella non collegata." };
+  try {
+    await mandaMail({ host: c.host, utente: c.utente, password: pw }, { destinatario: s.destinatario, oggetto: "Promemoria ritiro — Speed Trasporti", corpo: testo });
+    await getPool().query("select public.az_sollecito_mandato($1,$2)", [azienda, id]);
     return { ok: true, errore: null };
   } catch (e) {
     return { ok: false, errore: e instanceof Error ? traduciErrore(e) : "Invio non riuscito." };
