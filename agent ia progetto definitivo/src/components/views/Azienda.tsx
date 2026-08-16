@@ -513,6 +513,13 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
   );
 }
 
+/** Il saluto giusto per l'ora corrente — un solo posto, per non finire con
+ *  «Buongiorno» fisso in una schermata mentre altrove si aggiorna da sé. */
+function salutoOra(): string {
+  const ora = new Date().getHours();
+  return ora < 12 ? "Buongiorno" : ora < 18 ? "Buon pomeriggio" : "Buonasera";
+}
+
 function Marchio({ nome, compatto }: { nome: string; compatto?: boolean }) {
   const logo = MARCHI.speed?.logo;
   // ⚠️ Il logo intero contiene già la scritta «Speed Trasporti»: ripeterla
@@ -699,7 +706,7 @@ function Conversazione({
 
           {messaggi !== null && messaggi.length === 0 && (
             <div className="rounded-2xl rounded-bl-md bg-[var(--fill-quiet)] px-4 py-3 text-[14.5px] leading-relaxed">
-              Buongiorno{nome ? ` ${nome}` : ""}. Sono l'agente del{" "}
+              {salutoOra()}{nome ? ` ${nome}` : ""}. Sono l'agente del{" "}
               {postazione.nome.toLowerCase()}.
               <br />
               Chiedimi quello che ti serve — anche a voce.
@@ -1253,8 +1260,7 @@ function Cruscotto({
     }
   }
 
-  const ora = new Date().getHours();
-  const saluto = ora < 12 ? "Buongiorno" : ora < 18 ? "Buon pomeriggio" : "Buonasera";
+  const saluto = salutoOra();
   const nomePostazione = (id: string) => postazioni.find((p) => p.id === id)?.nome ?? id;
   // «Via i saluti»: al posto di «Buongiorno Salvatore» un titolo asciutto.
   const senzaSaluti = sito.minimal.includes("saluti");
