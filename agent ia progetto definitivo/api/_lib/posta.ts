@@ -359,6 +359,9 @@ export async function scaricaPostaTutte(): Promise<{ azienda: string; nuovi: num
       errore: traduciErrore(e),
     }));
     await leggiBolle(azienda, 6).catch(() => {});
+    // E l'agente controllo bolle confronta le bolle appena lette con lo
+    // scarico vero in banchina: differenze e doppioni si segnalano da soli.
+    await controllaBolle(azienda, 10).catch(() => {});
     // E l'agente elabora le mail: classifica, scrive le bozze e — se acceso —
     // risponde alle facili. In prova prepara e basta.
     await elaboraPosta(azienda, 6).catch(() => {});
@@ -616,6 +619,8 @@ export interface BollaElenco {
   bolla: DatiBolla | null;
   creato: string;
   kb: number;
+  controllo_stato: string; // da_controllare | ok | differenza | doppione | in_attesa
+  controllo_nota: string;
 }
 
 export async function bolle(azienda: string, limite = 30): Promise<BollaElenco[]> {
@@ -1127,4 +1132,112 @@ export async function mandaSollecito(azienda: string, id: number): Promise<{ ok:
   } catch (e) {
     return { ok: false, errore: e instanceof Error ? traduciErrore(e) : "Invio non riuscito." };
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// L'AGENTE CONTROLLO BOLLE — confronta la bolla con lo scarico vero
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Le bolle arrivate via posta dicono «8 colli da Rossi». La banchina, per
+// conto suo, registra carichi/scarichi veri (Traffico → Carico/Scarico).
+// Questo agente li mette a confronto: se i numeri tornano è "ok", se non
+// tornano è una "differenza" da guardare, se sembra la stessa bolla arrivata
+// due volte è un "doppione", se non risulta ancora niente in banchina è "in
+// attesa" (non un problema — magari il collo deve ancora arrivare).
+//
+// ⚠️ Non blocca né chiude niente da solo: SEGNALA. Chi decide resta una
+// persona — coerente con la regola di tutti gli agenti di quest'area.
+
+/** Il nome ripulito, per il confronto (senza SRL/SPA/punteggiatura pesante). */
+function nomePulito(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\b(s\.?r\.?l\.?|s\.?p\.?a\.?|s\.?n\.?c\.?)\b/g, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .trim();
+}
+
+/** Quanto due nomi si assomigliano: contenimento in un senso o nell'altro. */
+function nomiSimili(a: string, b: string): boolean {
+  const pa = nomePulito(a);
+  const pb = nomePulito(b);
+  if (!pa || !pb) return false;
+  return pa.includes(pb) || pb.includes(pa);
+}
+
+export async function controllaBolle(azienda: string, massimo = 10): Promise<{ controllate: number }> {
+  const r = await getPool().query<{ id: string; bolla: DatiBolla; creato: string }>(
+    "select * from public.az_posta_bolle_da_controllare($1,$2)",
+    [azienda, massimo]
+  );
+  let controllate = 0;
+  for (const riga of r.rows) {
+    const d = riga.bolla;
+    const mittente = (d.mittente ?? "").trim();
+    if (!mittente) {
+      // Senza un nome non c'è nessun confronto onesto da fare.
+      await getPool().query("select public.az_posta_bolla_controllo_salva($1,$2,$3,$4)", [
+        azienda, Number(riga.id), "in_attesa", "Bolla senza mittente leggibile: nulla da confrontare.",
+      ]);
+      controllate++;
+      continue;
+    }
+
+    // ⚠️ Il doppione si guarda PRIMA di tutto: due bolle con lo stesso numero
+    // e mittente, arrivate in giorni diversi, sono quasi certamente la stessa
+    // cosa scannerizzata due volte.
+    //
+    // ⚠️ SICUREZZA/RLS: qui NON si fa una SELECT diretta sulla tabella — le
+    // tabelle dell'area azienda hanno RLS acceso e NESSUNA policy, quindi una
+    // SELECT diretta torna SEMPRE zero righe (bug vero, trovato dal collaudo:
+    // il controllo non trovava mai un doppione, nemmeno con la stessa bolla
+    // arrivata tre volte). Si passa dalla porta `az_posta_bolle_stesso_numero`.
+    // Il confronto sul mittente resta "sfumato" (nomiSimili) e non un'uguaglianza
+    // esatta: l'OCR può scrivere lo stesso nome con maiuscole/spazi diversi
+    // da una lettura all'altra.
+    if (d.numero) {
+      const altreBolle = await getPool().query<{ id: string; bolla: DatiBolla }>(
+        "select * from public.az_posta_bolle_stesso_numero($1,$2,$3)",
+        [azienda, Number(riga.id), d.numero]
+      );
+      const duplicata = altreBolle.rows.some((r) => nomiSimili(r.bolla.mittente ?? "", mittente));
+      if (duplicata) {
+        await getPool().query("select public.az_posta_bolla_controllo_salva($1,$2,$3,$4)", [
+          azienda, Number(riga.id), "doppione",
+          `Un'altra bolla con lo stesso numero (${d.numero}) e mittente è già registrata.`,
+        ]);
+        controllate++;
+        continue;
+      }
+    }
+
+    // La finestra di ricerca: 3 giorni prima e dopo la data della bolla (o
+    // di quando è arrivata, se la data non si è letta bene).
+    const base = d.data ? new Date(d.data).getTime() : new Date(riga.creato).getTime();
+    const TRE_GIORNI = 3 * 24 * 3600_000;
+    const mov = await getPool().query<{ id: string; tipo: string; colli: number | null; controparte: string; creato: string }>(
+      "select * from public.az_movimenti_finestra($1,$2,$3)",
+      [azienda, new Date(base - TRE_GIORNI).toISOString(), new Date(base + TRE_GIORNI).toISOString()]
+    );
+    const match = mov.rows.find((m) => nomiSimili(m.controparte, mittente));
+
+    if (!match) {
+      await getPool().query("select public.az_posta_bolla_controllo_salva($1,$2,$3,$4)", [
+        azienda, Number(riga.id), "in_attesa",
+        `Nessun carico/scarico di «${mittente}» trovato in banchina, nei giorni vicini. Potrebbe non essere ancora arrivata.`,
+      ]);
+    } else if (d.colli != null && match.colli != null && d.colli !== match.colli) {
+      await getPool().query("select public.az_posta_bolla_controllo_salva($1,$2,$3,$4)", [
+        azienda, Number(riga.id), "differenza",
+        `La bolla dice ${d.colli} colli, in banchina ne risultano ${match.colli} (${match.tipo} del ${new Date(match.creato).toLocaleDateString("it-IT")}).`,
+      ]);
+    } else {
+      await getPool().query("select public.az_posta_bolla_controllo_salva($1,$2,$3,$4)", [
+        azienda, Number(riga.id), "ok",
+        `Combacia con il ${match.tipo} in banchina del ${new Date(match.creato).toLocaleDateString("it-IT")}.`,
+      ]);
+    }
+    controllate++;
+  }
+  return { controllate };
 }

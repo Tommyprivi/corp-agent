@@ -282,6 +282,8 @@ export interface Bolla {
   bolla: DatiBolla | null;
   creato: string;
   kb: number;
+  controllo_stato: string; // da_controllare | ok | differenza | doppione | in_attesa
+  controllo_nota: string;
 }
 
 /**

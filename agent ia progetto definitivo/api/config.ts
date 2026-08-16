@@ -970,6 +970,13 @@ async function areaAzienda(
       } catch {
         /* la lettura non deve far fallire lo scarico: si riproverà */
       }
+      // E si controllano subito le bolle appena lette contro la banchina.
+      let controllo = { controllate: 0 };
+      try {
+        controllo = await posta.controllaBolle(chi.azienda, 10);
+      } catch {
+        /* niente: si riprova al giro dopo */
+      }
       // E si elaborano le mail: l'agente classifica e (se acceso) risponde.
       let risposte = { bozze: 0, mandate: 0, umane: 0 };
       try {
@@ -977,7 +984,7 @@ async function areaAzienda(
       } catch {
         /* niente: si riprova al giro dopo */
       }
-      return json({ ok: true, nuovi: esito.nuovi, ...bolle, ...risposte }, 200);
+      return json({ ok: true, nuovi: esito.nuovi, ...bolle, ...controllo, ...risposte }, 200);
     }
 
     case "posta-auto": {
@@ -1029,6 +1036,15 @@ async function areaAzienda(
       // Legge ADESSO le bolle in attesa (poche per volta).
       if (!titolare && chi.ruolo_vero !== "amministratore") return negato();
       const esito = await posta.leggiBolle(chi.azienda, 4);
+      return json({ ok: true, ...esito }, 200);
+    }
+
+    case "bolle-controlla": {
+      // L'agente Controllo bolle: confronta bolle lette con lo scarico vero
+      // in banchina, segnala differenze e doppioni. Non chiude né blocca
+      // niente — solo segnala, decide una persona.
+      if (!titolare && chi.ruolo_vero !== "amministratore" && chi.ruolo_vero !== "capo") return negato();
+      const esito = await posta.controllaBolle(chi.azienda, 10);
       return json({ ok: true, ...esito }, 200);
     }
 

@@ -209,11 +209,16 @@ export async function eseguiAttrezzo(
         });
         if (b.stato === "letto" && b.bolla) {
           const d = b.bolla;
+          const controllo =
+            b.controllo_stato === "differenza" ? ` ⚠️ DIFFERENZA: ${b.controllo_nota}` :
+            b.controllo_stato === "doppione" ? ` ⚠️ DOPPIONE: ${b.controllo_nota}` :
+            b.controllo_stato === "ok" ? " — combacia con la banchina" :
+            "";
           righe.push(
             `- ${quando} ${d.tipo ?? "documento"}${d.numero ? ` n. ${d.numero}` : ""}` +
             `${d.mittente ? ` da ${d.mittente}` : ""}${d.destinatario ? ` per ${d.destinatario}` : ""}` +
             `${d.colli != null ? `, ${d.colli} colli` : ""}${d.data ? ` (del ${d.data})` : ""}` +
-            `${d.note ? ` — ${d.note}` : ""}`
+            `${d.note ? ` — ${d.note}` : ""}${controllo}`
           );
         } else if (b.stato === "illeggibile") {
           righe.push(`- ${quando} «${b.nome}»: NON LEGGIBILE (${b.letto})`);

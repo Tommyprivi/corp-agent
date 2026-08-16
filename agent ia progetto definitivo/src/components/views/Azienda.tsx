@@ -2524,8 +2524,9 @@ function Banchina({
                   { nome: "Documento" },
                   { nome: "Da" },
                   { nome: "Colli", larghezza: "70px", destra: true },
-                  { nome: "Stato", larghezza: "110px" },
-                  { nome: "", larghezza: "70px", destra: true },
+                  { nome: "Stato", larghezza: "100px" },
+                  { nome: "Controllo", larghezza: "130px" },
+                  { nome: "", larghezza: "60px", destra: true },
                 ]}
               >
                 {bolle.map((b) => (
@@ -2548,6 +2549,24 @@ function Banchina({
                         <span title={b.letto} className="text-[#b3261e]">Non leggibile</span>
                       ) : (
                         <span className="text-[var(--text-secondary)]">Da leggere</span>
+                      )}
+                    </Cella>
+                    <Cella>
+                      {/* ⚠️ L'agente Controllo bolle: confronta con lo scarico
+                          vero in banchina e segnala — non chiude né blocca
+                          niente, decide sempre una persona. */}
+                      {b.stato !== "letto" ? (
+                        <span className="text-[var(--text-tertiary)]">—</span>
+                      ) : b.controllo_stato === "ok" ? (
+                        <span title={b.controllo_nota} className="text-[var(--positive)]">Combacia</span>
+                      ) : b.controllo_stato === "differenza" ? (
+                        <span title={b.controllo_nota} className="font-medium text-[#b3261e]">⚠ Differenza</span>
+                      ) : b.controllo_stato === "doppione" ? (
+                        <span title={b.controllo_nota} className="font-medium text-[#b3261e]">⚠ Doppione</span>
+                      ) : b.controllo_stato === "in_attesa" ? (
+                        <span title={b.controllo_nota} className="text-[var(--text-secondary)]">In attesa</span>
+                      ) : (
+                        <span className="text-[var(--text-tertiary)]">Da controllare</span>
                       )}
                     </Cella>
                     <Cella destra>

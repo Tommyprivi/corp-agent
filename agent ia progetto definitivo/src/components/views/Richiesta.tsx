@@ -889,6 +889,7 @@ const FUNZIONI: { gruppo: string; voci: { nome: string; cosa: string }[] }[] = [
       { nome: "Riepilogo serale", cosa: "Ogni sera un messaggio con com'è andata la giornata." },
       { nome: "Coda intelligente", cosa: "Se qualcosa si guasta, i messaggi si mettono in fila e partono dopo." },
       { nome: "Dati separati", cosa: "Ogni azienda ha la sua memoria: nessun'altra la vede, lo garantisce il database." },
+      { nome: "Il profilo è tuo", cosa: "Ogni persona mette il proprio nome e la propria foto, senza chiedere a nessuno." },
     ],
   },
 ];
@@ -1109,7 +1110,7 @@ function Servizi() {
                   className="font-dato mb-2 text-[10.5px] uppercase tracking-[0.1em]"
                   style={{ color: `rgb(${LUCE})` }}
                 >
-                  Il più richiesto
+                  Si parte da qui
                 </p>
               )}
               <p className="text-[15px] font-semibold text-white">{s.nome}</p>

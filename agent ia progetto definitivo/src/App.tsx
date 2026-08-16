@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import Landing from "./components/views/Landing";
 import Richiesta from "./components/views/Richiesta";
 import StatoRichiesta from "./components/views/StatoRichiesta";
 import Legale from "./components/views/Legale";
@@ -58,7 +57,6 @@ export default function App() {
   const { data: session, isPending } = authClient.useSession();
   const notify = useNotify();
 
-  const [wantsIn, setWantsIn] = useState(false);
   // ⚠️ Non c'è un router: l'indirizzo si legge una volta sola all'avvio. Basta
   // e avanza per tre pagine pubbliche che non navigano fra loro, e una
   // libreria di instradamento in più sarebbe peso sul primo caricamento —
@@ -149,9 +147,17 @@ export default function App() {
     // resto resta privato finché non c'è un cliente reale collegato.»
     //
     // ⚠️ La vecchia vetrina con «Prova CorpAgent» NON è stata cancellata: sta
-    // ancora in `Landing.tsx` e si raggiunge da `/vetrina`. Serve il giorno in
-    // cui il prodotto si apre da solo — e cancellare due mesi di lavoro per un
-    // cambio di strategia sarebbe stato uno spreco, non una pulizia.
+    // ancora in `Landing.tsx`, PRONTA per il giorno in cui il prodotto si apre
+    // da solo — cancellare due mesi di lavoro per un cambio di strategia
+    // sarebbe stato uno spreco, non una pulizia.
+    //
+    // ⚠️ CHIUSA IL 13 AGOSTO 2026: `/vetrina` non è più raggiungibile. Aveva
+    // gli effetti (orb/glow) già bocciati altrove nel sito, un flusso «prova
+    // gratis, iscriviti» in contraddizione con la porta unica di sopra, e
+    // dentro di sé i Termini/Privacy in bozza («non usarlo come contratto
+    // valido») raggiungibili da chiunque ci arrivasse. Serviva chiuderla, non
+    // solo non linkarla: chi conoscesse l'indirizzo ci entrava comunque.
+    // Per riaprirla: ripristinare il blocco `if` subito sotto.
     //
     // ⚠️ L'ingresso vero vive su `/entra`, e nessuna pagina pubblica lo linka.
     // Nascondere una porta però non è chiuderla: chi conoscesse l'indirizzo
@@ -166,12 +172,10 @@ export default function App() {
     if (percorso.startsWith("/richiesta/")) {
       return <StatoRichiesta chiave={percorso.slice("/richiesta/".length)} />;
     }
-    if (percorso === "/entra" || wantsIn) {
+    if (percorso === "/entra") {
       return <Auth onDone={setJustAnswered} />;
     }
-    if (percorso === "/vetrina") {
-      return <Landing onStart={() => setWantsIn(true)} />;
-    }
+    // `/vetrina` è chiusa (vedi commento sopra): niente più ritorna <Landing />.
     return <Richiesta />;
   }
 
