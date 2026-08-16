@@ -1068,6 +1068,21 @@ const LISTINO: {
     pieno: "149 € il primo anno",
     lancio: "79 € il primo anno",
   },
+  {
+    id: "diagnosi",
+    nome: "Diagnosi digitale",
+    cosa: "Un'ora insieme sul tuo lavoro di ogni giorno: cosa automatizzare per primo, e quanto tempo faresti risparmiare. Un documento scritto, per iniziare senza impegnarti su tutto subito.",
+    pieno: "79 € una tantum",
+    lancio: "39 € una tantum",
+  },
+  {
+    id: "tuttoincluso",
+    rate: true,
+    nome: "Tutto incluso",
+    cosa: "Agente, area aziendale, automazioni, WhatsApp e formazione: partiamo da zero e ti consegniamo l'azienda già automatizzata, un solo referente per tutto.",
+    pieno: "2.490 € avvio + 349 €/mese",
+    lancio: "1.490 € avvio + 199 €/mese",
+  },
 ];
 
 function Servizi() {
@@ -1315,6 +1330,7 @@ function OrdineModal({
               <span className="line-through opacity-60">{servizio.pieno}</span>{" "}
               <span style={{ color: `rgb(${LUCE})` }}>{servizio.lancio}</span> · offerta di lancio
             </p>
+            <p className="mt-2.5 text-[12.5px] leading-relaxed text-white/50">{servizio.cosa}</p>
             {servizio.rate && (
               <div className="mt-3.5 space-y-1.5">
                 {(
@@ -1342,6 +1358,25 @@ function OrdineModal({
                 ))}
               </div>
             )}
+            {/* Cosa succede dopo: un checkout si fida di più quando dice chiaro
+                i passi, non solo il modulo da compilare. */}
+            <div className="mt-4 space-y-1.5 border-t border-white/10 pt-4">
+              {[
+                "Compili i tre campi qui sotto — trenta secondi.",
+                "Ti scriviamo in giornata per confermare e attivare.",
+                "Paghi solo a quel punto: qui non gira nessuna carta.",
+              ].map((testo, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <span
+                    className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+                    style={{ background: `rgba(${LUCE}, 0.16)`, color: `rgb(${LUCE})` }}
+                  >
+                    {i + 1}
+                  </span>
+                  <p className="text-[12px] leading-snug text-white/55">{testo}</p>
+                </div>
+              ))}
+            </div>
             <div className="mt-4 space-y-3">
               <label className="block">
                 <span className="text-[12px] text-white/50">Nome dell'azienda</span>

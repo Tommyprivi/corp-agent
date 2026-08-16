@@ -119,6 +119,22 @@ export const LISTINO: Record<string, VoceListino> = Object.assign(
     pieno: "149 € il primo anno",
     centesimi: 7900,
   },
+  // ── Aggiunti il 13 Agosto (sera) — «servizi più utili con prezzi un po'
+  //    bassi e alti»: un ingresso a basso attrito (chi non vuole ancora
+  //    impegnarsi) e un pacchetto premium (chi vuole tutto e subito).
+  diagnosi: {
+    nome: "Diagnosi digitale",
+    lancio: "39 € una tantum",
+    pieno: "79 € una tantum",
+    centesimi: 3900,
+  },
+  tuttoincluso: {
+    rateabile: true,
+    nome: "Tutto incluso",
+    lancio: "1.490 € avvio + 199 €/mese",
+    pieno: "2.490 € avvio + 349 €/mese",
+    centesimi: 0,
+  },
   }
 );
 
