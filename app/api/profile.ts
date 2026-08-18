@@ -29,6 +29,7 @@ import {
   concludiAccesso,
   kindDalBiglietto,
   prova,
+  richiediPersonalizzato,
   ritornoPer,
   stacca,
   type ConnectorKind,
@@ -274,6 +275,41 @@ export default {
         });
 
         return json({ connected: c.kind, nome: esito.nome }, 200);
+      }
+
+      // ── Il connettore che non c'è in lista ────────────────────────────
+      // Nessuna prova possibile su un servizio che non conosciamo: si manda
+      // tutto a Tommaso (chiave, id, note) e lo collega lui a mano.
+      if (grezzo.includes("\"richiediConnettore\"")) {
+        let corpo: {
+          richiediConnettore?: {
+            servizio?: string;
+            chiave?: string;
+            identificativo?: string;
+            note?: string;
+          };
+        };
+        try {
+          corpo = JSON.parse(grezzo) as typeof corpo;
+        } catch {
+          return json({ error: "Richiesta non leggibile." }, 400);
+        }
+
+        const r = corpo.richiediConnettore;
+        const servizio = String(r?.servizio ?? "").trim();
+        const chiave = String(r?.chiave ?? "").trim();
+        if (servizio.length < 2 || !chiave) {
+          return json({ error: "Serve il nome del servizio e una chiave o un token." }, 400);
+        }
+
+        await richiediPersonalizzato(user.email, {
+          servizio,
+          chiave,
+          identificativo: String(r?.identificativo ?? "").trim(),
+          note: String(r?.note ?? "").trim(),
+        });
+
+        return json({ ok: true }, 200);
       }
 
       const secret = process.env.TURNSTILE_SECRET_KEY;

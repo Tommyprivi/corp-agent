@@ -1168,6 +1168,26 @@ export async function disconnectConnector(kind: ConnectorKind): Promise<void> {
   if (!r.ok) throw await readError(r);
 }
 
+/**
+ * Per il servizio che non è nella lista: non si prova (non sappiamo come
+ * parlare con un'API che non conosciamo), si manda tutto a chi lo collegherà
+ * a mano.
+ */
+export async function richiediConnettorePersonalizzato(input: {
+  servizio: string;
+  chiave: string;
+  identificativo?: string;
+  note?: string;
+}): Promise<void> {
+  const r = await fetch("/api/profile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ richiediConnettore: input }),
+  });
+  if (!r.ok) throw await readError(r);
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // LE RICHIESTE DELLE AZIENDE — Direzione finale, 10 Agosto 2026
 // ─────────────────────────────────────────────────────────────────────────

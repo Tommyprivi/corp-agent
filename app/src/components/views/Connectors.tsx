@@ -4,6 +4,7 @@ import {
   connectorLoginUrl,
   disconnectConnector,
   listConnectors,
+  richiediConnettorePersonalizzato,
   type Connessione,
   type ConnectorKind,
 } from "../../lib/api";
@@ -85,6 +86,34 @@ const CONNETTORI: Definizione[] = [
     come: "chiave",
     aiutoChiave: "Una chiave API di Google Cloud con «Distance Matrix» attivo.",
   },
+  {
+    kind: "stripe_shop",
+    nome: "Stripe",
+    cosaFa: "Controlla incassi, pagamenti e abbonamenti del tuo account.",
+    come: "chiave",
+    aiutoChiave: "Una chiave segreta (sk_...) da Stripe → Sviluppatori → Chiavi API.",
+  },
+  {
+    kind: "shopify",
+    nome: "Shopify",
+    cosaFa: "Ordini, prodotti e magazzino del tuo negozio online.",
+    come: "chiave",
+    extra: [
+      {
+        campo: "negozio",
+        etichetta: "Nome del negozio",
+        aiuto: "La parte prima di «.myshopify.com» nel tuo indirizzo Shopify.",
+      },
+    ],
+    aiutoChiave: "Un token di accesso Admin API, dalle app personalizzate del tuo negozio.",
+  },
+  {
+    kind: "notion",
+    nome: "Notion",
+    cosaFa: "Legge le pagine e i database che condividi con l'agente.",
+    come: "chiave",
+    aiutoChiave: "Il «Internal Integration Secret» della tua integrazione Notion.",
+  },
 ];
 
 export default function Connectors() {
@@ -161,7 +190,139 @@ export default function Connectors() {
             />
           ))}
         </div>
+
+        <RichiestaPersonalizzata />
       </div>
+    </div>
+  );
+}
+
+/**
+ * «Non trovo il mio servizio nella lista.»
+ *
+ * ⚠️ Qui non si prova niente: non sappiamo come parlare con un servizio che
+ * non conosciamo, quindi non si finge un collegamento. Si manda tutto —
+ * chiave, id, note — a chi lo collegherà a mano, e all'utente si dice la
+ * verità: «richiesta inviata», non «collegato».
+ */
+function RichiestaPersonalizzata() {
+  const notify = useNotify();
+  const [aperto, setAperto] = useState(false);
+  const [servizio, setServizio] = useState("");
+  const [chiave, setChiave] = useState("");
+  const [identificativo, setIdentificativo] = useState("");
+  const [note, setNote] = useState("");
+  const [attesa, setAttesa] = useState(false);
+  const [inviata, setInviata] = useState(false);
+
+  async function invia() {
+    if (!servizio.trim() || !chiave.trim()) return;
+    setAttesa(true);
+    try {
+      await richiediConnettorePersonalizzato({
+        servizio: servizio.trim(),
+        chiave: chiave.trim(),
+        identificativo: identificativo.trim(),
+        note: note.trim(),
+      });
+      setInviata(true);
+      notify.success("Richiesta inviata: ti contattiamo per attivarlo.");
+    } catch (error) {
+      notify.error(
+        "Non riesco a inviare la richiesta.",
+        error instanceof Error ? error.message : String(error)
+      );
+    } finally {
+      setAttesa(false);
+    }
+  }
+
+  return (
+    <div className="mt-6 rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-card)] p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <span className="text-[14.5px] font-medium text-[var(--text-primary)]">
+            Non trovi il tuo servizio?
+          </span>
+          <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
+            Scrivi quale servizio usi e la chiave o il token che hai: te lo colleghiamo
+            noi a mano, e ti ricontattiamo appena è pronto.
+          </p>
+        </div>
+        {!aperto && !inviata && (
+          <button
+            onClick={() => setAperto(true)}
+            className="shrink-0 rounded-lg border border-[var(--border)] px-3.5 py-1.5 text-[12.5px] font-medium text-[var(--text-primary)]"
+          >
+            Richiedi
+          </button>
+        )}
+      </div>
+
+      {inviata ? (
+        <p className="mt-3.5 border-t border-[var(--border)] pt-3.5 text-[13px] text-[var(--text-secondary)]">
+          Fatto: ti scriviamo o chiamiamo appena lo attiviamo.
+        </p>
+      ) : (
+        aperto && (
+          <div className="mt-3.5 space-y-2.5 border-t border-[var(--border)] pt-3.5">
+            <label className="block">
+              <span className="text-[12.5px] text-[var(--text-secondary)]">Che servizio è</span>
+              <input
+                value={servizio}
+                onChange={(e) => setServizio(e.target.value)}
+                placeholder="es. PandaDoc, Zoho, un gestionale interno…"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13.5px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[12.5px] text-[var(--text-secondary)]">Chiave o token API</span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={chiave}
+                onChange={(e) => setChiave(e.target.value)}
+                placeholder="incolla qui"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13.5px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[12.5px] text-[var(--text-secondary)]">ID o altro (facoltativo)</span>
+              <input
+                value={identificativo}
+                onChange={(e) => setIdentificativo(e.target.value)}
+                placeholder="es. l'identificativo dell'account o del negozio"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13.5px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[12.5px] text-[var(--text-secondary)]">Note (facoltativo)</span>
+              <input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="cosa vuoi che l'agente ci faccia"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13.5px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              />
+            </label>
+
+            <div className="flex gap-2 pt-0.5">
+              <button
+                onClick={() => void invia()}
+                disabled={attesa || !servizio.trim() || !chiave.trim()}
+                className="btn-grad rounded-lg px-3.5 py-1.5 text-[12.5px] font-medium disabled:opacity-50"
+              >
+                {attesa ? "Invio…" : "Invia richiesta"}
+              </button>
+              <button
+                onClick={() => setAperto(false)}
+                className="rounded-lg px-3 py-1.5 text-[12.5px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        )
+      )}
     </div>
   );
 }

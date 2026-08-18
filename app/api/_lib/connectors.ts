@@ -27,6 +27,7 @@
 
 import { withUser } from "./db.js";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { avvisoWhatsAppTesto } from "./richieste.js";
 
 export type ConnectorKind =
   | "fluida"
@@ -358,9 +359,122 @@ export async function prova(
       return { ok: true, nome: "Google Maps", meta: {} };
     }
 
+    if (kind === "stripe_shop") {
+      const r = await fetch("https://api.stripe.com/v1/balance", {
+        headers: { Authorization: `Bearer ${secret}` },
+        signal: AbortSignal.timeout(12_000),
+      });
+      const corpo = (await r.json()) as { error?: { message?: string } };
+      if (!r.ok) return { ok: false, perche: corpo.error?.message ?? `Stripe ha risposto ${r.status}.` };
+      return { ok: true, nome: "Stripe", meta: {} };
+    }
+
+    if (kind === "shopify") {
+      const negozio = String(meta.negozio ?? "").trim();
+      if (!negozio) return { ok: false, perche: "Serve anche il nome del negozio." };
+      const r = await fetch(`https://${negozio}.myshopify.com/admin/api/2024-01/shop.json`, {
+        headers: { "X-Shopify-Access-Token": secret, Accept: "application/json" },
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!r.ok) {
+        return {
+          ok: false,
+          perche: r.status === 401 ? "Shopify non riconosce questo token." : `Shopify ha risposto ${r.status}.`,
+        };
+      }
+      const corpo = (await r.json()) as { shop?: { name?: string } };
+      return { ok: true, nome: corpo.shop?.name ?? "Negozio Shopify", meta: { negozio } };
+    }
+
+    if (kind === "notion") {
+      const r = await fetch("https://api.notion.com/v1/users/me", {
+        headers: { Authorization: `Bearer ${secret}`, "Notion-Version": "2022-06-28" },
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!r.ok) {
+        return {
+          ok: false,
+          perche: r.status === 401 ? "Notion non riconosce questa chiave." : `Notion ha risposto ${r.status}.`,
+        };
+      }
+      const corpo = (await r.json()) as { name?: string };
+      return { ok: true, nome: corpo.name ?? "Notion", meta: {} };
+    }
+
     return { ok: false, perche: "Questo connettore non si collega con una chiave." };
   } catch (error) {
     return { ok: false, perche: `Non risponde: ${String(error).slice(0, 120)}` };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// IL CONNETTORE CHE NON C'È IN LISTA
+// ─────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ Non si può "provare" un servizio che non conosciamo: qui non c'è una
+// chiamata da fare per verificare la chiave, quindi non si finge un
+// collegamento che non esiste. Si manda tutto a Tommaso — chiave, id,
+// note — e lo collega lui a mano. Onesto: l'utente legge «richiesta
+// inviata», non «collegato».
+export interface RichiestaPersonalizzata {
+  servizio: string;
+  chiave: string;
+  identificativo: string;
+  note: string;
+}
+
+export async function richiediPersonalizzato(
+  emailUtente: string | null,
+  input: RichiestaPersonalizzata
+): Promise<void> {
+  const corpo = [
+    `Richiesta di connettore personalizzato da ${emailUtente ?? "un utente senza email nota"}.`,
+    "",
+    `Servizio: ${input.servizio}`,
+    `Chiave o token: ${input.chiave}`,
+    input.identificativo ? `ID o altro: ${input.identificativo}` : null,
+    input.note ? `Note: ${input.note}` : null,
+  ]
+    .filter((riga): riga is string => riga !== null)
+    .join("\n");
+
+  await Promise.allSettled([
+    avvisoPersonalizzatoEmail(input.servizio, corpo, emailUtente),
+    avvisoWhatsAppTesto(`Nuovo CONNETTORE richiesto: *${input.servizio}*\n${emailUtente ?? "email non nota"}`),
+  ]);
+}
+
+async function avvisoPersonalizzatoEmail(
+  servizio: string,
+  corpo: string,
+  emailUtente: string | null
+): Promise<void> {
+  const chiaveResend = process.env.RESEND_API_KEY;
+  if (!chiaveResend) return;
+  const destinatari = (process.env.AVVISI_A ?? "corpagent7@gmail.com")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  try {
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${chiaveResend}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM ?? "CorpAgent <onboarding@resend.dev>",
+        to: destinatari,
+        subject: `Connettore personalizzato richiesto: ${servizio}`,
+        text: corpo,
+        ...(emailUtente ? { reply_to: emailUtente } : {}),
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {
+    // Volutamente muto, come le altre email di servizio: la richiesta arriva
+    // comunque su WhatsApp.
   }
 }
 
