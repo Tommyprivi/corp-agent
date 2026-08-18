@@ -27,9 +27,17 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import { cifra, cifraByte, decifra, decifraByte } from "./connectors.js";
+import { cifra, cifraByte, decifra, decifraByte, firma, firmaValida } from "./connectors.js";
 import { cercaSpedizione } from "./azienda.js";
 import { getPool } from "./db.js";
+
+const GRAPH = "https://graph.microsoft.com/v1.0";
+const MS_AUTORIZZA = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
+const MS_GETTONE = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+// Mail.Send in più rispetto al connettore Microsoft personale (kind
+// "microsoft" in connectors.ts, che non manda posta): qui l'agente deve
+// poter rispondere e sollecitare, non solo leggere.
+const MS_PERMESSI = "offline_access User.Read Mail.Read Mail.Send";
 
 export interface ConfigPosta {
   host: string;
@@ -48,6 +56,21 @@ export interface StatoPosta {
   ultimo_controllo: string | null;
   ultimo_errore: string | null;
   scaricati: number;
+  metodo: "imap" | "oauth";
+}
+
+interface CredPosta {
+  host: string;
+  porta: number;
+  utente: string;
+  segreto_cifrato: string;
+  cartella: string;
+  attivo: boolean;
+  metodo: "imap" | "oauth";
+  oauth_access_cifrato: string | null;
+  oauth_refresh_cifrato: string | null;
+  oauth_scade: string | null;
+  oauth_delta_link: string | null;
 }
 
 export interface ArrivoPosta {
@@ -167,6 +190,215 @@ export async function provaPosta(c: ConfigPosta): Promise<{ messaggi: number }> 
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// OUTLOOK CON UN CLIC — Microsoft Graph invece della password per le app
+// ─────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ PERCHÉ IL BIGLIETTO PORTA L'IDENTITÀ DENTRO DI SÉ
+// ─────────────────────────────────────────────────────────────────────────
+// L'ingresso di Speed non è un cookie del browser: è un gettone che il
+// codice manda a mano in un'intestazione (`x-azienda-sessione`). Quel
+// gettone NON torna da solo quando Microsoft rimanda l'utente su
+// `/api/profile` con un `?code=...`. Quindi l'identità (quale azienda) deve
+// stare DENTRO il biglietto firmato, non in una sessione che nel frattempo
+// è sparita.
+
+function bigliettoPosta(azienda: string): string {
+  const corpo = `${azienda}|${Date.now()}`;
+  return `${Buffer.from(corpo).toString("base64url")}.${firma(corpo)}`;
+}
+
+/** null se il biglietto è scaduto (10 minuti) o manomesso. */
+function bigliettoPostaValido(stato: string): string | null {
+  try {
+    const [parte, sigillo] = stato.split(".");
+    const corpo = Buffer.from(parte, "base64url").toString("utf8");
+    if (!sigillo || !firmaValida(corpo, sigillo)) return null;
+    const [azienda, quando] = corpo.split("|");
+    if (!azienda || Date.now() - Number(quando) > 10 * 60 * 1000) return null;
+    return azienda;
+  } catch {
+    return null;
+  }
+}
+
+/** Un biglietto che comincia così è il ritorno dell'OAuth della posta, non
+ *  quello di un connettore personale (che passa da connectors.ts). */
+export function eBigliettoPosta(stato: string): boolean {
+  return bigliettoPostaValido(stato) !== null;
+}
+
+/** Dove mandare il titolare per dire «autorizzo» a Microsoft. */
+export function avviaAccessoPosta(azienda: string, ritorno: string): { url: string } | { errore: string } {
+  const clientId = process.env.MS365_CLIENT_ID;
+  if (!clientId) {
+    return { errore: "CorpAgent non è ancora registrata presso Microsoft per questo." };
+  }
+  const p = new URLSearchParams({
+    client_id: clientId,
+    response_type: "code",
+    redirect_uri: ritorno,
+    response_mode: "query",
+    scope: MS_PERMESSI,
+    state: bigliettoPosta(azienda),
+  });
+  return { url: `${MS_AUTORIZZA}?${p.toString()}` };
+}
+
+/** Il ritorno da Microsoft: scambia il codice, legge l'indirizzo vero, salva. */
+export async function concludiAccessoPosta(
+  codice: string,
+  stato: string,
+  ritorno: string
+): Promise<{ ok: true; azienda: string; utente: string } | { ok: false; perche: string }> {
+  const azienda = bigliettoPostaValido(stato);
+  if (!azienda) return { ok: false, perche: "La richiesta è scaduta o non valida. Riprova a collegare." };
+
+  const clientId = process.env.MS365_CLIENT_ID;
+  const clientSecret = process.env.MS365_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return { ok: false, perche: "Connettore non configurato." };
+
+  try {
+    const r = await fetch(MS_GETTONE, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code: codice,
+        grant_type: "authorization_code",
+        redirect_uri: ritorno,
+      }).toString(),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const corpo = (await r.json()) as {
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+      error_description?: string;
+    };
+    if (!r.ok || !corpo.access_token) {
+      return { ok: false, perche: corpo.error_description ?? `Microsoft ha risposto ${r.status}.` };
+    }
+
+    const chiSono = await fetch(`${GRAPH}/me?$select=mail,userPrincipalName`, {
+      headers: { Authorization: `Bearer ${corpo.access_token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const persona = (await chiSono.json().catch(() => ({}))) as {
+      mail?: string;
+      userPrincipalName?: string;
+    };
+    const utente = persona.mail || persona.userPrincipalName || "";
+    if (!chiSono.ok || !utente) {
+      return { ok: false, perche: "Microsoft non ha detto quale indirizzo è." };
+    }
+
+    const scade = new Date(Date.now() + (corpo.expires_in ?? 3600) * 1000);
+    await getPool().query("select public.az_posta_salva_oauth($1,$2,$3,$4,$5)", [
+      azienda,
+      utente,
+      cifra(corpo.access_token),
+      corpo.refresh_token ? cifra(corpo.refresh_token) : null,
+      scade,
+    ]);
+
+    return { ok: true, azienda, utente };
+  } catch (error) {
+    return { ok: false, perche: `Non risponde: ${String(error).slice(0, 160)}` };
+  }
+}
+
+/**
+ * Un gettone d'accesso valido, rinnovando con quello di rinnovo se serve.
+ * ⚠️ Non lancia mai: torna `null` se non c'è più modo di parlare con
+ * Microsoft, e chi chiama decide come dirlo (segna il guasto, o rinuncia).
+ */
+async function gettoneValidoPosta(azienda: string, c: CredPosta): Promise<string | null> {
+  const scade = c.oauth_scade ? new Date(c.oauth_scade).getTime() : 0;
+  if (scade - Date.now() > 60_000) {
+    const attuale = decifra(c.oauth_access_cifrato);
+    if (attuale) return attuale;
+  }
+
+  const refresh = decifra(c.oauth_refresh_cifrato);
+  const clientId = process.env.MS365_CLIENT_ID;
+  const clientSecret = process.env.MS365_CLIENT_SECRET;
+  if (!refresh || !clientId || !clientSecret) return null;
+
+  try {
+    const r = await fetch(MS_GETTONE, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refresh,
+        grant_type: "refresh_token",
+      }).toString(),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const corpo = (await r.json()) as {
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+    };
+    if (!r.ok || !corpo.access_token) return null;
+
+    const scadeNuovo = new Date(Date.now() + (corpo.expires_in ?? 3600) * 1000);
+    await getPool().query("select public.az_posta_oauth_aggiorna($1,$2,$3,$4)", [
+      azienda,
+      cifra(corpo.access_token),
+      corpo.refresh_token ? cifra(corpo.refresh_token) : null,
+      scadeNuovo,
+    ]);
+    return corpo.access_token;
+  } catch {
+    return null;
+  }
+}
+
+/** Manda una risposta o un promemoria con l'account Outlook collegato, senza SMTP. */
+async function mandaMailGraph(
+  token: string,
+  a: { destinatario: string; oggetto: string; corpo: string }
+): Promise<void> {
+  const r = await fetch(`${GRAPH}/me/sendMail`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: {
+        subject: a.oggetto,
+        body: { contentType: "Text", content: a.corpo },
+        toRecipients: [{ emailAddress: { address: a.destinatario } }],
+      },
+      saveToSentItems: true,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!r.ok) throw new Error(`Microsoft Graph ha risposto ${r.status} all'invio.`);
+}
+
+/**
+ * L'invio, con la strada giusta a seconda di come è collegata la casella:
+ * password (SMTP) o l'accesso Microsoft (Graph). Chi chiama non deve saperlo.
+ */
+async function inviaMail(
+  azienda: string,
+  c: CredPosta,
+  a: { destinatario: string; oggetto: string; corpo: string }
+): Promise<void> {
+  if (c.metodo === "oauth") {
+    const token = await gettoneValidoPosta(azienda, c);
+    if (!token) throw new Error("Outlook non è più autorizzato: ricollega la casella.");
+    await mandaMailGraph(token, a);
+    return;
+  }
+  const password = decifra(c.segreto_cifrato);
+  if (!password) throw new Error("Credenziali illeggibili: ricollega la casella.");
+  await mandaMail({ host: c.host, utente: c.utente, password }, a);
+}
+
 /** Prova e POI salva (cifrando la password). L'ordine è la regola n. 1. */
 export async function salvaPosta(azienda: string, c: ConfigPosta): Promise<{ messaggi: number }> {
   const esito = await provaPosta(c);
@@ -198,6 +430,168 @@ export async function arriviPosta(azienda: string, limite = 20): Promise<ArrivoP
   return r.rows;
 }
 
+interface MessaggioGraph {
+  id: string;
+  subject?: string;
+  from?: { emailAddress?: { address?: string; name?: string } };
+  receivedDateTime?: string;
+  internetMessageId?: string;
+  hasAttachments?: boolean;
+  body?: { content?: string };
+  "@removed"?: unknown;
+}
+
+interface AllegatoGraph {
+  "@odata.type"?: string;
+  name?: string;
+  contentType?: string;
+  contentBytes?: string;
+  size?: number;
+}
+
+/**
+ * Lo stesso di `scaricaPosta`, ma per Outlook collegato con Microsoft Graph
+ * invece di IMAP. Stessa regola di fondo: NON si usa "letto/non letto" come
+ * segnalibro (un titolare che apre la mail in Outlook prima del giro serale
+ * la farebbe sparire in silenzio) — si usa la query "delta" di Graph, che è
+ * l'equivalente dell'UID IMAP: un cursore opaco che Microsoft stessa fa
+ * avanzare, indipendente dalle spunte di lettura.
+ */
+async function scaricaPostaGraph(
+  azienda: string,
+  cred: CredPosta
+): Promise<{ nuovi: number; errore: string | null }> {
+  const token = await gettoneValidoPosta(azienda, cred);
+  if (!token) {
+    const errore = "Outlook non è più autorizzato: ricollega la casella.";
+    await getPool().query("select public.az_posta_esito($1,$2,$3)", [azienda, errore, 0]);
+    return { nuovi: 0, errore };
+  }
+
+  let nuovi = 0;
+  try {
+    // Senza segnalibro salvato si parte con una query "delta" nuova sulla
+    // cartella; con un segnalibro si richiama TALE E QUALE il link che
+    // Microsoft aveva dato, che porta già dentro il cursore.
+    let indirizzo =
+      cred.oauth_delta_link ||
+      `${GRAPH}/me/mailFolders/inbox/messages/delta?$select=subject,from,receivedDateTime,internetMessageId,hasAttachments,body`;
+
+    let ultimoLink: string | null = null;
+    let pagine = 0;
+    // Poche pagine per passata: il resto arriva al giro dopo, come per IMAP
+    // (MASSIMO_PER_PASSATA righe, non messaggi — Graph pagina da solo).
+    while (indirizzo && pagine < 3 && nuovi < MASSIMO_PER_PASSATA) {
+      pagine++;
+      const r = await fetch(indirizzo, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // Il testo semplice, non l'HTML: è quello che il resto della
+          // pipeline (classificazione, OCR) si aspetta di leggere.
+          Prefer: 'outlook.body-content-type="text"',
+        },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (r.status === 410) {
+        // Il segnalibro è scaduto (troppo vecchio, o cassetta cambiata):
+        // si ricomincia da una query delta nuova, come l'UIDVALIDITY di IMAP.
+        await getPool().query("select public.az_posta_delta_salva($1,$2)", [azienda, null]);
+        const errore = "Il collegamento con Outlook si è azzerato: riprova a controllare.";
+        await getPool().query("select public.az_posta_esito($1,$2,$3)", [azienda, errore, nuovi]);
+        return { nuovi, errore };
+      }
+      if (!r.ok) throw new Error(`Microsoft Graph ha risposto ${r.status}.`);
+
+      const corpo = (await r.json()) as {
+        value?: MessaggioGraph[];
+        "@odata.nextLink"?: string;
+        "@odata.deltaLink"?: string;
+      };
+
+      for (const m of corpo.value ?? []) {
+        if (m["@removed"]) continue; // cancellato, non ci interessa
+        const mittente = m.from?.emailAddress?.address
+          ? `${m.from.emailAddress.name ?? ""} <${m.from.emailAddress.address}>`.trim()
+          : "";
+        const msgid =
+          m.internetMessageId ||
+          `senza-id:${m.receivedDateTime ?? ""}:${(m.subject ?? "").slice(0, 80)}`;
+
+        let allegatiNomi: string[] = [];
+        let allegatiBuoni: { filename: string; contentType: string; content: Buffer }[] = [];
+        if (m.hasAttachments) {
+          try {
+            const ra = await fetch(`${GRAPH}/me/messages/${m.id}/attachments`, {
+              headers: { Authorization: `Bearer ${token}` },
+              signal: AbortSignal.timeout(20_000),
+            });
+            if (ra.ok) {
+              const ac = (await ra.json()) as { value?: AllegatoGraph[] };
+              for (const a of (ac.value ?? []).slice(0, 5)) {
+                if (a["@odata.type"] !== "#microsoft.graph.fileAttachment" || !a.contentBytes) continue;
+                const tipo = (a.contentType || "").toLowerCase();
+                if (!TIPI_BOLLA.has(tipo)) continue;
+                const bytes = Buffer.from(a.contentBytes, "base64");
+                if (bytes.length > 4_000_000) continue;
+                allegatiBuoni.push({ filename: a.name || "documento", contentType: tipo, content: bytes });
+              }
+              allegatiNomi = allegatiBuoni.map((a) => a.filename);
+            }
+          } catch {
+            // Un allegato che non si scarica non deve far perdere il messaggio:
+            // entra senza allegati, come una mail illeggibile in IMAP.
+          }
+        }
+
+        const inserito = await getPool().query<{ az_posta_arrivo: string | null }>(
+          "select public.az_posta_arrivo($1,$2,$3,$4,$5,$6,$7)",
+          [
+            azienda,
+            msgid.slice(0, 500),
+            m.receivedDateTime ?? null,
+            mittente,
+            m.subject ?? "",
+            allegatiNomi,
+            (m.body?.content ?? "").trim(),
+          ]
+        );
+        const arrivoId = inserito.rows[0]?.az_posta_arrivo;
+        if (arrivoId != null) {
+          nuovi++;
+          for (const a of allegatiBuoni) {
+            await getPool().query("select public.az_posta_allegato_salva($1,$2,$3,$4,$5)", [
+              azienda,
+              arrivoId,
+              a.filename,
+              a.contentType,
+              cifraByte(a.content),
+            ]);
+          }
+        }
+      }
+
+      if (corpo["@odata.deltaLink"]) {
+        ultimoLink = corpo["@odata.deltaLink"];
+        indirizzo = "";
+      } else if (corpo["@odata.nextLink"]) {
+        indirizzo = corpo["@odata.nextLink"];
+      } else {
+        indirizzo = "";
+      }
+    }
+
+    if (ultimoLink) {
+      await getPool().query("select public.az_posta_delta_salva($1,$2)", [azienda, ultimoLink]);
+    }
+    await getPool().query("select public.az_posta_esito($1,$2,$3)", [azienda, null, nuovi]);
+    return { nuovi, errore: null };
+  } catch (e) {
+    const errore = e instanceof Error ? e.message : "Outlook non risponde.";
+    await getPool().query("select public.az_posta_esito($1,$2,$3)", [azienda, errore, nuovi]).catch(() => {});
+    return { nuovi, errore };
+  }
+}
+
 /**
  * Scarica i messaggi nuovi e li porta dentro: mittente, oggetto, corpo e
  * NOMI degli allegati (il contenuto degli allegati — l'OCR delle bolle — è il
@@ -213,19 +607,15 @@ export async function arriviPosta(azienda: string, limite = 20): Promise<ArrivoP
  * IMAP) e si riparte da zero — i doppioni li ferma comunque il msgid unico.
  */
 export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; errore: string | null }> {
-  const r = await getPool().query<{
-    host: string;
-    porta: number;
-    utente: string;
-    segreto_cifrato: string;
-    cartella: string;
-    attivo: boolean;
-    ultimo_uid: string;
-    uid_validita: string;
-  }>("select * from public.az_posta_credenziali($1)", [azienda]);
+  const r = await getPool().query<CredPosta & { ultimo_uid: string; uid_validita: string }>(
+    "select * from public.az_posta_credenziali($1)",
+    [azienda]
+  );
   const cred = r.rows[0];
   if (!cred) return { nuovi: 0, errore: "Nessuna casella collegata." };
   if (!cred.attivo) return { nuovi: 0, errore: "Collegamento spento." };
+
+  if (cred.metodo === "oauth") return scaricaPostaGraph(azienda, cred);
 
   const password = decifra(cred.segreto_cifrato);
   if (!password) {
@@ -878,19 +1268,13 @@ export async function elaboraPosta(azienda: string, massimo = 5): Promise<{ bozz
   const documenti = await documentiInChiaro(azienda);
   const categorie = new Set(stato.auto_categorie ?? []);
 
-  // Le credenziali: l'utente serve SEMPRE (per non rispondere a sé stessi); la
-  // password solo se si manda davvero (modalità acceso).
-  const cr = await getPool().query<{ host: string; utente: string; segreto_cifrato: string }>(
-    "select * from public.az_posta_credenziali($1)",
-    [azienda]
-  );
-  const c = cr.rows[0];
+  // Le credenziali: l'utente serve SEMPRE (per non rispondere a sé stessi); si
+  // manda davvero solo in modalità acceso — la strada (SMTP o Graph) la
+  // sceglie `inviaMail` guardando `metodo`.
+  const cr = await getPool().query<CredPosta>("select * from public.az_posta_credenziali($1)", [azienda]);
+  const c = cr.rows[0] ?? null;
   const nostro = c?.utente ?? "";
-  let cred: { host: string; utente: string; password: string } | null = null;
-  if (stato.auto_modo === "acceso" && c) {
-    const pw = decifra(c.segreto_cifrato);
-    if (pw) cred = { host: c.host, utente: c.utente, password: pw };
-  }
+  const cred = stato.auto_modo === "acceso" ? c : null;
 
   let bozze = 0, mandate = 0, umane = 0;
   for (const mail of nuove.rows) {
@@ -915,7 +1299,7 @@ export async function elaboraPosta(azienda: string, massimo = 5): Promise<{ bozz
     const puoMandare = stato.auto_modo === "acceso" && categorie.has(esito.classe) && cred;
     if (puoMandare && cred) {
       try {
-        await mandaMail(cred, {
+        await inviaMail(azienda, cred, {
           destinatario: mail.mittente,
           oggetto: mail.oggetto.toLowerCase().startsWith("re:") ? mail.oggetto : `Re: ${mail.oggetto}`,
           corpo: esito.bozza,
@@ -978,18 +1362,15 @@ export async function mandaBozza(azienda: string, id: number): Promise<{ ok: boo
   if (b.risposta_stato === "mandata") return { ok: false, errore: "Già mandata." };
   const testo = b.bozza ? decifra(b.bozza) : null;
   if (!testo) return { ok: false, errore: "Bozza vuota o illeggibile." };
-  const cr = await getPool().query<{ host: string; utente: string; segreto_cifrato: string }>(
-    "select * from public.az_posta_credenziali($1)",
-    [azienda]
-  );
+  const cr = await getPool().query<CredPosta>("select * from public.az_posta_credenziali($1)", [azienda]);
   const c = cr.rows[0];
-  const pw = c ? decifra(c.segreto_cifrato) : null;
-  if (!c || !pw) return { ok: false, errore: "Casella non collegata." };
+  if (!c) return { ok: false, errore: "Casella non collegata." };
   try {
-    await mandaMail(
-      { host: c.host, utente: c.utente, password: pw },
-      { destinatario: b.mittente, oggetto: b.oggetto.toLowerCase().startsWith("re:") ? b.oggetto : `Re: ${b.oggetto}`, corpo: testo }
-    );
+    await inviaMail(azienda, c, {
+      destinatario: b.mittente,
+      oggetto: b.oggetto.toLowerCase().startsWith("re:") ? b.oggetto : `Re: ${b.oggetto}`,
+      corpo: testo,
+    });
     await getPool().query("select public.az_posta_mandata($1,$2)", [azienda, id]);
     return { ok: true, errore: null };
   } catch (e) {
@@ -1065,12 +1446,10 @@ export async function elaboraSolleciti(azienda: string, adesso: number): Promise
   const clienti = cli.rows.filter((c) => c.email && c.email.includes("@"));
 
   // Le credenziali per mandare, solo se acceso.
-  let cred: { host: string; utente: string; password: string } | null = null;
+  let cred: CredPosta | null = null;
   if (modo === "acceso") {
-    const cr = await getPool().query<{ host: string; utente: string; segreto_cifrato: string }>("select * from public.az_posta_credenziali($1)", [azienda]);
-    const c = cr.rows[0];
-    const pw = c ? decifra(c.segreto_cifrato) : null;
-    if (c && pw) cred = { host: c.host, utente: c.utente, password: pw };
+    const cr = await getPool().query<CredPosta>("select * from public.az_posta_credenziali($1)", [azienda]);
+    cred = cr.rows[0] ?? null;
   }
 
   const DODICI_ORE = 12 * 3600_000;
@@ -1097,7 +1476,7 @@ export async function elaboraSolleciti(azienda: string, adesso: number): Promise
 
     if (modo === "acceso" && cred) {
       try {
-        await mandaMail(cred, { destinatario: match.email, oggetto: "Promemoria ritiro — Speed Trasporti", corpo: testo });
+        await inviaMail(azienda, cred, { destinatario: match.email, oggetto: "Promemoria ritiro — Speed Trasporti", corpo: testo });
         await getPool().query("select public.az_sollecito_salva($1,$2,$3,$4,$5,$6,$7)", [azienda, Number(r.id), r.controparte, r.previsto, match.email, cifra(testo), "mandato"]);
         mandati++;
       } catch {
@@ -1121,12 +1500,11 @@ export async function mandaSollecito(azienda: string, id: number): Promise<{ ok:
   if (!s.destinatario || !s.destinatario.includes("@")) return { ok: false, errore: "Nessuna email per questo cliente: ricordaglielo a mano." };
   const testo = s.testo ? decifra(s.testo) : null;
   if (!testo) return { ok: false, errore: "Promemoria illeggibile." };
-  const cr = await getPool().query<{ host: string; utente: string; segreto_cifrato: string }>("select * from public.az_posta_credenziali($1)", [azienda]);
+  const cr = await getPool().query<CredPosta>("select * from public.az_posta_credenziali($1)", [azienda]);
   const c = cr.rows[0];
-  const pw = c ? decifra(c.segreto_cifrato) : null;
-  if (!c || !pw) return { ok: false, errore: "Casella non collegata." };
+  if (!c) return { ok: false, errore: "Casella non collegata." };
   try {
-    await mandaMail({ host: c.host, utente: c.utente, password: pw }, { destinatario: s.destinatario, oggetto: "Promemoria ritiro — Speed Trasporti", corpo: testo });
+    await inviaMail(azienda, c, { destinatario: s.destinatario, oggetto: "Promemoria ritiro — Speed Trasporti", corpo: testo });
     await getPool().query("select public.az_sollecito_mandato($1,$2)", [azienda, id]);
     return { ok: true, errore: null };
   } catch (e) {

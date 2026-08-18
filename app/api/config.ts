@@ -603,6 +603,15 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       return json({ stato, arrivi }, 200);
     }
 
+    case "posta-oauth-inizio": {
+      // Come posta-salva: solo il titolare, perché sta autorizzando CorpAgent
+      // a leggere e mandare posta a nome della casella dell'azienda.
+      if (!titolare) return soloTitolare();
+      const base = process.env.BETTER_AUTH_URL?.replace(/\/$/, "") || new URL(request.url).origin;
+      const esito = posta.avviaAccessoPosta(chi.azienda, `${base}/api/profile`);
+      return "url" in esito ? json(esito, 200) : json({ error: esito.errore }, 400);
+    }
+
     case "cerca": {
       const q = (url.searchParams.get("q") ?? "").trim();
       if (q.length < 2) return json({ risultati: [] }, 200);

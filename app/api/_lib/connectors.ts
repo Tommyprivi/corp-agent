@@ -26,7 +26,7 @@
  */
 
 import { withUser } from "./db.js";
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { avvisoWhatsAppTesto } from "./richieste.js";
 
 export type ConnectorKind =
@@ -116,6 +116,24 @@ export function decifra(pacchetto: string | null): string | null {
     // la cosa giusta è comportarsi come se il connettore non fosse collegato.
     return null;
   }
+}
+
+/**
+ * Firma un testo (HMAC-SHA256, stessa chiave della cassaforte): serve ai
+ * biglietti che devono attraversare un giro OAuth senza una sessione viva a
+ * cui appoggiarsi — non c'è un cookie che torni indietro, quindi l'identità
+ * (quale azienda, per esempio) deve stare DENTRO il biglietto, ed essere
+ * a prova di manomissione.
+ */
+export function firma(testo: string): string {
+  return createHmac("sha256", chiaveDiCifratura()).update(testo).digest("base64url");
+}
+
+/** Confronto a tempo costante: niente shortcut che riveli quanto è vicina la firma giusta. */
+export function firmaValida(testo: string, attesa: string): boolean {
+  const vera = Buffer.from(firma(testo));
+  const data = Buffer.from(attesa);
+  return vera.length === data.length && timingSafeEqual(vera, data);
 }
 
 function chiaveDiCifratura(): Buffer {

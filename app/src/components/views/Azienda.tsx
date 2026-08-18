@@ -4551,6 +4551,10 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
   const [cartella, setCartella] = useState("INBOX");
   const [inCorso, setInCorso] = useState(false);
   const [esito, setEsito] = useState<{ tipo: "ok" | "errore"; testo: string } | null>(null);
+  // Per Outlook, la strada semplice è l'accesso Microsoft: questo apre il
+  // vecchio modulo (password per le app) solo per chi lo preferisce ancora.
+  const [usaPasswordApp, setUsaPasswordApp] = useState(false);
+  const [avvioMicrosoft, setAvvioMicrosoft] = useState(false);
 
   const carica = useCallback(async () => {
     try {
@@ -4577,6 +4581,35 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
   useEffect(() => {
     void carica();
   }, [carica]);
+
+  // Il ritorno da Microsoft dopo «autorizzo»: la pagina si ricarica su
+  // /speed?postaOAuth=ok|annullato|<perché>, mai su una schermata di codice.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const esitoOAuth = p.get("postaOAuth");
+    if (!esitoOAuth) return;
+    if (esitoOAuth === "ok") setEsito({ tipo: "ok", testo: "Outlook è collegato." });
+    else if (esitoOAuth === "annullato") setEsito({ tipo: "errore", testo: "Hai annullato l'accesso a Microsoft." });
+    else setEsito({ tipo: "errore", testo: `Outlook non si è collegato: ${esitoOAuth}` });
+    window.history.replaceState({}, "", window.location.pathname);
+    void carica();
+  }, [carica]);
+
+  async function accediConMicrosoft() {
+    setAvvioMicrosoft(true);
+    setEsito(null);
+    try {
+      const r = await manda<{ url?: string; error?: string }>({ az: "posta-oauth-inizio" });
+      if (!r.url) throw new Error(r.error ?? "Accesso non disponibile.");
+      // Stessa scheda, non una nuova: al ritorno serve ripartire da questa
+      // pagina, non lasciarla ferma su uno stato vecchio in un'altra.
+      window.location.href = r.url;
+    } catch (e) {
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setAvvioMicrosoft(false);
+      setEsito({ tipo: "errore", testo: e instanceof Error ? e.message : "Non riesco ad aprire l'accesso a Microsoft." });
+    }
+  }
 
   async function collega() {
     setInCorso(true);
@@ -4740,6 +4773,7 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
                     setPorta("993");
                     setCartella("INBOX");
                     setEsito(null);
+                    setUsaPasswordApp(false);
                   }}
                   className={`cursor-pointer rounded-md border px-3.5 py-2 text-[13px] font-medium transition-colors ${
                     scelto
@@ -4753,12 +4787,57 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
             })}
           </div>
 
-          {provider && (
+          {provider === "outlook" && !usaPasswordApp ? (
+            <div className="rounded-md border-l-2 bg-[var(--fill-quiet)] px-3.5 py-3 text-[12.5px] leading-relaxed" style={{ borderColor: "var(--accent)" }}>
+              <p>
+                Un clic, senza password da generare: autorizzi CorpAgent a leggere e
+                rispondere dalla casella Outlook, e basta.
+              </p>
+              <button
+                onClick={() => void accediConMicrosoft()}
+                disabled={avvioMicrosoft}
+                className="btn-grad mt-3 cursor-pointer rounded-md px-4 py-2 text-[13px] font-medium disabled:opacity-50"
+              >
+                {avvioMicrosoft ? "Apro…" : "Accedi con Microsoft"}
+              </button>
+              <div className="mt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setUsaPasswordApp(true)}
+                  className="cursor-pointer text-[12px] text-[var(--text-secondary)] underline underline-offset-2 hover:text-[var(--text-primary)]"
+                >
+                  preferisco ancora la password per le app
+                </button>
+                {stato && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModifica(false);
+                      setEsito(null);
+                    }}
+                    className="cursor-pointer text-[12px] text-[var(--text-secondary)] underline underline-offset-2 hover:text-[var(--text-primary)]"
+                  >
+                    annulla
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : provider ? (
             <>
               {/* La guida del fornitore scelto */}
               <p className="mb-3 rounded-md border-l-2 bg-[var(--fill-quiet)] px-3.5 py-2.5 text-[12.5px] leading-relaxed" style={{ borderColor: "var(--accent)" }}>
                 {PROVIDER_POSTA.find((p) => p.id === provider)?.aiuto}
               </p>
+
+              {provider === "outlook" && (
+                <button
+                  type="button"
+                  onClick={() => setUsaPasswordApp(false)}
+                  className="mb-3 block cursor-pointer text-[12px] text-[var(--text-secondary)] underline underline-offset-2 hover:text-[var(--text-primary)]"
+                >
+                  torna all'accesso con un clic
+                </button>
+              )}
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block sm:col-span-2">
@@ -4794,7 +4873,8 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
                 non esce mai da qui. Se qualcosa è storto, te lo diciamo subito.
               </p>
             </>
-          )}
+          ) : null}
+          {!(provider === "outlook" && !usaPasswordApp) && (
           <div className="mt-3 flex items-center gap-2">
             <button
               onClick={() => void collega()}
@@ -4815,6 +4895,7 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
               </button>
             )}
           </div>
+          )}
         </div>
       )}
 

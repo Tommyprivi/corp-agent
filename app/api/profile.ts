@@ -37,6 +37,7 @@ import {
   type ConnectorKind,
 } from "./_lib/connectors.js";
 import { ensureProfile, getPool, withUser } from "./_lib/db.js";
+import { concludiAccessoPosta, eBigliettoPosta } from "./_lib/posta.js";
 
 const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
@@ -86,6 +87,33 @@ interface PatchBody {
 
 export default {
   async fetch(request: Request): Promise<Response> {
+    // ── Il ritorno dell'OAuth della posta di un'azienda (Outlook con un
+    //    clic) — VIENE PRIMA di chiunque altro, apposta ────────────────────
+    // Chi torna qui non ha una sessione Better Auth: l'ingresso di un'azienda
+    // è un gettone mandato a mano in un'intestazione, che non torna da solo
+    // su un redirect del browser. L'identità (quale azienda) sta DENTRO il
+    // biglietto firmato, letto da `eBigliettoPosta`/`concludiAccessoPosta` —
+    // per questo il controllo passa PRIMA del gate «devi entrare prima».
+    {
+      const urlPosta = new URL(request.url);
+      const statoPosta = urlPosta.searchParams.get("state") ?? "";
+      if (request.method === "GET" && statoPosta && eBigliettoPosta(statoPosta)) {
+        const basePosta = origine(request);
+        const codicePosta = urlPosta.searchParams.get("code");
+        const rifiutoPosta = urlPosta.searchParams.get("error");
+        const tornaPosta = (esito: string) =>
+          new Response(null, {
+            status: 302,
+            headers: { Location: `${basePosta}/speed?postaOAuth=${encodeURIComponent(esito)}` },
+          });
+        if (rifiutoPosta || !codicePosta) {
+          return tornaPosta(rifiutoPosta === "access_denied" ? "annullato" : "errore");
+        }
+        const esito = await concludiAccessoPosta(codicePosta, statoPosta, `${basePosta}/api/profile`);
+        return tornaPosta(esito.ok ? "ok" : esito.perche);
+      }
+    }
+
     let user: { id: string; email: string | null } | null;
     try {
       user = await currentUser(request);
