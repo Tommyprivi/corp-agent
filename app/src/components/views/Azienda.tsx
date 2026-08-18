@@ -4152,7 +4152,7 @@ function PannelloConnettori({ seScaduta }: { seScaduta: (e: unknown) => void }) 
   return (
     <Sez
       titolo="Altri collegamenti"
-      sotto="Un servizio che usi già e non vedi qui sopra? Zoho, PandaDoc, un gestionale interno: dicci quale e con che chiave, lo collega chi lavora dietro."
+      sotto="Un servizio che usi già e non vedi qui sopra — la tua banca, il gestionale, il CRM, la fattura elettronica, un altro programma qualsiasi: dicci quale e con che chiave, lo collega chi lavora dietro."
     >
       {esito && (
         <p
@@ -4176,7 +4176,7 @@ function PannelloConnettori({ seScaduta }: { seScaduta: (e: unknown) => void }) 
             <input
               value={servizio}
               onChange={(e) => setServizio(e.target.value)}
-              placeholder="es. PandaDoc, Zoho, un gestionale interno…"
+              placeholder="es. la tua banca (home banking), Zoho, un gestionale, la fattura elettronica…"
               className={campo}
             />
           </label>

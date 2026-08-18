@@ -245,7 +245,8 @@ function RichiestaPersonalizzata() {
             Non trovi il tuo servizio?
           </span>
           <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-            Scrivi quale servizio usi e la chiave o il token che hai: te lo colleghiamo
+            La tua banca, il gestionale, il CRM, un altro programma qualsiasi: scrivi
+            quale servizio usi e la chiave o il token che hai, te lo colleghiamo
             noi a mano, e ti ricontattiamo appena è pronto.
           </p>
         </div>
@@ -271,7 +272,7 @@ function RichiestaPersonalizzata() {
               <input
                 value={servizio}
                 onChange={(e) => setServizio(e.target.value)}
-                placeholder="es. PandaDoc, Zoho, un gestionale interno…"
+                placeholder="es. la tua banca (home banking), Zoho, un gestionale, la fattura elettronica…"
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13.5px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
             </label>
