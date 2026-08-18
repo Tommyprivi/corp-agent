@@ -77,6 +77,29 @@ export function attrezziAzienda(fluidaAttivo = false): Strumento[] {
     {
       type: "function",
       function: {
+        name: "cerca_mail",
+        description:
+          "Cerca dentro TUTTE le mail arrivate alla casella collegata — non solo " +
+          "le bolle: domande e richieste dei clienti, reclami, conversazioni " +
+          "qualsiasi. Usalo per «cosa mi ha scritto X?», «c'è una mail di Y su " +
+          "un reclamo?», «cerca la mail dove parlava di...». Se non sai cosa " +
+          "cercare di preciso, prova col nome del cliente o dell'argomento.",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            termine: {
+              type: "string",
+              description: "Cosa cercare: un nome, un'azienda, una parola dell'oggetto o del testo.",
+            },
+          },
+          required: ["termine"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
         name: "dov_e_spedizione",
         description:
           "Cerca dove si trova una spedizione, un collo o un ritiro, per nome del " +
@@ -218,6 +241,28 @@ export async function eseguiAttrezzo(
       return (
         `Cosa risulta per «${rif}» (riporta cifre, date e orari ESATTAMENTE come scritti, senza cambiarli):\n` +
         righe.map((r) => `- ${r}`).join("\n")
+      );
+    }
+
+    if (nome === "cerca_mail") {
+      const termine = String(argomenti.termine ?? "").trim();
+      if (!termine) return "Dimmi cosa cercare: un nome, un'azienda, una parola.";
+      const { cercaMail } = await import("./posta.js");
+      const trovate = await cercaMail(azienda, termine, 10);
+      if (trovate.length === 0) return `Nessuna mail trovata con «${termine}».`;
+      return (
+        `Mail trovate per «${termine}» (riporta date, nomi e cifre ESATTAMENTE come scritti):\n` +
+        trovate
+          .map((m) => {
+            const quando = m.ricevuto
+              ? new Date(m.ricevuto).toLocaleString("it-IT", {
+                  day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+                  timeZone: "Europe/Rome",
+                })
+              : "(data sconosciuta)";
+            return `- ${quando} da ${m.mittente}, oggetto «${m.oggetto}»: ${(m.corpo || "").slice(0, 400)}`;
+          })
+          .join("\n")
       );
     }
 

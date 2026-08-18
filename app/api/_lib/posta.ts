@@ -440,6 +440,23 @@ export async function arriviPosta(azienda: string, limite = 20): Promise<ArrivoP
   return r.rows;
 }
 
+/**
+ * Cerca in TUTTE le mail arrivate, non solo quelle classificate come bolle
+ * (mittente, oggetto, corpo): serve all'agente per «cosa mi ha scritto X?»,
+ * «c'è un reclamo di Y?» — qualunque cosa scritta in una mail vera.
+ */
+export async function cercaMail(
+  azienda: string,
+  termine: string,
+  limite = 10
+): Promise<{ id: string; ricevuto: string | null; mittente: string; oggetto: string; corpo: string }[]> {
+  const r = await getPool().query(
+    "select * from public.az_posta_arrivi_cerca($1,$2,$3)",
+    [azienda, termine, limite]
+  );
+  return r.rows;
+}
+
 interface MessaggioGraph {
   id: string;
   subject?: string;

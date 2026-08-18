@@ -91,12 +91,27 @@ export async function staccaFluida(azienda: string): Promise<void> {
  * della risposta cambia, l'agente lo scopre dal contenuto, non da un
  * parsing che si rompe in silenzio.
  */
-/** it.wikipedia stile: "presente"/"assente"/"forse presente", mai l'inglese grezzo. */
-const STATO_LEGGIBILE: Record<string, string> = {
-  present: "presente",
-  absent: "assente",
-  maybe_present: "forse presente (non ancora timbrato)",
+/**
+ * ⚠️ TROVATO DAL VIVO IL 18 AGOSTO 2026: `calendar/presence_status` guarda
+ * solo l'istante presente (le timbrature vere) — per un giorno futuro
+ * («chi è in ferie lunedì?») torna sempre vuoto, perché lunedì nessuno ha
+ * ancora timbrato niente. Le ferie/permessi/malattie sono una cosa
+ * PROGRAMMATA, non una timbratura: la porta giusta è `calendar/company`,
+ * che per ogni contratto dice il tipo di giornata programmata
+ * (`COMMON.HOLIDAYS`, `COMMON.PERMITS`, `COMMON.DISEASES`, o "work") — e
+ * funziona sia per oggi che per il futuro, con la stessa chiamata.
+ */
+const TIPO_LEGGIBILE: Record<string, string> = {
+  "COMMON.HOLIDAYS": "in ferie",
+  "COMMON.PERMITS": "in permesso",
+  "COMMON.DISEASES": "in malattia",
 };
+
+interface VoceCalendario {
+  contract_id: string;
+  schedule?: { type_name: string | null }[];
+  flexible_schedule?: { type_name: string | null }[];
+}
 
 /**
  * @param giorno data in formato YYYY-MM-DD; senza, si guarda oggi. Il
@@ -119,62 +134,63 @@ export async function presenzeGiorno(azienda: string, giorno?: string): Promise<
   const intestazione = { "x-fluida-app-uuid": chiave, Accept: "application/json" };
   const companyId = encodeURIComponent(cred.company_id);
 
-  // ⚠️ "datetime" è OBBLIGATORIO (trovato dal vivo il 18 Agosto 2026: senza,
-  // Fluida risponde 400 "datetime must be present"). Mezzogiorno del giorno
-  // richiesto: dentro l'orario di lavoro, per non finire nella notte prima
-  // o dopo per un problema di fuso.
-  const giornoValido = giorno && /^\d{4}-\d{2}-\d{2}$/.test(giorno) ? giorno : null;
-  const datetime = giornoValido ? `${giornoValido}T12:00:00Z` : new Date().toISOString();
-  const descrizioneGiorno = giornoValido
-    ? new Date(`${giornoValido}T12:00:00Z`).toLocaleDateString("it-IT", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-      })
-    : "oggi";
+  const oggiIso = new Date().toISOString().slice(0, 10);
+  const giornoValido = giorno && /^\d{4}-\d{2}-\d{2}$/.test(giorno) ? giorno : oggiIso;
+  const descrizioneGiorno =
+    giornoValido === oggiIso
+      ? "oggi"
+      : new Date(`${giornoValido}T12:00:00Z`).toLocaleDateString("it-IT", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+        });
 
   try {
-    const [rPresenze, rContratti] = await Promise.all([
-      fetch(`${FLUIDA}/calendar/presence_status/company/${companyId}?datetime=${encodeURIComponent(datetime)}`, {
-        headers: intestazione,
-        signal: AbortSignal.timeout(12_000),
-      }),
+    const [rCalendario, rContratti] = await Promise.all([
+      fetch(
+        `${FLUIDA}/calendar/company/${companyId}?start_date=${giornoValido}&end_date=${giornoValido}`,
+        { headers: intestazione, signal: AbortSignal.timeout(15_000) }
+      ),
       fetch(`${FLUIDA}/contracts/company/${companyId}`, {
         headers: intestazione,
         signal: AbortSignal.timeout(12_000),
       }),
     ]);
 
-    if (!rPresenze.ok) {
-      const errore = `Fluida ha risposto ${rPresenze.status} alla richiesta presenze.`;
+    if (!rCalendario.ok) {
+      const errore = `Fluida ha risposto ${rCalendario.status} alla richiesta del calendario.`;
       await getPool().query("select public.az_fluida_errore($1,$2)", [azienda, errore]);
       return errore;
     }
 
-    const presenze = (await rPresenze.json()) as { data?: Record<string, string> };
+    const calendario = (await rCalendario.json()) as { data?: VoceCalendario[] };
     // I nomi vengono da un'altra porta (i contratti): se quella fallisce non
     // si perde tutto, si torna solo senza nomi — meglio di niente.
     const contratti = rContratti.ok
       ? ((await rContratti.json()) as {
-          data?: { id: string; firstname: string | null; lastname: string | null; job_title: string | null }[];
+          data?: { id: string; firstname: string | null; lastname: string | null; job_title: string | null; active: boolean }[];
         })
       : { data: [] };
     const nomi = new Map(
-      (contratti.data ?? []).map((c) => [
-        c.id,
-        [c.firstname, c.lastname].filter(Boolean).join(" ") || c.job_title || c.id,
-      ])
+      (contratti.data ?? [])
+        .filter((c) => c.active)
+        .map((c) => [c.id, [c.firstname, c.lastname].filter(Boolean).join(" ") || c.job_title || c.id])
     );
 
-    const righe = Object.entries(presenze.data ?? {}).map(([id, stato]) => ({
-      chi: nomi.get(id) ?? id,
-      stato: STATO_LEGGIBILE[stato] ?? stato,
-    }));
-    if (righe.length === 0) return "Fluida non ha restituito nessun dato di presenza per oggi.";
+    const righe = (calendario.data ?? [])
+      .filter((v) => nomi.has(v.contract_id))
+      .map((v) => {
+        const tipi = [...(v.schedule ?? []), ...(v.flexible_schedule ?? [])]
+          .map((s) => s.type_name)
+          .filter((t): t is string => t != null && t in TIPO_LEGGIBILE);
+        return { chi: nomi.get(v.contract_id)!, stato: tipi.length ? TIPO_LEGGIBILE[tipi[0]] : "al lavoro" };
+      });
+    if (righe.length === 0) return `Fluida non ha restituito nessun dato per ${descrizioneGiorno}.`;
 
     righe.sort((a, b) => a.chi.localeCompare(b.chi, "it"));
     return (
-      `Presenze di ${descrizioneGiorno} da Fluida (riporta i nomi ESATTAMENTE come scritti qui sotto):\n` +
+      `Programma di ${descrizioneGiorno} da Fluida (riporta i nomi ESATTAMENTE come scritti qui sotto; ` +
+      `chi non è elencato come "in ferie/permesso/malattia" è considerato al lavoro):\n` +
       righe.map((r) => `- ${r.chi}: ${r.stato}`).join("\n")
     );
   } catch (error) {
