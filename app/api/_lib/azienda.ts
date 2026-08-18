@@ -978,11 +978,21 @@ export function istruzioni(
   memoria: { titolo: string; testo: string }[],
   clientiNoti: string[]
 ): string {
+  const oggi = new Date().toLocaleDateString("it-IT", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Europe/Rome",
+  });
   const righe = [
     `Sei l'agente della postazione «${postazione.nome}» di Speed Trasporti, ` +
       "azienda di trasporti e logistica di Torino, attiva dal 1998.",
     postazione.istruzioni,
     "",
+    // ⚠️ Senza dire la data, il modello non può calcolare «domani» o «lunedì»
+    // per gli strumenti che vogliono una data assoluta (es. Fluida).
+    `Oggi è ${oggi}.`,
     `Stai parlando con ${chi.nome || "un collega"}${chi.reparto ? `, reparto ${chi.reparto}` : ""}.`,
     "Dai del tu. Rispondi in italiano, corto: due o tre frasi, non di più, " +
       "a meno che non ti chiedano espressamente un elenco.",

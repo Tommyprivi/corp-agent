@@ -98,7 +98,14 @@ const STATO_LEGGIBILE: Record<string, string> = {
   maybe_present: "forse presente (non ancora timbrato)",
 };
 
-export async function presenzeOggi(azienda: string): Promise<string> {
+/**
+ * @param giorno data in formato YYYY-MM-DD; senza, si guarda oggi. Il
+ * chiamante (l'agente) può chiedere "chi è in ferie domani/lunedì": la
+ * conversione della data relativa la fa il modello, guardando la data di
+ * oggi che gli viene detta nelle istruzioni — qui si prende per buona la
+ * data che arriva, già in formato assoluto.
+ */
+export async function presenzeGiorno(azienda: string, giorno?: string): Promise<string> {
   const r = await getPool().query<{ company_id: string; chiave_cifrata: string; attivo: boolean }>(
     "select * from public.az_fluida_credenziali($1)",
     [azienda]
@@ -112,12 +119,23 @@ export async function presenzeOggi(azienda: string): Promise<string> {
   const intestazione = { "x-fluida-app-uuid": chiave, Accept: "application/json" };
   const companyId = encodeURIComponent(cred.company_id);
 
+  // ⚠️ "datetime" è OBBLIGATORIO (trovato dal vivo il 18 Agosto 2026: senza,
+  // Fluida risponde 400 "datetime must be present"). Mezzogiorno del giorno
+  // richiesto: dentro l'orario di lavoro, per non finire nella notte prima
+  // o dopo per un problema di fuso.
+  const giornoValido = giorno && /^\d{4}-\d{2}-\d{2}$/.test(giorno) ? giorno : null;
+  const datetime = giornoValido ? `${giornoValido}T12:00:00Z` : new Date().toISOString();
+  const descrizioneGiorno = giornoValido
+    ? new Date(`${giornoValido}T12:00:00Z`).toLocaleDateString("it-IT", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      })
+    : "oggi";
+
   try {
-    // ⚠️ "datetime" è OBBLIGATORIO (trovato dal vivo il 18 Agosto 2026: senza,
-    // Fluida risponde 400 "datetime must be present") — Adesso, in UTC.
-    const adesso = new Date().toISOString();
     const [rPresenze, rContratti] = await Promise.all([
-      fetch(`${FLUIDA}/calendar/presence_status/company/${companyId}?datetime=${encodeURIComponent(adesso)}`, {
+      fetch(`${FLUIDA}/calendar/presence_status/company/${companyId}?datetime=${encodeURIComponent(datetime)}`, {
         headers: intestazione,
         signal: AbortSignal.timeout(12_000),
       }),
@@ -156,7 +174,7 @@ export async function presenzeOggi(azienda: string): Promise<string> {
 
     righe.sort((a, b) => a.chi.localeCompare(b.chi, "it"));
     return (
-      `Presenze di oggi da Fluida (riporta i nomi ESATTAMENTE come scritti qui sotto):\n` +
+      `Presenze di ${descrizioneGiorno} da Fluida (riporta i nomi ESATTAMENTE come scritti qui sotto):\n` +
       righe.map((r) => `- ${r.chi}: ${r.stato}`).join("\n")
     );
   } catch (error) {

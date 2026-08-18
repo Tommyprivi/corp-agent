@@ -123,10 +123,22 @@ export function attrezziAzienda(fluidaAttivo = false): Strumento[] {
       function: {
         name: "presenze_oggi",
         description:
-          "Chi è assente oggi (ferie, malattia, permessi) e chi è in servizio, dal " +
-          "gestionale del personale Fluida. Usalo per «chi è in ferie oggi?», " +
-          "«chi c'è lunedì?», «X è in malattia?».",
-        parameters: { type: "object", properties: {}, required: [] },
+          "Chi è assente (ferie, malattia, permessi) e chi è in servizio in un " +
+          "giorno, dal gestionale del personale Fluida. Usalo per «chi è in " +
+          "ferie oggi?», «chi c'è lunedì?», «X è in malattia domani?». Calcola " +
+          "TU la data assoluta da «oggi», «domani», «lunedì» ecc. guardando la " +
+          "data di oggi che ti è stata detta nelle istruzioni.",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            giorno: {
+              type: "string",
+              description: "Data nel formato YYYY-MM-DD. Se non detto niente, ometti il campo: si intende oggi.",
+            },
+          },
+          required: [],
+        },
       },
     });
   }
@@ -333,8 +345,9 @@ export async function eseguiAttrezzo(
     }
 
     if (nome === "presenze_oggi") {
-      const { presenzeOggi } = await import("./fluida.js");
-      return await presenzeOggi(azienda);
+      const { presenzeGiorno } = await import("./fluida.js");
+      const giorno = typeof argomenti.giorno === "string" ? argomenti.giorno : undefined;
+      return await presenzeGiorno(azienda, giorno);
     }
 
     return `Non conosco lo strumento «${nome}».`;

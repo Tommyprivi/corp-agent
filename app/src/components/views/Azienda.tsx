@@ -267,13 +267,17 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
     ...(vedeTutto
       ? [{ chiave: "cruscotto", nome: "Cruscotto", icona: "cruscotto" as IconaNome, vai: vaiSezione("cruscotto"), on: sezioneVera === "cruscotto" }]
       : []),
-    ...postazioni.map((p) => ({
-      chiave: `post:${p.id}`,
-      nome: p.nome,
-      icona: postIcona[p.id] ?? ("agente" as IconaNome),
-      vai: vaiPostazione(p.id),
-      on: sezioneVera === "chat" && postazione === p.id,
-    })),
+    // "direzione" (Chat libera) vive dentro il Cruscotto, non come tab a sé:
+    // il titolare la trova appena entra, non un'altra scheda da scoprire.
+    ...postazioni
+      .filter((p) => p.id !== "direzione")
+      .map((p) => ({
+        chiave: `post:${p.id}`,
+        nome: p.nome,
+        icona: postIcona[p.id] ?? ("agente" as IconaNome),
+        vai: vaiPostazione(p.id),
+        on: sezioneVera === "chat" && postazione === p.id,
+      })),
     ...(isCapo
       ? [{ chiave: "reparto", nome: "Il reparto", icona: "cruscotto" as IconaNome, badge: avvisi, vai: vaiSezione("reparto"), on: sezioneVera === "reparto" }]
       : []),
@@ -485,6 +489,7 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
             nome={(persona.nome || "").split(" ")[0]}
             postazioni={postazioni}
             sito={sito}
+            agenteVivo={agenteVivo}
             seScaduta={seScaduta}
           />
         )}
@@ -1212,13 +1217,16 @@ function Cruscotto({
   nome,
   postazioni,
   sito,
+  agenteVivo,
   seScaduta,
 }: {
   nome?: string;
   postazioni: PostazioneViva[];
   sito: Sito;
+  agenteVivo: boolean;
   seScaduta: (e: unknown) => void;
 }) {
+  const direzione = postazioni.find((p) => p.id === "direzione");
   // L'ordine e la visibilità dei blocchi li decide il titolare (sito.blocchi /
   // sito.blocchiNascosti). Si applicano con `order` su un contenitore flex e
   // la classe `hidden`: nessun blocco si sposta nel codice, solo nel CSS.
@@ -1295,6 +1303,14 @@ function Cruscotto({
               })}
             </p>
           </>
+        )}
+
+        {/* La chat libera: qui, non in un'altra scheda da scoprire — chiedi
+            qualsiasi cosa su tutta l'azienda appena entri. */}
+        {direzione && (
+          <div className="mt-5 flex h-[420px] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+            <Conversazione postazione={direzione} nome={nome} agenteVivo={agenteVivo} seScaduta={seScaduta} />
+          </div>
         )}
 
         {errore && (
@@ -1727,6 +1743,9 @@ function Clienti({
   // Chi «guarda e non tocca» vede le schede ma non i pulsanti per cambiarle:
   // il vero cancello è sul server, questo evita solo un pulsante che darebbe errore.
   const puoScrivere = ruolo !== "osservatore";
+  const puoAmministrare = ruolo === "titolare" || ruolo === "amministratore";
+  const [trovaInCorso, setTrovaInCorso] = useState(false);
+  const [trovaEsito, setTrovaEsito] = useState<string | null>(null);
   // ⚠️ Il numero d'ordine dell'ultima ricerca partita. Se uno cerca «ro» e poi
   // «rossi», la risposta di «ro» può tornare DOPO quella di «rossi» e
   // sovrascrivere i risultati giusti coi vecchi. Si applica solo la risposta
@@ -1771,6 +1790,22 @@ function Clienti({
     }
   }
 
+  async function trovaDaMail() {
+    setTrovaInCorso(true);
+    setTrovaEsito(null);
+    try {
+      const r = await manda<{ trovati?: number }>({ az: "clienti-da-mail" });
+      const n = r.trovati ?? 0;
+      setTrovaEsito(n > 0 ? `Trovati ${n} clienti nuovi dalle mail.` : "Nessun cliente nuovo trovato nelle mail lette finora.");
+      if (n > 0) carica(cerca);
+    } catch (e) {
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setTrovaEsito("Non sono riuscito a guardare le mail. Riprova.");
+    } finally {
+      setTrovaInCorso(false);
+    }
+  }
+
   async function elimina(id: string) {
     // ⚠️ Niente finestra di conferma del browser: brutta e facile da cliccare a
     // caso. La scheda si può ricreare; il fastidio di una conferma a ogni
@@ -1795,6 +1830,15 @@ function Clienti({
           placeholder="Cerca per nome, referente o zona…"
           className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3.5 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[13.5px]"
         />
+        {puoAmministrare && (
+          <button
+            onClick={() => void trovaDaMail()}
+            disabled={trovaInCorso}
+            className="shrink-0 cursor-pointer rounded-xl border border-[var(--border)] px-4 py-2.5 text-[13.5px] font-medium text-[var(--text-primary)] disabled:opacity-50"
+          >
+            {trovaInCorso ? "Guardo le mail…" : "Trova clienti dalle mail"}
+          </button>
+        )}
         {puoScrivere && (
         <button
           onClick={() => setBozza({ ...CLIENTE_VUOTO })}
@@ -1804,6 +1848,10 @@ function Clienti({
         </button>
         )}
       </div>
+
+      {trovaEsito && (
+        <p className="mt-2.5 text-[12.5px] text-[var(--text-secondary)]">{trovaEsito}</p>
+      )}
 
       {bozza && (
         <form

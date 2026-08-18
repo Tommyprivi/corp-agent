@@ -781,6 +781,14 @@ async function areaAzienda(
       az.segnaAttivita(chi.azienda, chi.persona, "cliente-eliminato");
       return json({ ok: true }, 200);
 
+    case "clienti-da-mail": {
+      // A mano, senza aspettare il giro serale: chi amministra, come per la posta.
+      if (!titolare && chi.ruolo_vero !== "amministratore") return negato();
+      const esito = await posta.estraiClienti(chi.azienda, 20);
+      az.segnaAttivita(chi.azienda, chi.persona, "clienti-da-mail", String(esito.trovati));
+      return json({ ok: true, ...esito }, 200);
+    }
+
     case "documento":
       if (!gestore) return negato();
       await az.salvaDocumento(
