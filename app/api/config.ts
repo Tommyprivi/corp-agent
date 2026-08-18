@@ -411,11 +411,13 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
             reparto: chi.reparto,
             foto: chi.foto,
           },
-          postazioni: az.AZIENDE[chi.azienda]?.postazioni.map((p) => ({
-            id: p.id,
-            nome: p.nome,
-            cosa: p.cosa,
-          })),
+          postazioni: az.AZIENDE[chi.azienda]?.postazioni
+            .filter((p) => p.id !== "direzione" || chi.ruolo_vero === "titolare")
+            .map((p) => ({
+              id: p.id,
+              nome: p.nome,
+              cosa: p.cosa,
+            })),
           // Senza chiave OpenRouter l'agente non può rispondere, e il browser
           // deve saperlo prima che qualcuno scriva e resti ad aspettare.
           agenteVivo: Boolean(process.env.OPENROUTER_API_KEY),
@@ -1175,6 +1177,11 @@ async function parlaConAgente(
   const postazione =
     azienda?.postazioni.find((p) => p.id === corpo.postazione) ?? azienda?.postazioni[0];
   if (!postazione) return json({ error: "Postazione sconosciuta." }, 404);
+  // ⚠️ Non ci si fida del solo elenco filtrato mandato al browser (case
+  // "stato"): un altro operatore potrebbe scrivere la richiesta a mano.
+  if (postazione.id === "direzione" && chi.ruolo_vero !== "titolare") {
+    return json({ error: "Postazione sconosciuta." }, 404);
+  }
 
   await az.scrivi(chi.azienda, chi.persona, postazione.id, "persona", testo);
 

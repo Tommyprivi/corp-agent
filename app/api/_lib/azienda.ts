@@ -82,6 +82,21 @@ export const AZIENDE: Record<string, { nome: string; postazioni: Postazione[] }>
           "Ti occupi di amministrazione: fatture, solleciti, fornitori, scadenze. " +
           "Tono formale ma asciutto. Sui soldi non si tira a indovinare mai.",
       },
+      {
+        // ⚠️ SOLO IL TITOLARE: filtrata in api/config.ts (case "stato") e
+        // controllata di nuovo qui sotto in parlaConAgente — non ci si fida
+        // del solo elenco mandato al browser, un altro operatore potrebbe
+        // provare a selezionarla scrivendo la richiesta a mano.
+        id: "direzione",
+        nome: "Chat libera",
+        cosa: "Chiedi qualsiasi cosa, su tutto",
+        istruzioni:
+          "Non sei legato a un reparto solo: rispondi su traffico, magazzino, " +
+          "autisti, clienti, fatture, personale — tutto quello che il registro " +
+          "dell'azienda sa. Stai parlando col titolare: può chiederti qualunque " +
+          "cosa serva per avere un quadro d'insieme, anche cose che spaziano fra " +
+          "più reparti nella stessa domanda. Sii diretto, senza girarci intorno.",
+      },
     ],
   },
   }
