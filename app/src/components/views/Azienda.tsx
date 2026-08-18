@@ -1794,9 +1794,13 @@ function Clienti({
     setTrovaInCorso(true);
     setTrovaEsito(null);
     try {
-      const r = await manda<{ trovati?: number }>({ az: "clienti-da-mail" });
+      const r = await manda<{ trovati?: number; nuoveMail?: number; erroreMail?: string | null }>({
+        az: "clienti-da-mail",
+      });
       const n = r.trovati ?? 0;
-      setTrovaEsito(n > 0 ? `Trovati ${n} clienti nuovi dalle mail.` : "Nessun cliente nuovo trovato nelle mail lette finora.");
+      const mail = r.nuoveMail ?? 0;
+      const base = n > 0 ? `Trovati ${n} clienti nuovi (letta ${mail} mail nuova/e).` : `Nessun cliente nuovo (letta ${mail} mail nuova/e).`;
+      setTrovaEsito(r.erroreMail ? `${base} Guasto sulla casella: ${r.erroreMail}` : base);
       if (n > 0) carica(cerca);
     } catch (e) {
       if (e instanceof SessioneScaduta) return seScaduta(e);

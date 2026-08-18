@@ -782,11 +782,18 @@ async function areaAzienda(
       return json({ ok: true }, 200);
 
     case "clienti-da-mail": {
-      // A mano, senza aspettare il giro serale: chi amministra, come per la posta.
+      // ⚠️ Un solo pulsante fa tutto: prima va davvero nella casella a
+      // controllare cosa c'è di nuovo (come «Controlla adesso» nella posta),
+      // POI guarda quello che ha appena portato dentro. Chi lo preme non deve
+      // sapere che sotto ci sono due passi.
       if (!titolare && chi.ruolo_vero !== "amministratore") return negato();
+      const scarico = await posta.scaricaPosta(chi.azienda).catch((e) => ({
+        nuovi: 0,
+        errore: e instanceof Error ? e.message : "Non sono riuscito a leggere la casella.",
+      }));
       const esito = await posta.estraiClienti(chi.azienda, 20);
       az.segnaAttivita(chi.azienda, chi.persona, "clienti-da-mail", String(esito.trovati));
-      return json({ ok: true, ...esito }, 200);
+      return json({ ok: true, nuoveMail: scarico.nuovi, erroreMail: scarico.errore, ...esito }, 200);
     }
 
     case "documento":
