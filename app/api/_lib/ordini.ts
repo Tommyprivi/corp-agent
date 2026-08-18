@@ -214,6 +214,7 @@ export async function creaOrdine(
       const base = request.headers.get("origin") ?? "https://corpagent.vercel.app";
       const p = new URLSearchParams({
         mode: "payment",
+        "payment_method_types[0]": "card",
         "line_items[0][price_data][currency]": "eur",
         "line_items[0][price_data][product_data][name]": `${voce.nome} — offerta di lancio`,
         "line_items[0][price_data][unit_amount]": String(voce.centesimi),
@@ -234,9 +235,8 @@ export async function creaOrdine(
       });
       const s = (await r.json()) as { url?: string };
       if (r.ok && s.url) return { ok: true, paga: s.url };
-      console.error("[debug-stripe] risposta non ok", r.status, JSON.stringify(s));
-    } catch (e) {
-      console.error("[debug-stripe] eccezione", e instanceof Error ? e.message : String(e));
+    } catch {
+      /* si torna all'ordine registrato */
     }
   }
 
