@@ -420,6 +420,7 @@ export async function createAgent(input: {
   systemPrompt?: string;
   modelSlug?: string;
   isCustom?: boolean;
+  catalogId?: string;
 }): Promise<StoredAgent> {
   const response = await fetch("/api/agents", {
     method: "POST",

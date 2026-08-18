@@ -235,6 +235,7 @@ export default function App() {
                     systemPrompt,
                     modelSlug: "auto",
                     isCustom: false,
+                    catalogId: preset.id,
                   });
                   setAgents((prev) => [...prev, toRoleAgent(created)]);
                   notify.success(`${created.name} è al lavoro.`);

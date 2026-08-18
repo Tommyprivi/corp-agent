@@ -61,6 +61,7 @@ export default {
         systemPrompt?: string;
         modelSlug?: string;
         isCustom?: boolean;
+        catalogId?: string;
       };
       try {
         body = await request.json();
@@ -75,8 +76,8 @@ export default {
 
       const created = await withUser(userId, async (client) => {
         const result = await client.query<AgentRow>(
-          `insert into public.agents (user_id, name, role, system_prompt, model_slug, is_custom)
-           values ($1, $2, $3, $4, coalesce($5, 'auto'), coalesce($6, false))
+          `insert into public.agents (user_id, name, role, system_prompt, model_slug, is_custom, catalog_id)
+           values ($1, $2, $3, $4, coalesce($5, 'auto'), coalesce($6, false), $7)
            returning *`,
           [
             userId,
@@ -85,6 +86,7 @@ export default {
             clean(body.systemPrompt, MAX_PROMPT),
             clean(body.modelSlug, 120),
             body.isCustom ?? false,
+            clean(body.catalogId, 120) || null,
           ]
         );
         return result.rows[0];

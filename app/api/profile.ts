@@ -162,6 +162,34 @@ export default {
       return json({ richieste: righe.rows }, 200);
     }
 
+    // ── I dati di tutta la piattaforma, in preparazione del pannello admin
+    //    (Fase 15 — qui c'è solo la lettura, non ancora una schermata) ────
+    //   GET ?admin=modelli       quanto costa ogni modello, chi lo usa
+    //   GET ?admin=catalogo      quali agenti del catalogo si attivano
+    //   GET ?admin=abbonamenti   lo storico dei cambi di piano
+    const admin = url.searchParams.get("admin");
+    if (request.method === "GET" && admin) {
+      if (!puoVedereLeRichieste(user.email)) return json({ error: "Non trovato." }, 404);
+
+      if (admin === "modelli") {
+        const r = await getPool().query("select * from public.admin_costo_per_modello($1)", [
+          Number(url.searchParams.get("giorni") ?? 30),
+        ]);
+        return json({ modelli: r.rows }, 200);
+      }
+      if (admin === "catalogo") {
+        const r = await getPool().query("select * from public.admin_agenti_catalogo()");
+        return json({ catalogo: r.rows }, 200);
+      }
+      if (admin === "abbonamenti") {
+        const r = await getPool().query("select * from public.admin_abbonamenti_storico($1)", [
+          Number(url.searchParams.get("limite") ?? 100),
+        ]);
+        return json({ abbonamenti: r.rows }, 200);
+      }
+      return json({ error: "Vista admin sconosciuta." }, 400);
+    }
+
     if (request.method === "PATCH") {
       let corpoPatch: Record<string, unknown> = {};
       try {
