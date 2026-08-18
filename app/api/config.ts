@@ -609,15 +609,6 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       if (!titolare && chi.ruolo_vero !== "amministratore") return soloTitolare();
       return json({ stato: await statoFluida(chi.azienda) }, 200);
 
-    case "posta-oauth-inizio": {
-      // Come posta-salva: solo il titolare, perché sta autorizzando CorpAgent
-      // a leggere e mandare posta a nome della casella dell'azienda.
-      if (!titolare) return soloTitolare();
-      const base = process.env.BETTER_AUTH_URL?.replace(/\/$/, "") || new URL(request.url).origin;
-      const esito = posta.avviaAccessoPosta(chi.azienda, `${base}/api/profile`);
-      return "url" in esito ? json(esito, 200) : json({ error: esito.errore }, 400);
-    }
-
     case "cerca": {
       const q = (url.searchParams.get("q") ?? "").trim();
       if (q.length < 2) return json({ risultati: [] }, 200);
@@ -1001,6 +992,17 @@ async function areaAzienda(
       void az.scriviAlSupporto(chi, testo.slice(0, 4000));
       az.segnaAttivita(chi.azienda, chi.persona, "connettore", servizio.slice(0, 80));
       return json({ ok: true }, 200);
+    }
+
+    case "posta-oauth-inizio": {
+      // Come posta-salva: solo il titolare, perché sta autorizzando CorpAgent
+      // a leggere e mandare posta a nome della casella dell'azienda.
+      // ⚠️ È un POST (manda()), non una lettura: deve stare qui, non nel
+      // switch delle GET — un bug preso dal vivo il 18 Agosto 2026.
+      if (!titolare) return negato();
+      const base = process.env.BETTER_AUTH_URL?.replace(/\/$/, "") || new URL(request.url).origin;
+      const esito = posta.avviaAccessoPosta(chi.azienda, `${base}/api/profile`);
+      return "url" in esito ? json(esito, 200) : json({ error: esito.errore }, 400);
     }
 
     case "posta-salva": {
