@@ -1241,16 +1241,18 @@ async function classificaEbozza(
 
 const ISTRUZIONI_ESTRAZIONE =
   "Leggi una mail arrivata a un'azienda di trasporti e dici se chi scrive è " +
-  "un'azienda/persona che potrebbe diventare un cliente in anagrafica, e con " +
-  "quali dati. REGOLA DI FERRO: riporta SOLO quello che è scritto alla " +
+  "un'azienda/persona che potrebbe essere (o già è) un cliente in anagrafica, " +
+  "e con quali dati. REGOLA DI FERRO: riporta SOLO quello che è scritto alla " +
   "lettera nella mail (nella firma, nell'intestazione, nel testo) — MAI un " +
   "dato dedotto, indovinato o completato. Se un campo non c'è scritto, " +
   "lascialo vuoto. Rispondi in JSON: " +
   '{"azienda": string|null, "referente": string|null, "telefono": string|null, ' +
-  '"zona": string|null, "nota": string|null}. ' +
+  '"zona": string|null, "necessita": string|null}. ' +
   '"azienda" è null se la mail non sembra di un\'azienda/cliente vero (spam, ' +
-  "newsletter, notifiche automatiche, nostre stesse risposte). \"nota\" è una " +
-  "riga sola su cosa chiedeva, SOLO se c'è una richiesta concreta scritta.";
+  'newsletter, notifiche automatiche, nostre stesse risposte). "necessita" è ' +
+  "una riga sola su cosa chiede o di cosa ha bisogno QUESTA mail (un " +
+  "preventivo, un tipo di trasporto ricorrente, una lamentela, un orario " +
+  "preferito...), SOLO se c'è scritta una richiesta o un'esigenza concreta.";
 
 /**
  * Guarda una mail arrivata e, se sembra un cliente non ancora in anagrafica,
@@ -1261,13 +1263,25 @@ const ISTRUZIONI_ESTRAZIONE =
  * la sicurezza — un'anagrafica sporcata da dati inventati senza che nessuno
  * l'abbia approvata sarebbe peggio di non averla scritta.
  */
+interface ClienteConNote {
+  id: string;
+  nome: string;
+  referente: string;
+  telefono: string;
+  email: string;
+  zona: string;
+  note: string;
+  piva: string;
+  indirizzo: string;
+}
+
 async function estraiClienteDaMail(
   azienda: string,
   arrivo: { id: string; mittente: string; oggetto: string; corpo: string },
-  clientiNoti: { nome: string }[]
-): Promise<void> {
+  clientiNoti: ClienteConNote[]
+): Promise<boolean> {
   const chiave = process.env.OPENROUTER_API_KEY;
-  if (!chiave) return;
+  if (!chiave) return false;
   try {
     const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -1294,19 +1308,41 @@ async function estraiClienteDaMail(
     });
     const body = (await r.json()) as { choices?: { message?: { content?: string } }[] };
     const grezzo = body.choices?.[0]?.message?.content?.trim();
-    if (!grezzo) return;
+    if (!grezzo) return false;
     const j = JSON.parse(grezzo) as {
       azienda?: string | null;
       referente?: string | null;
       telefono?: string | null;
       zona?: string | null;
-      nota?: string | null;
+      necessita?: string | null;
     };
     const nomeAzienda = (j.azienda ?? "").trim();
-    if (!nomeAzienda || nomeAzienda.length < 2) return;
+    if (!nomeAzienda || nomeAzienda.length < 2) return false;
 
-    // Già in anagrafica (anche scritto un po' diverso)? Non si duplica.
-    if (clientiNoti.some((c) => nomiSimili(c.nome, nomeAzienda))) return;
+    const oggi = new Date().toLocaleDateString("it-IT");
+    const necessita = (j.necessita ?? "").trim().slice(0, 300);
+    const esistente = clientiNoti.find((c) => nomiSimili(c.nome, nomeAzienda));
+
+    if (esistente) {
+      // Già in anagrafica: non si duplica, ma se questa mail dice qualcosa di
+      // nuovo sui suoi bisogni si arricchisce il profilo — senza toccare gli
+      // altri campi, che restano quelli che il titolare (o un giro precedente)
+      // ha già scritto.
+      if (!necessita || esistente.note.includes(necessita)) return false;
+      await salvaCliente(azienda, null, {
+        id: esistente.id,
+        nome: esistente.nome,
+        referente: esistente.referente,
+        telefono: esistente.telefono,
+        email: esistente.email,
+        zona: esistente.zona,
+        piva: esistente.piva,
+        indirizzo: esistente.indirizzo,
+        note: `${esistente.note}${esistente.note ? "\n" : ""}${oggi}: ${necessita}`.slice(-4000),
+      });
+      esistente.note = `${esistente.note}${esistente.note ? "\n" : ""}${oggi}: ${necessita}`;
+      return false; // arricchito, non è un cliente NUOVO
+    }
 
     const emailMittente = estraiEmail(arrivo.mittente);
     await salvaCliente(azienda, null, {
@@ -1315,13 +1351,15 @@ async function estraiClienteDaMail(
       telefono: (j.telefono ?? "").trim().slice(0, 40),
       email: emailMittente,
       zona: (j.zona ?? "").trim().slice(0, 60),
-      note: j.nota
-        ? `Trovato da un'email del ${new Date().toLocaleDateString("it-IT")}: ${j.nota.trim().slice(0, 300)}`
-        : `Trovato in automatico da un'email arrivata il ${new Date().toLocaleDateString("it-IT")}.`,
+      note: necessita
+        ? `Trovato da un'email del ${oggi}: ${necessita}`
+        : `Trovato in automatico da un'email arrivata il ${oggi}.`,
     });
+    return true;
   } catch {
     // Un'estrazione fallita non deve bloccare il resto della posta: si
     // riprova al prossimo giro solo se l'arrivo non viene segnato «estratto».
+    return false;
   }
 }
 
@@ -1337,18 +1375,16 @@ export async function estraiClienti(azienda: string, massimo = 5): Promise<{ tro
   );
   if (r.rows.length === 0) return { trovati: 0 };
 
-  const clientiNoti = (await clientiAzienda(azienda, "")) as { nome: string }[];
+  const clientiNoti = (await clientiAzienda(azienda, "")) as ClienteConNote[];
   let trovati = 0;
   for (const arrivo of r.rows) {
-    const primaDelGiro = clientiNoti.length;
-    await estraiClienteDaMail(azienda, arrivo, clientiNoti);
-    // Ricarica l'elenco solo se potrebbe essere cambiato, per non fare una
-    // query in più a vuoto su ogni mail di spam.
-    const dopo = (await clientiAzienda(azienda, "")) as { nome: string }[];
-    if (dopo.length > primaDelGiro) {
+    const nuovo = await estraiClienteDaMail(azienda, arrivo, clientiNoti);
+    if (nuovo) {
       trovati++;
+      // Ricarica l'elenco: da qui in poi le mail successive di QUESTO stesso
+      // giro devono vederlo già in anagrafica, non riproporlo come nuovo.
       clientiNoti.length = 0;
-      clientiNoti.push(...dopo);
+      clientiNoti.push(...((await clientiAzienda(azienda, "")) as ClienteConNote[]));
     }
     await getPool().query("select public.az_posta_arrivo_segna_estratto($1)", [arrivo.id]);
   }
