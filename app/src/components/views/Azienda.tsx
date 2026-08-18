@@ -4097,8 +4097,136 @@ function Impostazioni({
         </div>
 
         <PannelloPosta seScaduta={seScaduta} />
+        <PannelloConnettori seScaduta={seScaduta} />
       </div>
     </div>
+  );
+}
+
+/**
+ * «Non trovo il mio servizio nella lista.»
+ *
+ * ⚠️ Non si prova niente qui: non sappiamo come parlare con un'API che non
+ * conosciamo, quindi non si finge un collegamento. Passa dallo stesso canale
+ * del supporto — email a Tommaso — e chi ha scritto legge la verità:
+ * «richiesta inviata», non «collegato».
+ */
+function PannelloConnettori({ seScaduta }: { seScaduta: (e: unknown) => void }) {
+  const [aperto, setAperto] = useState(false);
+  const [servizio, setServizio] = useState("");
+  const [chiave, setChiave] = useState("");
+  const [identificativo, setIdentificativo] = useState("");
+  const [note, setNote] = useState("");
+  const [inCorso, setInCorso] = useState(false);
+  const [esito, setEsito] = useState<{ tipo: "ok" | "errore"; testo: string } | null>(null);
+
+  async function invia() {
+    if (!servizio.trim() || !chiave.trim()) return;
+    setInCorso(true);
+    setEsito(null);
+    try {
+      await manda({
+        az: "connettore-richiedi",
+        servizio: servizio.trim(),
+        chiave: chiave.trim(),
+        identificativo: identificativo.trim(),
+        note: note.trim(),
+      });
+      setEsito({ tipo: "ok", testo: "Richiesta inviata: ti ricontattiamo per attivarlo." });
+      setServizio("");
+      setChiave("");
+      setIdentificativo("");
+      setNote("");
+      setAperto(false);
+    } catch (e) {
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setEsito({ tipo: "errore", testo: e instanceof Error ? e.message : "Non sono riuscito a inviare la richiesta." });
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  const campo =
+    "mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13.5px] outline-none focus:border-[var(--accent)]";
+
+  return (
+    <Sez
+      titolo="Altri collegamenti"
+      sotto="Un servizio che usi già e non vedi qui sopra? Zoho, PandaDoc, un gestionale interno: dicci quale e con che chiave, lo collega chi lavora dietro."
+    >
+      {esito && (
+        <p
+          className={`mb-3 text-[12.5px] ${esito.tipo === "ok" ? "text-[var(--positive,#16a34a)]" : "text-[#b3261e]"}`}
+        >
+          {esito.testo}
+        </p>
+      )}
+
+      {!aperto ? (
+        <button
+          onClick={() => setAperto(true)}
+          className="cursor-pointer rounded-md border border-[var(--border)] bg-[var(--bg-card)] px-3.5 py-2 text-[13px] font-medium hover:border-[var(--accent)]"
+        >
+          Richiedi un altro collegamento
+        </button>
+      ) : (
+        <div className="max-w-md space-y-3 rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-4">
+          <label className="block">
+            <span className="text-[12.5px] text-[var(--text-secondary)]">Che servizio è</span>
+            <input
+              value={servizio}
+              onChange={(e) => setServizio(e.target.value)}
+              placeholder="es. PandaDoc, Zoho, un gestionale interno…"
+              className={campo}
+            />
+          </label>
+          <label className="block">
+            <span className="text-[12.5px] text-[var(--text-secondary)]">Chiave o token API</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={chiave}
+              onChange={(e) => setChiave(e.target.value)}
+              placeholder="incolla qui"
+              className={campo}
+            />
+          </label>
+          <label className="block">
+            <span className="text-[12.5px] text-[var(--text-secondary)]">ID o altro (facoltativo)</span>
+            <input
+              value={identificativo}
+              onChange={(e) => setIdentificativo(e.target.value)}
+              placeholder="es. l'identificativo dell'account o del negozio"
+              className={campo}
+            />
+          </label>
+          <label className="block">
+            <span className="text-[12.5px] text-[var(--text-secondary)]">Note (facoltativo)</span>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="cosa vuoi che l'agente ci faccia"
+              className={campo}
+            />
+          </label>
+          <div className="flex gap-2 pt-0.5">
+            <button
+              onClick={() => void invia()}
+              disabled={inCorso || !servizio.trim() || !chiave.trim()}
+              className="btn-grad cursor-pointer rounded-md px-3.5 py-2 text-[13px] font-medium disabled:opacity-50"
+            >
+              {inCorso ? "Invio…" : "Invia richiesta"}
+            </button>
+            <button
+              onClick={() => setAperto(false)}
+              className="cursor-pointer rounded-md px-3 py-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            >
+              Annulla
+            </button>
+          </div>
+        </div>
+      )}
+    </Sez>
   );
 }
 

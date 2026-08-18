@@ -930,6 +930,32 @@ async function areaAzienda(
       return json({ ok: true }, 200);
     }
 
+    // ── Un servizio non collegabile da qui: si manda a chi lo attacca a mano ──
+    // Non c'è una chiave da "provare" (non sappiamo parlare con un'API che non
+    // conosciamo), quindi non si finge un collegamento: passa dallo stesso
+    // canale del supporto, solo il titolare (è lui che condivide la chiave).
+    case "connettore-richiedi": {
+      if (!titolare) return negato();
+      const servizio = String(corpo.servizio ?? "").trim();
+      const chiave = String(corpo.chiave ?? "").trim();
+      const identificativo = String(corpo.identificativo ?? "").trim();
+      const note = String(corpo.note ?? "").trim();
+      if (servizio.length < 2 || !chiave) {
+        return json({ error: "Serve il nome del servizio e una chiave o un token." }, 400);
+      }
+      const testo = [
+        `Connettore richiesto: ${servizio}`,
+        `Chiave o token: ${chiave}`,
+        identificativo ? `ID o altro: ${identificativo}` : null,
+        note ? `Note: ${note}` : null,
+      ]
+        .filter((riga): riga is string => riga !== null)
+        .join("\n");
+      void az.scriviAlSupporto(chi, testo.slice(0, 4000));
+      az.segnaAttivita(chi.azienda, chi.persona, "connettore", servizio.slice(0, 80));
+      return json({ ok: true }, 200);
+    }
+
     case "posta-salva": {
       // Collega (o ricollega) la casella email. Solo il titolare: la password
       // della posta aziendale è sua. Si PROVA prima di salvare — se le
