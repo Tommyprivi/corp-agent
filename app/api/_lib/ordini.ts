@@ -234,8 +234,9 @@ export async function creaOrdine(
       });
       const s = (await r.json()) as { url?: string };
       if (r.ok && s.url) return { ok: true, paga: s.url };
-    } catch {
-      /* si torna all'ordine registrato */
+      console.error("[debug-stripe] risposta non ok", r.status, JSON.stringify(s));
+    } catch (e) {
+      console.error("[debug-stripe] eccezione", e instanceof Error ? e.message : String(e));
     }
   }
 
