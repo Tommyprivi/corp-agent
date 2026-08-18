@@ -232,6 +232,7 @@ export default {
       const sessione = await stripe(secret, "checkout/sessions", {
         mode: "subscription",
         customer,
+        "payment_method_types[0]": "card",
         success_url: `${base}/?pagamento=ok`,
         cancel_url: `${base}/?pagamento=annullato`,
         // ⚠️ Il prezzo si costruisce qui e non si prende da un listino creato a
@@ -259,6 +260,7 @@ export default {
       const sessione = await stripe(secret, "checkout/sessions", {
         mode: "payment",
         customer,
+        "payment_method_types[0]": "card",
         success_url: `${base}/?pagamento=ok`,
         cancel_url: `${base}/?pagamento=annullato`,
         "line_items[0][quantity]": "1",
