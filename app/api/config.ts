@@ -1017,6 +1017,7 @@ async function areaAzienda(
       const password = String(corpo.password ?? "");
       const porta2 = Number(corpo.porta ?? 993) || 993;
       const cartella = String(corpo.cartella ?? "INBOX");
+      const nomeMittente = String(corpo.nomeMittente ?? "").trim();
       if (!host || !utente || !password)
         return json({ error: "Servono server, utente e password." }, 400);
       try {
@@ -1026,12 +1027,21 @@ async function areaAzienda(
           utente,
           password,
           cartella,
+          nomeMittente,
         });
         az.segnaAttivita(chi.azienda, chi.persona, "posta-collegata", utente);
         return json({ ok: true, messaggi: esito.messaggi }, 200);
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : "Collegamento non riuscito." }, 400);
       }
+    }
+
+    case "posta-nome-mittente": {
+      // Cambia solo come firma l'agente, senza toccare host/utente/password.
+      if (!titolare) return negato();
+      await posta.salvaNomeMittente(chi.azienda, String(corpo.nome ?? ""));
+      az.segnaAttivita(chi.azienda, chi.persona, "posta-nome-mittente");
+      return json({ ok: true }, 200);
     }
 
     case "posta-scarica": {
@@ -1061,7 +1071,17 @@ async function areaAzienda(
       } catch {
         /* niente: si riprova al giro dopo */
       }
-      return json({ ok: true, nuovi: esito.nuovi, ...bolle, ...controllo, ...risposte }, 200);
+      // E si cercano clienti nuovi nelle mail appena arrivate.
+      let clientiTrovati = { trovati: 0 };
+      try {
+        clientiTrovati = await posta.estraiClienti(chi.azienda, 5);
+      } catch {
+        /* niente: si riprova al giro dopo */
+      }
+      return json(
+        { ok: true, nuovi: esito.nuovi, ...bolle, ...controllo, ...risposte, ...clientiTrovati },
+        200
+      );
     }
 
     case "posta-auto": {

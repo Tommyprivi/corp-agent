@@ -28,7 +28,7 @@ import { simpleParser } from "mailparser";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { cifra, cifraByte, decifra, decifraByte, firma, firmaValida } from "./connectors.js";
-import { cercaSpedizione } from "./azienda.js";
+import { cercaSpedizione, clienti as clientiAzienda, salvaCliente } from "./azienda.js";
 import { getPool } from "./db.js";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
@@ -45,6 +45,8 @@ export interface ConfigPosta {
   utente: string;
   password: string;
   cartella: string;
+  /** Come firma le risposte: "Speed Trasporti" invece del solo indirizzo nudo. */
+  nomeMittente?: string;
 }
 
 export interface StatoPosta {
@@ -57,6 +59,7 @@ export interface StatoPosta {
   ultimo_errore: string | null;
   scaricati: number;
   metodo: "imap" | "oauth";
+  nome_mittente: string;
 }
 
 interface CredPosta {
@@ -71,6 +74,7 @@ interface CredPosta {
   oauth_refresh_cifrato: string | null;
   oauth_scade: string | null;
   oauth_delta_link: string | null;
+  nome_mittente: string;
 }
 
 export interface ArrivoPosta {
@@ -396,21 +400,27 @@ async function inviaMail(
   }
   const password = decifra(c.segreto_cifrato);
   if (!password) throw new Error("Credenziali illeggibili: ricollega la casella.");
-  await mandaMail({ host: c.host, utente: c.utente, password }, a);
+  await mandaMail({ host: c.host, utente: c.utente, password, nomeMittente: c.nome_mittente }, a);
 }
 
 /** Prova e POI salva (cifrando la password). L'ordine è la regola n. 1. */
 export async function salvaPosta(azienda: string, c: ConfigPosta): Promise<{ messaggi: number }> {
   const esito = await provaPosta(c);
-  await getPool().query("select public.az_posta_salva($1,$2,$3,$4,$5,$6)", [
+  await getPool().query("select public.az_posta_salva($1,$2,$3,$4,$5,$6,$7)", [
     azienda,
     c.host.trim(),
     c.porta,
     c.utente.trim(),
     cifra(c.password),
     c.cartella.trim() || "INBOX",
+    (c.nomeMittente ?? "").trim(),
   ]);
   return esito;
+}
+
+/** Solo il nome con cui firmano le risposte, senza toccare il resto. */
+export async function salvaNomeMittente(azienda: string, nome: string): Promise<void> {
+  await getPool().query("select public.az_posta_nome_mittente($1,$2)", [azienda, nome.trim()]);
 }
 
 export async function statoPosta(azienda: string): Promise<StatoPosta | null> {
@@ -755,6 +765,9 @@ export async function scaricaPostaTutte(): Promise<{ azienda: string; nuovi: num
     // E l'agente elabora le mail: classifica, scrive le bozze e — se acceso —
     // risponde alle facili. In prova prepara e basta.
     await elaboraPosta(azienda, 6).catch(() => {});
+    // E cerca clienti nuovi nelle mail arrivate — indipendente dalle risposte
+    // automatiche: funziona anche se quelle sono spente.
+    await estraiClienti(azienda, 6).catch(() => {});
     // E l'agente solleciti guarda i ritiri in arrivo e prepara/manda i promemoria.
     await elaboraSolleciti(azienda, Date.now()).catch(() => {});
     esiti.push({ azienda, ...esito });
@@ -1226,9 +1239,125 @@ async function classificaEbozza(
   }
 }
 
+const ISTRUZIONI_ESTRAZIONE =
+  "Leggi una mail arrivata a un'azienda di trasporti e dici se chi scrive è " +
+  "un'azienda/persona che potrebbe diventare un cliente in anagrafica, e con " +
+  "quali dati. REGOLA DI FERRO: riporta SOLO quello che è scritto alla " +
+  "lettera nella mail (nella firma, nell'intestazione, nel testo) — MAI un " +
+  "dato dedotto, indovinato o completato. Se un campo non c'è scritto, " +
+  "lascialo vuoto. Rispondi in JSON: " +
+  '{"azienda": string|null, "referente": string|null, "telefono": string|null, ' +
+  '"zona": string|null, "nota": string|null}. ' +
+  '"azienda" è null se la mail non sembra di un\'azienda/cliente vero (spam, ' +
+  "newsletter, notifiche automatiche, nostre stesse risposte). \"nota\" è una " +
+  "riga sola su cosa chiedeva, SOLO se c'è una richiesta concreta scritta.";
+
+/**
+ * Guarda una mail arrivata e, se sembra un cliente non ancora in anagrafica,
+ * lo aggiunge da solo — coi soli dati scritti alla lettera nella mail.
+ *
+ * ⚠️ Automatico per scelta di Tommaso (18 Agosto 2026): non chiede conferma.
+ * Per questo la regola sopra («mai un dato dedotto») non è un dettaglio, è
+ * la sicurezza — un'anagrafica sporcata da dati inventati senza che nessuno
+ * l'abbia approvata sarebbe peggio di non averla scritta.
+ */
+async function estraiClienteDaMail(
+  azienda: string,
+  arrivo: { id: string; mittente: string; oggetto: string; corpo: string },
+  clientiNoti: { nome: string }[]
+): Promise<void> {
+  const chiave = process.env.OPENROUTER_API_KEY;
+  if (!chiave) return;
+  try {
+    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${chiave}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://corpagent.vercel.app",
+        "X-Title": "CorpAgent · Clienti dalle mail",
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        max_tokens: 300,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: ISTRUZIONI_ESTRAZIONE },
+          {
+            role: "user",
+            content: `Da: ${arrivo.mittente}\nOggetto: ${arrivo.oggetto}\n\n${(arrivo.corpo || "").slice(0, 3000)}`,
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const body = (await r.json()) as { choices?: { message?: { content?: string } }[] };
+    const grezzo = body.choices?.[0]?.message?.content?.trim();
+    if (!grezzo) return;
+    const j = JSON.parse(grezzo) as {
+      azienda?: string | null;
+      referente?: string | null;
+      telefono?: string | null;
+      zona?: string | null;
+      nota?: string | null;
+    };
+    const nomeAzienda = (j.azienda ?? "").trim();
+    if (!nomeAzienda || nomeAzienda.length < 2) return;
+
+    // Già in anagrafica (anche scritto un po' diverso)? Non si duplica.
+    if (clientiNoti.some((c) => nomiSimili(c.nome, nomeAzienda))) return;
+
+    const emailMittente = estraiEmail(arrivo.mittente);
+    await salvaCliente(azienda, null, {
+      nome: nomeAzienda.slice(0, 120),
+      referente: (j.referente ?? "").trim().slice(0, 80),
+      telefono: (j.telefono ?? "").trim().slice(0, 40),
+      email: emailMittente,
+      zona: (j.zona ?? "").trim().slice(0, 60),
+      note: j.nota
+        ? `Trovato da un'email del ${new Date().toLocaleDateString("it-IT")}: ${j.nota.trim().slice(0, 300)}`
+        : `Trovato in automatico da un'email arrivata il ${new Date().toLocaleDateString("it-IT")}.`,
+    });
+  } catch {
+    // Un'estrazione fallita non deve bloccare il resto della posta: si
+    // riprova al prossimo giro solo se l'arrivo non viene segnato «estratto».
+  }
+}
+
+/**
+ * Passa in rassegna le mail non ancora guardate per l'estrazione clienti.
+ * Ogni arrivo si segna «estratto» SEMPRE, trovato o no un cliente: altrimenti
+ * una mail di spam verrebbe rianalizzata (e pagata) a ogni giro per sempre.
+ */
+export async function estraiClienti(azienda: string, massimo = 5): Promise<{ trovati: number }> {
+  const r = await getPool().query<{ id: string; mittente: string; oggetto: string; corpo: string }>(
+    "select * from public.az_posta_arrivi_da_estrarre($1,$2)",
+    [azienda, massimo]
+  );
+  if (r.rows.length === 0) return { trovati: 0 };
+
+  const clientiNoti = (await clientiAzienda(azienda, "")) as { nome: string }[];
+  let trovati = 0;
+  for (const arrivo of r.rows) {
+    const primaDelGiro = clientiNoti.length;
+    await estraiClienteDaMail(azienda, arrivo, clientiNoti);
+    // Ricarica l'elenco solo se potrebbe essere cambiato, per non fare una
+    // query in più a vuoto su ogni mail di spam.
+    const dopo = (await clientiAzienda(azienda, "")) as { nome: string }[];
+    if (dopo.length > primaDelGiro) {
+      trovati++;
+      clientiNoti.length = 0;
+      clientiNoti.push(...dopo);
+    }
+    await getPool().query("select public.az_posta_arrivo_segna_estratto($1)", [arrivo.id]);
+  }
+  return { trovati };
+}
+
 /** Manda davvero una mail via SMTP (stessa casella IMAP). */
 async function mandaMail(
-  cred: { host: string; utente: string; password: string },
+  cred: { host: string; utente: string; password: string; nomeMittente?: string },
   a: { destinatario: string; oggetto: string; corpo: string }
 ): Promise<void> {
   const s = smtpDaImap(cred.host);
@@ -1242,7 +1371,7 @@ async function mandaMail(
     greetingTimeout: 15_000,
   });
   await transport.sendMail({
-    from: cred.utente,
+    from: cred.nomeMittente ? `"${cred.nomeMittente.replace(/"/g, "")}" <${cred.utente}>` : cred.utente,
     to: a.destinatario,
     subject: a.oggetto,
     text: a.corpo,

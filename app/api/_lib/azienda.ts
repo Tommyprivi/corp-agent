@@ -394,7 +394,7 @@ export async function clienti(azienda: string, cerca: string) {
 
 export async function salvaCliente(
   azienda: string,
-  persona: string,
+  persona: string | null,
   c: Record<string, unknown>
 ): Promise<string | null> {
   const r = await getPool().query<{ az_cliente_salva: string | null }>(

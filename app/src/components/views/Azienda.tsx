@@ -4662,6 +4662,7 @@ interface StatoPosta {
   ultimo_controllo: string | null;
   ultimo_errore: string | null;
   scaricati: number;
+  nome_mittente: string;
 }
 
 interface ArrivoPosta {
@@ -4720,6 +4721,7 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
   const [utente, setUtente] = useState("");
   const [password, setPassword] = useState("");
   const [cartella, setCartella] = useState("INBOX");
+  const [nomeMittente, setNomeMittente] = useState("");
   const [inCorso, setInCorso] = useState(false);
   const [esito, setEsito] = useState<{ tipo: "ok" | "errore"; testo: string } | null>(null);
   // Per Outlook, la strada semplice è l'accesso Microsoft: questo apre il
@@ -4737,6 +4739,7 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
         setPorta(String(r.stato.porta));
         setUtente(r.stato.utente);
         setCartella(r.stato.cartella);
+        setNomeMittente(r.stato.nome_mittente || "");
       }
     } catch (e) {
       // ⚠️ Solo la sessione scaduta esce; ogni altro guasto SI DICE. Prima
@@ -4793,6 +4796,7 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
         utente,
         password,
         cartella,
+        nomeMittente,
       });
       setEsito({
         tipo: "ok",
@@ -4863,7 +4867,8 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
             <div>
               <p className="text-[13.5px] font-medium">
-                {stato.utente} <span className="text-[var(--text-secondary)]">· {stato.host}</span>
+                {stato.nome_mittente ? `${stato.nome_mittente} <${stato.utente}>` : stato.utente}{" "}
+                <span className="text-[var(--text-secondary)]">· {stato.host}</span>
               </p>
               <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">
                 {stato.ultimo_errore ? (
@@ -5020,6 +5025,20 @@ function PannelloPosta({ seScaduta }: { seScaduta: (e: unknown) => void }) {
                     {PROVIDER_POSTA.find((p) => p.id === provider)?.appPassword ? "La «password per le app»" : "La password della casella"}
                   </span>
                   <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" className={campo} />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className="text-[12px] text-[var(--text-secondary)]">
+                    Nome mittente (facoltativo)
+                  </span>
+                  <input
+                    value={nomeMittente}
+                    onChange={(e) => setNomeMittente(e.target.value)}
+                    placeholder="es. Speed Trasporti"
+                    className={campo}
+                  />
+                  <span className="mt-1 block text-[11.5px] text-[var(--text-secondary)]">
+                    Con che nome il cliente vede arrivare la risposta, invece del solo indirizzo email.
+                  </span>
                 </label>
 
                 {/* Server e porta: nascosti per i fornitori noti (già giusti),
