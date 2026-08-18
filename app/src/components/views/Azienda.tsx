@@ -12,6 +12,7 @@ import {
   type Bolla,
   type Cliente,
   type Fattura,
+  type StatoFluida,
   type Cruscotto as DatiCruscotto,
   type Documento,
   type Lettura,
@@ -4345,6 +4346,7 @@ function Impostazioni({
         </div>
 
         <PannelloPosta seScaduta={seScaduta} />
+        <PannelloFluida seScaduta={seScaduta} />
         <PannelloConnettori seScaduta={seScaduta} />
       </div>
     </div>
@@ -4473,6 +4475,175 @@ function PannelloConnettori({ seScaduta }: { seScaduta: (e: unknown) => void }) 
             </button>
           </div>
         </div>
+      )}
+    </Sez>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// FLUIDA — turni, ferie e presenze
+// ─────────────────────────────────────────────────────────────────────────
+// ⚠️ Qui, non nell'account generico di CorpAgent: l'agente della console di
+// Speed legge SOLO i dati dell'azienda (azienda_*), quindi un Fluida
+// collegato altrove gli sarebbe invisibile.
+
+function PannelloFluida({ seScaduta }: { seScaduta: (e: unknown) => void }) {
+  const [stato, setStato] = useState<StatoFluida | null>(null);
+  const [caricato, setCaricato] = useState(false);
+  const [modifica, setModifica] = useState(false);
+  const [companyId, setCompanyId] = useState("");
+  const [chiave, setChiave] = useState("");
+  const [inCorso, setInCorso] = useState(false);
+  const [esito, setEsito] = useState<{ tipo: "ok" | "errore"; testo: string } | null>(null);
+
+  const carica = useCallback(async () => {
+    try {
+      const r = await leggi<{ stato: StatoFluida | null }>("fluida");
+      setStato(r.stato);
+    } catch (e) {
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setEsito({ tipo: "errore", testo: "Non riesco a leggere lo stato di Fluida. Ricarica la pagina." });
+    } finally {
+      setCaricato(true);
+    }
+  }, [seScaduta]);
+
+  useEffect(() => {
+    void carica();
+  }, [carica]);
+
+  async function collega() {
+    setInCorso(true);
+    setEsito(null);
+    try {
+      const r = await manda<{ ok?: boolean; nome?: string; error?: string }>({
+        az: "fluida-salva",
+        companyId,
+        chiave,
+      });
+      setEsito({ tipo: "ok", testo: `Collegato: ${r.nome ?? "Fluida"}.` });
+      setChiave("");
+      setModifica(false);
+      await carica();
+    } catch (e) {
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setEsito({ tipo: "errore", testo: e instanceof Error ? e.message : "Collegamento non riuscito." });
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  async function stacca() {
+    if (!window.confirm("Staccare Fluida? L'agente non potrà più rispondere su ferie e presenze.")) return;
+    setInCorso(true);
+    setEsito(null);
+    try {
+      await manda({ az: "fluida-stacca" });
+      setStato(null);
+      setCompanyId("");
+      setChiave("");
+    } catch (e) {
+      if (e instanceof SessioneScaduta) return seScaduta(e);
+      setEsito({ tipo: "errore", testo: "Non sono riuscito a staccare Fluida. Riprova." });
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  const campo =
+    "mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[13.5px]";
+
+  return (
+    <Sez
+      titolo="Collegamenti · Fluida"
+      sotto="Turni, ferie e presenze: l'agente lo usa per «chi è in ferie oggi?», «chi c'è lunedì?»."
+    >
+      {!caricato ? (
+        <p className="text-[12.5px] text-[var(--text-secondary)]">Carico…</p>
+      ) : stato && !modifica ? (
+        <div className="rounded-md border border-[var(--border)] bg-[var(--bg-card)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <div>
+              <p className="text-[13.5px] font-medium">
+                {stato.nome} <span className="text-[var(--text-secondary)]">· Fluida</span>
+              </p>
+              <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">
+                {stato.ultimo_errore ? (
+                  <span className="text-[#b3261e]">Guasto: {stato.ultimo_errore}</span>
+                ) : (
+                  "Collegato e pronto a rispondere."
+                )}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setCompanyId(stato.company_id);
+                  setModifica(true);
+                  setEsito(null);
+                }}
+                className="cursor-pointer rounded-md border border-[var(--border)] px-3 py-1.5 text-[12.5px]"
+              >
+                Ricollega
+              </button>
+              <button
+                onClick={() => void stacca()}
+                disabled={inCorso}
+                className="cursor-pointer rounded-md border border-[var(--border)] px-3 py-1.5 text-[12.5px] text-[#b3261e] disabled:opacity-50"
+              >
+                Stacca
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-4">
+          <p className="mb-3 rounded-md border-l-2 bg-[var(--fill-quiet)] px-3.5 py-2.5 text-[12.5px] leading-relaxed" style={{ borderColor: "var(--accent)" }}>
+            Ognuno mette la propria: la chiave API e l'ID azienda si trovano nelle
+            impostazioni del vostro account Fluida.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-[12px] text-[var(--text-secondary)]">ID azienda (Company ID)</span>
+              <input value={companyId} onChange={(e) => setCompanyId(e.target.value)} className={campo} />
+            </label>
+            <label className="block">
+              <span className="text-[12px] text-[var(--text-secondary)]">Chiave API</span>
+              <input type="password" value={chiave} onChange={(e) => setChiave(e.target.value)} autoComplete="new-password" className={campo} />
+            </label>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              onClick={() => void collega()}
+              disabled={inCorso || !companyId.trim() || !chiave.trim()}
+              className="btn-grad cursor-pointer rounded-md px-4 py-2 text-[13px] font-medium disabled:opacity-50"
+            >
+              {inCorso ? "Provo…" : "Prova e collega"}
+            </button>
+            {stato && (
+              <button
+                onClick={() => {
+                  setModifica(false);
+                  setEsito(null);
+                }}
+                className="cursor-pointer rounded-md border border-[var(--border)] px-4 py-2 text-[13px]"
+              >
+                Annulla
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {esito && (
+        <p
+          className={`mt-2.5 rounded-md border-l-2 bg-[var(--fill-quiet)] px-3.5 py-2 text-[12.5px] ${
+            esito.tipo === "errore" ? "text-[#b3261e]" : ""
+          }`}
+          style={{ borderColor: esito.tipo === "errore" ? "#b3261e" : "var(--accent)" }}
+        >
+          {esito.testo}
+        </p>
       )}
     </Sez>
   );

@@ -33,6 +33,7 @@ import * as az from "./_lib/azienda.js";
 import * as posta from "./_lib/posta.js";
 import { creaOrdine } from "./_lib/ordini.js";
 import { attrezziAzienda, eseguiAttrezzo } from "./_lib/attrezzi.js";
+import { salvaFluida, staccaFluida, statoFluida } from "./_lib/fluida.js";
 import {
   avvisaTommaso,
   conversazione,
@@ -603,6 +604,11 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
       return json({ stato, arrivi }, 200);
     }
 
+    case "fluida":
+      // Turni, ferie e presenze: chi amministra, come la posta.
+      if (!titolare && chi.ruolo_vero !== "amministratore") return soloTitolare();
+      return json({ stato: await statoFluida(chi.azienda) }, 200);
+
     case "posta-oauth-inizio": {
       // Come posta-salva: solo il titolare, perché sta autorizzando CorpAgent
       // a leggere e mandare posta a nome della casella dell'azienda.
@@ -1122,6 +1128,24 @@ async function areaAzienda(
       az.segnaAttivita(chi.azienda, chi.persona, "posta-staccata");
       return json({ ok: true }, 200);
 
+    case "fluida-salva": {
+      // Come posta-salva: solo il titolare, e si prova prima di salvare.
+      if (!titolare) return negato();
+      const companyId = String(corpo.companyId ?? "").trim();
+      const chiave = String(corpo.chiave ?? "").trim();
+      if (!companyId || !chiave) return json({ error: "Servono ID azienda e chiave." }, 400);
+      const esito = await salvaFluida(chi.azienda, companyId, chiave);
+      if (!esito.ok) return json({ error: esito.perche }, 400);
+      az.segnaAttivita(chi.azienda, chi.persona, "fluida-collegato", esito.nome);
+      return json({ ok: true, nome: esito.nome }, 200);
+    }
+
+    case "fluida-stacca":
+      if (!titolare) return negato();
+      await staccaFluida(chi.azienda);
+      az.segnaAttivita(chi.azienda, chi.persona, "fluida-staccato");
+      return json({ ok: true }, 200);
+
     case "chat":
       return await parlaConAgente(chi, corpo);
 
@@ -1161,10 +1185,11 @@ async function parlaConAgente(
     return json({ risposta: muto.slice(8).trim(), passato: true }, 200);
   }
 
-  const [memoria, elenco, storia] = await Promise.all([
+  const [memoria, elenco, storia, fluida] = await Promise.all([
     az.documenti(chi.azienda),
     az.clienti(chi.azienda, ""),
     az.conversazione(chi.azienda, chi.persona, postazione.id),
+    statoFluida(chi.azienda),
   ]);
 
   const partito = Date.now();
@@ -1172,11 +1197,12 @@ async function parlaConAgente(
     // ─────────────────────────────────────────────────────────────────
     // IL CICLO DEGLI ATTREZZI — la riga 40, nel mondo azienda
     // ─────────────────────────────────────────────────────────────────
-    // L'agente può chiedere uno strumento (registro, ritiri, clienti, Maps);
-    // noi lo eseguiamo e gli ridiamo il risultato, finché non ha la risposta.
+    // L'agente può chiedere uno strumento (registro, ritiri, clienti, Maps,
+    // e Fluida se collegato); noi lo eseguiamo e gli ridiamo il risultato,
+    // finché non ha la risposta.
     // ⚠️ Massimo 3 giri: un modello che chiama strumenti all'infinito è un
     // modello in confusione, e ogni giro sono secondi che l'utente aspetta.
-    const attrezzi = attrezziAzienda();
+    const attrezzi = attrezziAzienda(fluida?.attivo === true);
     const messaggi: Record<string, unknown>[] = [
       {
         role: "system",

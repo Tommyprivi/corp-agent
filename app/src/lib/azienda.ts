@@ -98,6 +98,15 @@ export interface Cliente {
   aggiornato: string;
 }
 
+export interface StatoFluida {
+  company_id: string;
+  nome: string;
+  piano: string;
+  attivo: boolean;
+  ultimo_errore: string | null;
+  aggiornato: string;
+}
+
 export interface Fattura {
   id: string;
   numero: string;

@@ -22,7 +22,7 @@
 import type { Strumento } from "./tools.js";
 import * as az from "./azienda.js";
 
-export function attrezziAzienda(): Strumento[] {
+export function attrezziAzienda(fluidaAttivo = false): Strumento[] {
   const attrezzi: Strumento[] = [
     {
       type: "function",
@@ -113,6 +113,20 @@ export function attrezziAzienda(): Strumento[] {
           },
           required: ["partenza", "arrivo"],
         },
+      },
+    });
+  }
+
+  if (fluidaAttivo) {
+    attrezzi.push({
+      type: "function",
+      function: {
+        name: "presenze_oggi",
+        description:
+          "Chi è assente oggi (ferie, malattia, permessi) e chi è in servizio, dal " +
+          "gestionale del personale Fluida. Usalo per «chi è in ferie oggi?», " +
+          "«chi c'è lunedì?», «X è in malattia?».",
+        parameters: { type: "object", properties: {}, required: [] },
       },
     });
   }
@@ -316,6 +330,11 @@ export async function eseguiAttrezzo(
       const e = corpo.rows?.[0]?.elements?.[0];
       if (e?.status !== "OK") return `Non trovo un percorso fra «${da}» e «${a}».`;
       return `Da ${da} a ${a}: ${e.distance?.text}, circa ${e.duration?.text} in auto.`;
+    }
+
+    if (nome === "presenze_oggi") {
+      const { presenzeOggi } = await import("./fluida.js");
+      return await presenzeOggi(azienda);
     }
 
     return `Non conosco lo strumento «${nome}».`;
