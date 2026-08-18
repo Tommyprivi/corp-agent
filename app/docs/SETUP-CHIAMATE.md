@@ -78,7 +78,7 @@ fly auth signup
 ### 2. Mettere online il ponte
 
 ```bash
-cd "agent ia progetto definitivo/voice-bridge"
+cd "app/voice-bridge"
 fly launch --no-deploy --name corpagent-voce
 ```
 

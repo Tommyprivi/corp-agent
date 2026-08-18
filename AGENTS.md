@@ -6,7 +6,7 @@ toccare qualsiasi cosa.** Chi lo ignora rompe il progetto sui punti dove siamo
 stati più attenti.
 
 ## Dov'è il progetto
-Il codice VERO sta nella sottocartella **`agent ia progetto definitivo/`**.
+Il codice VERO sta nella sottocartella **`app/`**.
 I comandi (build, migrazioni, deploy) si lanciano da DENTRO quella cartella.
 Leggi anche il suo **`CLAUDE.md`**: è la bibbia del progetto e vince su tutto.
 

@@ -21,14 +21,14 @@ Benvenuto. Qui costruiamo **CorpAgent**. Regola d'oro, una sola:
 - Mai scrivere su `main`: sempre ramo + proposta.
 - Mai mettere chiavi o password nel codice.
 - Prima di proporre, controlla che `npx tsc -b --force` e `npm run build`
-  passino puliti (i comandi si lanciano da dentro `agent ia progetto definitivo/`).
+  passino puliti (i comandi si lanciano da dentro `app/`).
 - Non toccare i dati/account veri di Speed Trasporti nei test.
 - Le cose delicate (sicurezza, database, agenti che scrivono ai clienti):
   nel dubbio, chiedi a Tommaso PRIMA di farle.
 
 ## Dove sono le regole tecniche
 - `AGENTS.md` (radice) — le trappole da conoscere, per te e per l'IA.
-- `agent ia progetto definitivo/CLAUDE.md` — la bibbia completa del progetto.
+- `app/CLAUDE.md` — la bibbia completa del progetto.
 
 Nel dubbio: **apri una proposta e chiedi**. Meglio una domanda in più che una
 modifica sbagliata online. 🙂
