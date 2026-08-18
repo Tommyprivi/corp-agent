@@ -5,6 +5,8 @@ import {
   disconnectConnector,
   listConnectors,
   richiediConnettorePersonalizzato,
+  storicoConnettore,
+  type ChiamataConnettore,
   type Connessione,
   type ConnectorKind,
 } from "../../lib/api";
@@ -345,8 +347,24 @@ function Riga({
 }) {
   const notify = useNotify();
   const [attesa, setAttesa] = useState(false);
+  const [storico, setStorico] = useState<ChiamataConnettore[] | null>(null);
   const collegato = stato?.status === "connected";
   const guasto = stato != null && stato.status !== "connected";
+
+  async function vediStorico() {
+    if (storico) {
+      setStorico(null);
+      return;
+    }
+    try {
+      setStorico(await storicoConnettore(def.kind));
+    } catch (error) {
+      notify.error(
+        "Non riesco a leggere lo storico.",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
 
   async function vaiAllAccesso() {
     setAttesa(true);
@@ -398,6 +416,38 @@ function Riga({
             <p className="mt-1.5 text-[12.5px] leading-relaxed text-[var(--danger,#dc2626)]">
               {stato.lastError}
             </p>
+          )}
+          {(collegato || guasto) && (
+            <button
+              onClick={() => void vediStorico()}
+              className="mt-1.5 text-[12px] text-[var(--text-secondary)] underline underline-offset-2 transition-colors hover:text-[var(--text-primary)]"
+            >
+              {storico ? "nascondi la cronologia" : "vedi la cronologia"}
+            </button>
+          )}
+          {storico && (
+            <div className="mt-2 space-y-1 border-t border-[var(--border)] pt-2">
+              {storico.length === 0 ? (
+                <p className="text-[12px] text-[var(--text-secondary)]">
+                  Nessuna chiamata ancora registrata.
+                </p>
+              ) : (
+                storico.map((c, i) => (
+                  <p key={i} className="text-[12px] leading-relaxed text-[var(--text-secondary)]">
+                    <span
+                      className={
+                        c.esito === "ok"
+                          ? "text-[var(--positive,#16a34a)]"
+                          : "text-[var(--danger,#dc2626)]"
+                      }
+                    >
+                      {c.esito === "ok" ? "✓" : "✗"}
+                    </span>{" "}
+                    {new Date(c.creato).toLocaleString("it-IT")} — {c.dettaglio || "(nessun dettaglio)"}
+                  </p>
+                ))
+              )}
+            </div>
           )}
         </div>
 

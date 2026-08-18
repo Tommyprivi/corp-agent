@@ -11,6 +11,7 @@ import {
   SessioneScaduta,
   type Bolla,
   type Cliente,
+  type Fattura,
   type Cruscotto as DatiCruscotto,
   type Documento,
   type Lettura,
@@ -73,7 +74,7 @@ import {
  * voce di menu, per non dire a nessuno che esiste una parte riservata.
  */
 
-type Sezione = "chat" | "cruscotto" | "reparto" | "clienti" | "persone" | "documenti" | "mezzi" | "attivita" | "impostazioni" | "supporto";
+type Sezione = "chat" | "cruscotto" | "reparto" | "clienti" | "fatture" | "persone" | "documenti" | "mezzi" | "attivita" | "impostazioni" | "supporto";
 
 interface PostazioneViva {
   id: string;
@@ -276,6 +277,9 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
       ? [{ chiave: "reparto", nome: "Il reparto", icona: "cruscotto" as IconaNome, badge: avvisi, vai: vaiSezione("reparto"), on: sezioneVera === "reparto" }]
       : []),
     { chiave: "clienti", nome: "Clienti", icona: "clienti" as IconaNome, vai: vaiSezione("clienti"), on: sezioneVera === "clienti" },
+    ...(isGestore
+      ? [{ chiave: "fatture", nome: "Fatture", icona: "documenti" as IconaNome, vai: vaiSezione("fatture"), on: sezioneVera === "fatture" }]
+      : []),
     ...(isGestore
       ? [{ chiave: "mezzi", nome: "Mezzi", icona: "mezzi" as IconaNome, vai: vaiSezione("mezzi"), on: sezioneVera === "mezzi" }]
       : []),
@@ -483,6 +487,7 @@ export default function Azienda({ marchio = "speed" }: { marchio?: string }) {
             seScaduta={seScaduta}
           />
         )}
+        {sezioneVera === "fatture" && isGestore && <Fatture seScaduta={seScaduta} />}
         {sezioneVera === "clienti" && (
           <Clienti ruolo={persona.ruolo} seScaduta={seScaduta} />
         )}
@@ -1703,6 +1708,8 @@ const CLIENTE_VUOTO = {
   email: "",
   zona: "",
   note: "",
+  piva: "",
+  indirizzo: "",
 };
 
 function Clienti({
@@ -1816,6 +1823,8 @@ function Clienti({
                 ["telefono", "Telefono"],
                 ["email", "Email"],
                 ["zona", "Zona"],
+                ["piva", "Partita IVA"],
+                ["indirizzo", "Indirizzo"],
               ] as const
             ).map(([campo, etichetta]) => (
               <input
@@ -1883,6 +1892,11 @@ function Clienti({
                   {[c.referente, c.telefono, c.zona].filter(Boolean).join(" · ") ||
                     "Solo il nome, per ora"}
                 </p>
+                {(c.piva || c.indirizzo) && (
+                  <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">
+                    {[c.piva && `P.IVA ${c.piva}`, c.indirizzo].filter(Boolean).join(" · ")}
+                  </p>
+                )}
                 {c.note && (
                   <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
                     {c.note}
@@ -1901,6 +1915,8 @@ function Clienti({
                         email: c.email,
                         zona: c.zona,
                         note: c.note,
+                        piva: c.piva,
+                        indirizzo: c.indirizzo,
                       })
                     }
                     className="cursor-pointer rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
@@ -1915,6 +1931,238 @@ function Clienti({
                   </button>
                 </div>
               )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Pagina>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LE FATTURE — la contabilità di Speed verso i suoi clienti
+// ─────────────────────────────────────────────────────────────────────────
+// ⚠️ Non è la cassa di CorpAgent (quella è Stripe, sui piani a pagamento):
+// questa è la contabilità DI SPEED verso i SUOI clienti — quanto deve
+// incassare e da chi, non quanto paga a noi.
+
+const FATTURA_VUOTA = {
+  id: "",
+  numero: "",
+  cliente_id: null as string | null,
+  cliente_nome: "",
+  centesimi: 0,
+  emessa: new Date().toISOString().slice(0, 10),
+  scadenza: "" as string | null,
+  note: "",
+};
+
+function euro(centesimi: number): string {
+  return (centesimi / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
+}
+
+const STATO_NOME: Record<Fattura["stato"], string> = {
+  da_incassare: "Da incassare",
+  incassata: "Incassata",
+  scaduta: "Scaduta",
+};
+
+function Fatture({ seScaduta }: { seScaduta: (e: unknown) => void }) {
+  const [elenco, setElenco] = useState<Fattura[] | null>(null);
+  const [bozza, setBozza] = useState<typeof FATTURA_VUOTA | null>(null);
+  const [inCorso, setInCorso] = useState(false);
+
+  const carica = useCallback(() => {
+    leggi<{ fatture: Fattura[] }>("fatture")
+      .then((r) => setElenco(r.fatture))
+      .catch((e) => {
+        seScaduta(e);
+        setElenco([]);
+      });
+  }, [seScaduta]);
+
+  useEffect(() => {
+    carica();
+  }, [carica]);
+
+  async function salva() {
+    if (!bozza || inCorso) return;
+    setInCorso(true);
+    try {
+      await manda({
+        az: "fattura",
+        fattura: { ...bozza, id: bozza.id || null, scadenza: bozza.scadenza || null },
+      });
+      setBozza(null);
+      carica();
+    } catch (e) {
+      seScaduta(e);
+    } finally {
+      setInCorso(false);
+    }
+  }
+
+  async function cambiaStato(id: string, stato: Fattura["stato"]) {
+    try {
+      await manda({ az: "fattura-stato", id, stato });
+      carica();
+    } catch (e) {
+      seScaduta(e);
+    }
+  }
+
+  async function elimina(id: string) {
+    try {
+      await manda({ az: "fattura-elimina", id });
+      carica();
+    } catch (e) {
+      seScaduta(e);
+    }
+  }
+
+  const totaleDaIncassare = (elenco ?? [])
+    .filter((f) => f.stato !== "incassata")
+    .reduce((s, f) => s + f.centesimi, 0);
+
+  return (
+    <Pagina
+      titolo="Fatture"
+      sotto="Quanto deve incassare Speed, da chi e per quando. Non è la cassa di CorpAgent: questa è la vostra."
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[13.5px] text-[var(--text-secondary)]">
+          Da incassare: <span className="font-medium text-[var(--text-primary)]">{euro(totaleDaIncassare)}</span>
+        </p>
+        <button
+          onClick={() => setBozza({ ...FATTURA_VUOTA })}
+          className="btn-grad shrink-0 cursor-pointer rounded-xl px-4 py-2.5 text-[13.5px] font-medium"
+        >
+          Nuova fattura
+        </button>
+      </div>
+
+      {bozza && (
+        <form
+          className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void salva();
+          }}
+        >
+          <p className="text-[13.5px] font-medium">
+            {bozza.id ? "Modifica la fattura" : "Una nuova fattura"}
+          </p>
+          <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+            <input
+              value={bozza.numero}
+              onChange={(e) => setBozza({ ...bozza, numero: e.target.value })}
+              placeholder="Numero fattura"
+              className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[13.5px]"
+            />
+            <input
+              value={bozza.cliente_nome}
+              onChange={(e) => setBozza({ ...bozza, cliente_nome: e.target.value })}
+              placeholder="Cliente"
+              className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[13.5px]"
+            />
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={bozza.centesimi ? (bozza.centesimi / 100).toFixed(2) : ""}
+              onChange={(e) => setBozza({ ...bozza, centesimi: Math.round(Number(e.target.value) * 100) || 0 })}
+              placeholder="Importo (€)"
+              className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[13.5px]"
+            />
+            <input
+              type="date"
+              value={bozza.scadenza ?? ""}
+              onChange={(e) => setBozza({ ...bozza, scadenza: e.target.value })}
+              className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:text-[13.5px]"
+            />
+            <textarea
+              value={bozza.note}
+              onChange={(e) => setBozza({ ...bozza, note: e.target.value })}
+              placeholder="Note"
+              rows={2}
+              className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-[16px] outline-none focus:border-[var(--accent)] sm:col-span-2 sm:text-[13.5px]"
+            />
+          </div>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="submit"
+              disabled={inCorso}
+              className="btn-grad cursor-pointer rounded-lg px-4 py-2 text-[13px] font-medium disabled:opacity-40"
+            >
+              {inCorso ? "Salvo…" : "Salva"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setBozza(null)}
+              className="cursor-pointer rounded-lg px-3 py-2 text-[13px] text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)]"
+            >
+              Annulla
+            </button>
+          </div>
+        </form>
+      )}
+
+      {elenco === null ? (
+        <p className="mt-4 text-[12.5px] text-[var(--text-secondary)]">Carico…</p>
+      ) : elenco.length === 0 ? (
+        <p className="mt-4 text-[12.5px] text-[var(--text-secondary)]">Nessuna fattura ancora.</p>
+      ) : (
+        <div className="mt-4 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+          {elenco.map((f, i) => (
+            <div
+              key={f.id}
+              className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 ${
+                i > 0 ? "border-t border-[var(--border)]" : ""
+              }`}
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-[14px] font-medium">
+                  {f.numero || "(senza numero)"} <span className="text-[var(--text-secondary)]">· {f.cliente_nome}</span>
+                </p>
+                <p className="mt-0.5 text-[12.5px] text-[var(--text-secondary)]">
+                  {euro(f.centesimi)}
+                  {f.scadenza && ` · scade ${new Date(f.scadenza).toLocaleDateString("it-IT")}`}
+                </p>
+              </div>
+              <select
+                value={f.stato}
+                onChange={(e) => void cambiaStato(f.id, e.target.value as Fattura["stato"])}
+                className="cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2.5 py-1.5 text-[12.5px] outline-none"
+              >
+                {(Object.keys(STATO_NOME) as Fattura["stato"][]).map((s) => (
+                  <option key={s} value={s}>
+                    {STATO_NOME[s]}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() =>
+                  setBozza({
+                    id: f.id,
+                    numero: f.numero,
+                    cliente_id: f.cliente_id,
+                    cliente_nome: f.cliente_nome,
+                    centesimi: f.centesimi,
+                    emessa: f.emessa,
+                    scadenza: f.scadenza,
+                    note: f.note,
+                  })
+                }
+                className="cursor-pointer rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[var(--text-primary)]"
+              >
+                Modifica
+              </button>
+              <button
+                onClick={() => void elimina(f.id)}
+                className="cursor-pointer rounded-md px-2 py-1 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--fill-quiet)] hover:text-[#b3261e]"
+              >
+                Elimina
+              </button>
             </div>
           ))}
         </div>
@@ -5006,6 +5254,7 @@ const NOMI_VOCE: Record<string, string> = {
   autisti: "Autisti",
   ammin: "Amministrazione",
   clienti: "Clienti",
+  fatture: "Fatture",
   mezzi: "Mezzi",
   persone: "Persone",
   attivita: "Attività",

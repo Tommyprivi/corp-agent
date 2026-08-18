@@ -433,6 +433,14 @@ async function leggiAzienda(request: Request, url: URL): Promise<Response> {
     case "documenti":
       return json({ documenti: await az.documenti(chi.azienda) }, 200);
 
+    case "fatture":
+      // I soldi dell'azienda: solo chi guida (titolare, amministratore, capo),
+      // come per persone e attività.
+      if (!titolare && chi.ruolo_vero !== "amministratore" && chi.ruolo_vero !== "capo") {
+        return soloTitolare();
+      }
+      return json({ fatture: await az.fatture(chi.azienda) }, 200);
+
     case "mezzi":
       // La lista dei mezzi serve a chiunque registra un carico: tutti la leggono.
       return json({ mezzi: await az.mezzi(chi.azienda) }, 200);
@@ -780,6 +788,30 @@ async function areaAzienda(
       if (!gestore) return negato();
       await az.eliminaDocumento(chi.azienda, String(corpo.id));
       az.segnaAttivita(chi.azienda, chi.persona, "documento-eliminato");
+      return json({ ok: true }, 200);
+
+    case "fattura": {
+      if (!gestore) return negato();
+      const id = await az.salvaFattura(chi.azienda, chi.persona, corpo.fattura as Record<string, unknown>);
+      if (!id) return json({ error: "Non sono riuscito a salvare." }, 400);
+      az.segnaAttivita(chi.azienda, chi.persona, "fattura", String((corpo.fattura as { numero?: string })?.numero ?? ""));
+      return json({ id }, 200);
+    }
+
+    case "fattura-stato": {
+      if (!gestore) return negato();
+      const stato = String(corpo.stato ?? "");
+      if (!["da_incassare", "incassata", "scaduta"].includes(stato)) {
+        return json({ error: "Stato non valido." }, 400);
+      }
+      await az.cambiaStatoFattura(chi.azienda, String(corpo.id), stato);
+      return json({ ok: true }, 200);
+    }
+
+    case "fattura-elimina":
+      if (!gestore) return negato();
+      await az.eliminaFattura(chi.azienda, String(corpo.id));
+      az.segnaAttivita(chi.azienda, chi.persona, "fattura-eliminata");
       return json({ ok: true }, 200);
 
     // ── IL MAGAZZINO ─────────────────────────────────────────────────

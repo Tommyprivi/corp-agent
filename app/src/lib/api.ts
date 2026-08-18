@@ -1160,6 +1160,20 @@ export async function connectWithKey(input: {
   if (!r.ok) throw await readError(r);
 }
 
+export interface ChiamataConnettore {
+  kind: string;
+  esito: string;
+  dettaglio: string;
+  creato: string;
+}
+
+/** Le ultime chiamate fatte con quel connettore: prove di collegamento e usi veri. */
+export async function storicoConnettore(kind: ConnectorKind): Promise<ChiamataConnettore[]> {
+  const r = await fetch(`/api/profile?storico=${kind}`, { credentials: "same-origin" });
+  if (!r.ok) throw await readError(r);
+  return ((await r.json()) as { storico: ChiamataConnettore[] }).storico;
+}
+
 export async function disconnectConnector(kind: ConnectorKind): Promise<void> {
   const r = await fetch(`/api/profile?connettore=${kind}`, {
     method: "DELETE",

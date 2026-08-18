@@ -92,8 +92,23 @@ export interface Cliente {
   email: string;
   zona: string;
   note: string;
+  piva: string;
+  indirizzo: string;
   creato: string;
   aggiornato: string;
+}
+
+export interface Fattura {
+  id: string;
+  numero: string;
+  cliente_id: string | null;
+  cliente_nome: string;
+  centesimi: number;
+  emessa: string;
+  scadenza: string | null;
+  stato: "da_incassare" | "incassata" | "scaduta";
+  note: string;
+  creato: string;
 }
 
 export interface PersonaElenco {

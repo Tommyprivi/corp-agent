@@ -274,6 +274,49 @@ export async function segnalaGuasto(
     // Se non si riesce nemmeno a segnare il guasto, non si peggiora la
     // situazione facendo fallire anche la richiesta dell'utente.
   });
+  await registraChiamata(userId, kind, "errore", errore);
+}
+
+/**
+ * Lo storico: ogni prova di collegamento e ogni uso vero di una chiave,
+ * riuscito o no. Serve a capire — guardando `connections_log` — se un
+ * connettore funziona bene o fallisce spesso, senza dover indovinare dai
+ * log del server.
+ *
+ * ⚠️ Muta sui fallimenti come le altre righe di servizio: uno storico che non
+ * si scrive non deve mai far fallire l'azione vera dell'utente.
+ */
+export async function registraChiamata(
+  userId: string,
+  kind: ConnectorKind,
+  esito: "ok" | "errore",
+  dettaglio = ""
+): Promise<void> {
+  await withUser(userId, (client) =>
+    client.query(
+      "insert into public.connections_log (user_id, kind, esito, dettaglio) values ($1,$2,$3,$4)",
+      [userId, kind, esito, dettaglio.slice(0, 500)]
+    )
+  ).catch(() => {});
+}
+
+/** Le ultime chiamate di un utente (tutti i connettori, o uno solo). */
+export async function storicoChiamate(
+  userId: string,
+  kind?: ConnectorKind,
+  limite = 50
+): Promise<{ kind: string; esito: string; dettaglio: string; creato: string }[]> {
+  return withUser(userId, async (client) => {
+    const r = await client.query<{ kind: string; esito: string; dettaglio: string; creato: string }>(
+      kind
+        ? `select kind, esito, dettaglio, creato from public.connections_log
+            where user_id = $1 and kind = $2 order by creato desc limit $3`
+        : `select kind, esito, dettaglio, creato from public.connections_log
+            where user_id = $1 order by creato desc limit $2`,
+      kind ? [userId, kind, limite] : [userId, limite]
+    );
+    return r.rows;
+  });
 }
 
 /** Stacca un collegamento. Le credenziali spariscono davvero. */

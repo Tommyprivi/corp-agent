@@ -29,9 +29,11 @@ import {
   concludiAccesso,
   kindDalBiglietto,
   prova,
+  registraChiamata,
   richiediPersonalizzato,
   ritornoPer,
   stacca,
+  storicoChiamate,
   type ConnectorKind,
 } from "./_lib/connectors.js";
 import { ensureProfile, getPool, withUser } from "./_lib/db.js";
@@ -216,6 +218,12 @@ export default {
       return json({ connections: await collegamenti(user.id) }, 200);
     }
 
+    // ── Lo storico: le ultime chiamate di un connettore ──────────────────
+    const storicoDi = url.searchParams.get("storico") as ConnectorKind | null;
+    if (request.method === "GET" && storicoDi) {
+      return json({ storico: await storicoChiamate(user.id, storicoDi, 20) }, 200);
+    }
+
     if (request.method === "DELETE") {
       const kind = url.searchParams.get("connettore") as ConnectorKind | null;
       if (!kind) return json({ error: "Serve quale connettore staccare." }, 400);
@@ -265,7 +273,10 @@ export default {
         // regala all'utente un agente muto: lui legge «collegato», l'agente non
         // trova niente, e nessuno dei due capisce perché.
         const esito = await prova(c.kind, c.secret, c.meta ?? {});
-        if (esito.ok !== true) return json({ error: esito.perche }, 400);
+        if (esito.ok !== true) {
+          await registraChiamata(user.id, c.kind, "errore", esito.perche);
+          return json({ error: esito.perche }, 400);
+        }
 
         await collega(user.id, {
           kind: c.kind,
@@ -273,6 +284,7 @@ export default {
           secret: c.secret,
           meta: { ...(c.meta ?? {}), ...(esito.meta ?? {}), nome: esito.nome },
         });
+        await registraChiamata(user.id, c.kind, "ok", `Collegato: ${esito.nome}`);
 
         return json({ connected: c.kind, nome: esito.nome }, 200);
       }

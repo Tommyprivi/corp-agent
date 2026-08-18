@@ -383,7 +383,7 @@ export async function salvaCliente(
   c: Record<string, unknown>
 ): Promise<string | null> {
   const r = await getPool().query<{ az_cliente_salva: string | null }>(
-    "select public.az_cliente_salva($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+    "select public.az_cliente_salva($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
     [
       (c.id as string) || null,
       azienda,
@@ -394,6 +394,8 @@ export async function salvaCliente(
       String(c.zona ?? ""),
       String(c.note ?? ""),
       persona,
+      String(c.piva ?? ""),
+      String(c.indirizzo ?? ""),
     ]
   );
   return r.rows[0]?.az_cliente_salva ?? null;
@@ -401,6 +403,48 @@ export async function salvaCliente(
 
 export async function eliminaCliente(azienda: string, id: string): Promise<void> {
   await getPool().query("select public.az_cliente_elimina($1, $2)", [id, azienda]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LE FATTURE — la contabilità dell'azienda cliente
+// ─────────────────────────────────────────────────────────────────────────
+// ⚠️ Non è Stripe: quella è la cassa di CorpAgent (api/_lib/ordini.ts). Questa
+// è la contabilità di Speed verso i SUOI clienti. Importi in centesimi.
+
+export async function fatture(azienda: string) {
+  const r = await getPool().query("select * from public.az_fatture($1)", [azienda]);
+  return r.rows;
+}
+
+export async function salvaFattura(
+  azienda: string,
+  persona: string,
+  f: Record<string, unknown>
+): Promise<string | null> {
+  const r = await getPool().query<{ az_fattura_salva: string | null }>(
+    "select public.az_fattura_salva($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+    [
+      (f.id as string) || null,
+      azienda,
+      String(f.numero ?? ""),
+      (f.cliente_id as string) || null,
+      String(f.cliente_nome ?? "").trim(),
+      Math.round(Number(f.centesimi ?? 0)) || 0,
+      (f.emessa as string) || null,
+      (f.scadenza as string) || null,
+      String(f.note ?? ""),
+      persona,
+    ]
+  );
+  return r.rows[0]?.az_fattura_salva ?? null;
+}
+
+export async function cambiaStatoFattura(azienda: string, id: string, stato: string): Promise<void> {
+  await getPool().query("select public.az_fattura_stato($1,$2,$3)", [id, azienda, stato]);
+}
+
+export async function eliminaFattura(azienda: string, id: string): Promise<void> {
+  await getPool().query("select public.az_fattura_elimina($1, $2)", [id, azienda]);
 }
 
 export async function documenti(azienda: string) {
