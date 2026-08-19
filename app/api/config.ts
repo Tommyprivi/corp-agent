@@ -787,13 +787,21 @@ async function areaAzienda(
       // POI guarda quello che ha appena portato dentro. Chi lo preme non deve
       // sapere che sotto ci sono due passi.
       if (!titolare && chi.ruolo_vero !== "amministratore") return negato();
-      const scarico = await posta.scaricaPosta(chi.azienda).catch((e) => ({
+      // ⚠️ Batch molto più grande del giro notturno (15/5): premuto a mano,
+      // chi preme si aspetta che si guardi "tutta" la casella, non un pezzetto
+      // — su una casella con mesi di storico arretrato un click da poco
+      // sembrerebbe rotto anche se stesse funzionando (Tommaso, 19 Agosto).
+      const RICHIESTO_SCARICO = 60;
+      const RICHIESTO_ESTRAI = 80;
+      const scarico = await posta.scaricaPosta(chi.azienda, RICHIESTO_SCARICO).catch((e) => ({
         nuovi: 0,
         errore: e instanceof Error ? e.message : "Non sono riuscito a leggere la casella.",
       }));
-      const esito = await posta.estraiClienti(chi.azienda, 20);
+      const esito = await posta.estraiClienti(chi.azienda, RICHIESTO_ESTRAI);
+      // Il batch era pieno: probabile che resti altro storico da guardare.
+      const altre = scarico.nuovi >= RICHIESTO_SCARICO || esito.scansionate >= RICHIESTO_ESTRAI;
       az.segnaAttivita(chi.azienda, chi.persona, "clienti-da-mail", String(esito.trovati));
-      return json({ ok: true, nuoveMail: scarico.nuovi, erroreMail: scarico.errore, ...esito }, 200);
+      return json({ ok: true, nuoveMail: scarico.nuovi, erroreMail: scarico.errore, altre, ...esito }, 200);
     }
 
     case "documento":

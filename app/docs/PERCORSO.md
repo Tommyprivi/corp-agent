@@ -149,6 +149,42 @@ prodotto.
 
 ---
 
+# ⚠️ AGGIORNAMENTO ALLA DIREZIONE FINALE — 19 Agosto 2026, deciso da Tommaso
+
+> **Questa sezione AMMENDA (non cancella) la "DIREZIONE FINALE" del 10 Agosto
+> sopra.** La regola «porta pubblica = solo il form» resta scritta com'era,
+> perché è la storia di cosa si è deciso e quando; da oggi però il sito
+> pubblico **torna a essere ricco e multi-pagina**.
+
+## Cosa cambia
+
+Il sito pubblico non è più solo landing + form. Si aggiungono, **come pagine
+separate** (non tutto ammucchiato in una sola landing):
+
+1. **I modelli IA disponibili** — il catalogo che oggi vive dietro l'accesso
+   (`/api/config?models=1`), reso vetrina pubblica.
+2. **Guide** — contenuto che spiega il prodotto, non solo lo promette.
+3. **«Stiamo assumendo»** — una pagina di carriere/posizioni aperte.
+4. **Form** — non solo quello di contatto aziende: altri form dove servono
+   (es. candidature per la pagina assunzioni).
+
+⚠️ **Perché è un cambio vero e non un dettaglio grafico:** la direzione del 10
+Agosto nasceva dalla paura di mostrare un prodotto ancora fragile a chiunque
+entri con Google. Riaprire il sito non toglie quella cautela sull'**app vera**
+(dashboard, agenti, chat) — quella resta privata. Cambia solo la **vetrina**:
+si può raccontare di più senza dare accesso al prodotto.
+
+## Cosa NON cambia
+
+- L'app funzionante (Master Builder, dashboard, chat) **resta privata**: non
+  visibile né accessibile pubblicamente finché non c'è un cliente reale.
+- Il form di contatto aziende resta **il modo vero** per diventare cliente.
+- La regola d'oro vale anche qui: ogni pagina nuova serve a **vendere entro
+  Dicembre 2026** — una guida che non aiuta a farsi capire o a farsi trovare
+  è backlog, non priorità.
+
+---
+
 Ordinate per **dipendenza tecnica**: ogni fase usa quello che ha costruito la precedente.
 Non si può invertire l'ordine — senza la Fase 2 (backend) nulla di quello che segue
 funziona davvero, resta interfaccia.

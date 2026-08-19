@@ -12,8 +12,7 @@ codice lo scrive Claude.
    Ogni sessione: guarda quale fase è aperta, prendi la prima riga non spuntata, fai quella.
 2. [docs/BIBBIA.md](docs/BIBBIA.md) — l'indirizzo del progetto: i 3 principi non
    negoziabili e la regola d'oro. **Vince su tutto il resto**, incluso SPEC.md.
-3. [docs/CHIAVI.md](docs/CHIAVI.md) — quali chiavi API servono a quale fase, e dove si
-   mettono. Nessuna chiave entra mai nel codice.
+
 4. [docs/PIANO.md](docs/PIANO.md) — i 4 pilastri della V1 in dettaglio (Master Builder,
    WhatsApp, RAG, Contatore Risparmio).
 3. [docs/BACKLOG.md](docs/BACKLOG.md) — tutto ciò che SPEC.md descrive ma che è stato

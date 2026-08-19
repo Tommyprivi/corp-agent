@@ -1342,3 +1342,51 @@ Quattro cose decise sul posto, e la più importante ribalta il piano dati:
   → compare vivo in banchina. È il pezzo che rende vera la frase di Tommaso.
 - Poi: le bolle di carta dalla multifunzione via email → OCR → stesso registro.
 - La prova con persone vere parte dal **magazzino** (è lì che si scannerizza).
+
+---
+
+## 19 Agosto — Il Solleciti Clienti: due decisioni, e resta un blocco
+
+Tommaso, scegliendo quale agente specifico costruire per primo dopo il canale
+WhatsApp: **Solleciti clienti / recupero crediti** — è la risposta 4 del
+questionario, il dolore amministrativo #1.
+
+### ⚠️ Blocco reale, non rimandabile: manca la fonte dei dati
+
+Un sollecito ha bisogno di sapere **chi deve pagare, quanto, da quando**. Oggi
+quel dato non esiste da nessuna parte in CorpAgent: il "gestionale fatture" di
+Speed Trasporti non è ancora collegato, e **non ne sappiamo nemmeno il nome**
+(è una delle tre domande che decidono il progetto, ancora aperta).
+
+**Deciso: si aspetta il gestionale vero, niente inserimento manuale-ponte.**
+A differenza del magazzino (dove le funzioni Carico/Scarico manuali sono
+partite subito, in attesa degli scanner), qui Tommaso ha scelto di non
+costruire una scheda "fattura aperta" a mano come ripiego: si aspetta la
+risposta di Salvatore sul nome del gestionale prima di scrivere qualsiasi
+tabella o logica. La domanda è già stata aggiunta all'email in uscita verso
+Salvatore (19 agosto).
+
+**Cosa si può preparare nel frattempo, senza aspettare:** il tono e la logica
+di scalata dei messaggi (istruzioni, guardrail, le sei regole della Fase 7)
+possono essere scritti già ora — sono indipendenti dalla fonte dati, e quando
+il gestionale arriva l'agente è pronto, manca solo il collegamento.
+
+### La regola di approvazione, decisa
+
+> *«Solo i primi possono partire da soli»* — Tommaso, 19 agosto.
+
+Non è la regola generica scritta più sopra nel documento («mai un sollecito
+senza approvazione umana», dell'11 agosto) — questa la **sostituisce** per lo
+scaglione iniziale:
+
+- Il **primo promemoria** (gentile, tono da «le ricordiamo che...») **può
+  partire da solo**, senza approvazione.
+- Dal **secondo sollecito in poi** (tono via via più fermo) **serve
+  l'approvazione umana**, ogni volta.
+
+⚠️ Restano da fissare con Salvatore, quando risponde: **dopo quanti giorni**
+parte il primo promemoria, e se «primo» significa un giorno fisso per tutti o
+qualcosa che lui vuole poter cambiare per cliente (è già una delle quattro
+domande sulle regole più sopra: *«il primo sollecito a sette giorni può
+partire da solo, o vuoi vederli tutti?»* — la risposta di oggi è: **sì, può
+partire da solo**, restano solo i giorni esatti da confermare).

@@ -573,7 +573,7 @@ function Conversazione({
   const [ascolto, setAscolto] = useState(false);
   /** Quale funzione rapida è aperta (solo magazzino), o null. */
   const [azione, setAzione] = useState<TipoMovimento | null>(null);
-  const fondo = useRef<HTMLDivElement>(null);
+  const contenitore = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dettatura = useRef<{ stop: () => void } | null>(null);
   const funzioni = FUNZIONI[postazione.id] ?? [];
@@ -619,7 +619,13 @@ function Conversazione({
   }, [postazione.id, seScaduta]);
 
   useEffect(() => {
-    fondo.current?.scrollIntoView({ block: "end" });
+    // ⚠️ Non scrollIntoView: dentro il box piccolo del Cruscotto (420px,
+    // annegato in una pagina che scorre a sua volta) scrollIntoView cammina
+    // gli antenati scorrevoli e può muovere la pagina invece della sola
+    // chat, o non muovere niente se il contenitore non è ancora quello
+    // scorrevole. Si impone lo scroll direttamente sul contenitore vero.
+    const el = contenitore.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messaggi, inCorso]);
 
   // ⚠️ Il microfono va spento uscendo dalla chat: senza, la dettatura resta
@@ -707,7 +713,7 @@ function Conversazione({
         <p className="mt-0.5 text-[12.5px] text-[var(--text-secondary)]">{postazione.cosa}</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-6 md:px-8">
+      <div ref={contenitore} className="flex-1 overflow-y-auto px-5 py-6 md:px-8">
         <div className="mx-auto flex min-h-full w-full max-w-[620px] flex-col justify-end space-y-3">
           {messaggi === null && (
             <p className="text-center text-[12.5px] text-[var(--text-secondary)]">
@@ -764,7 +770,6 @@ function Conversazione({
               </span>
             </div>
           )}
-          <div ref={fondo} />
         </div>
       </div>
 
@@ -1794,13 +1799,17 @@ function Clienti({
     setTrovaInCorso(true);
     setTrovaEsito(null);
     try {
-      const r = await manda<{ trovati?: number; nuoveMail?: number; erroreMail?: string | null }>({
+      const r = await manda<{ trovati?: number; nuoveMail?: number; erroreMail?: string | null; altre?: boolean }>({
         az: "clienti-da-mail",
       });
       const n = r.trovati ?? 0;
       const mail = r.nuoveMail ?? 0;
       const base = n > 0 ? `Trovati ${n} clienti nuovi (letta ${mail} mail nuova/e).` : `Nessun cliente nuovo (letta ${mail} mail nuova/e).`;
-      setTrovaEsito(r.erroreMail ? `${base} Guasto sulla casella: ${r.erroreMail}` : base);
+      // ⚠️ La casella può avere più storico di quanto si guardi in un solo
+      // click: dirlo, invece di far pensare che «tutte le mail» sia finito
+      // qui — chi preme non sa che sotto c'è un tetto per passata.
+      const conAltre = r.altre ? `${base} Ce ne sono altre: premi ancora per continuare.` : base;
+      setTrovaEsito(r.erroreMail ? `${conAltre} Guasto sulla casella: ${r.erroreMail}` : conAltre);
       if (n > 0) carica(cerca);
     } catch (e) {
       if (e instanceof SessioneScaduta) return seScaduta(e);

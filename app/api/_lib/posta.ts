@@ -486,7 +486,8 @@ interface AllegatoGraph {
  */
 async function scaricaPostaGraph(
   azienda: string,
-  cred: CredPosta
+  cred: CredPosta,
+  massimo = MASSIMO_PER_PASSATA
 ): Promise<{ nuovi: number; errore: string | null }> {
   const token = await gettoneValidoPosta(azienda, cred);
   if (!token) {
@@ -507,8 +508,12 @@ async function scaricaPostaGraph(
     let ultimoLink: string | null = null;
     let pagine = 0;
     // Poche pagine per passata: il resto arriva al giro dopo, come per IMAP
-    // (MASSIMO_PER_PASSATA righe, non messaggi — Graph pagina da solo).
-    while (indirizzo && pagine < 3 && nuovi < MASSIMO_PER_PASSATA) {
+    // (`massimo` righe, non messaggi — Graph pagina da solo). Il pulsante
+    // manuale «Trova clienti dalle mail» chiama con un `massimo` più alto del
+    // giro notturno, per non dover cliccare dieci volte su una casella con
+    // mesi di storico arretrato.
+    const pagineMax = Math.max(3, Math.ceil(massimo / 15));
+    while (indirizzo && pagine < pagineMax && nuovi < massimo) {
       pagine++;
       const r = await fetch(indirizzo, {
         headers: {
@@ -633,7 +638,10 @@ async function scaricaPostaGraph(
  * il server cambia UIDVALIDITY gli UID salvati non valgono più (lo dice
  * IMAP) e si riparte da zero — i doppioni li ferma comunque il msgid unico.
  */
-export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; errore: string | null }> {
+export async function scaricaPosta(
+  azienda: string,
+  massimo = MASSIMO_PER_PASSATA
+): Promise<{ nuovi: number; errore: string | null }> {
   const r = await getPool().query<CredPosta & { ultimo_uid: string; uid_validita: string }>(
     "select * from public.az_posta_credenziali($1)",
     [azienda]
@@ -642,7 +650,7 @@ export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; er
   if (!cred) return { nuovi: 0, errore: "Nessuna casella collegata." };
   if (!cred.attivo) return { nuovi: 0, errore: "Collegamento spento." };
 
-  if (cred.metodo === "oauth") return scaricaPostaGraph(azienda, cred);
+  if (cred.metodo === "oauth") return scaricaPostaGraph(azienda, cred, massimo);
 
   const password = decifra(cred.segreto_cifrato);
   if (!password) {
@@ -685,7 +693,7 @@ export async function scaricaPosta(azienda: string): Promise<{ nuovi: number; er
       const daFare = (uids || [])
         .filter((u) => u > ultimoUid)
         .sort((a, b) => a - b)
-        .slice(0, MASSIMO_PER_PASSATA);
+        .slice(0, massimo);
       for (const uid of daFare) {
         const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
         if (msg && msg.source) {
@@ -1385,12 +1393,15 @@ async function estraiClienteDaMail(
  * Ogni arrivo si segna «estratto» SEMPRE, trovato o no un cliente: altrimenti
  * una mail di spam verrebbe rianalizzata (e pagata) a ogni giro per sempre.
  */
-export async function estraiClienti(azienda: string, massimo = 5): Promise<{ trovati: number }> {
+export async function estraiClienti(
+  azienda: string,
+  massimo = 5
+): Promise<{ trovati: number; scansionate: number }> {
   const r = await getPool().query<{ id: string; mittente: string; oggetto: string; corpo: string }>(
     "select * from public.az_posta_arrivi_da_estrarre($1,$2)",
     [azienda, massimo]
   );
-  if (r.rows.length === 0) return { trovati: 0 };
+  if (r.rows.length === 0) return { trovati: 0, scansionate: 0 };
 
   const clientiNoti = (await clientiAzienda(azienda, "")) as ClienteConNote[];
   let trovati = 0;
@@ -1405,7 +1416,7 @@ export async function estraiClienti(azienda: string, massimo = 5): Promise<{ tro
     }
     await getPool().query("select public.az_posta_arrivo_segna_estratto($1)", [arrivo.id]);
   }
-  return { trovati };
+  return { trovati, scansionate: r.rows.length };
 }
 
 /** Manda davvero una mail via SMTP (stessa casella IMAP). */
